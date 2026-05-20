@@ -22,7 +22,7 @@
 
 ## Status
 
-> 🚧 **Active build.** This is a flagship portfolio project being built across four focused days as a public engineering showcase. Day 1 is complete — repository scaffolding, the FastAPI backend skeleton, and the React + TypeScript + Tailwind frontend are in place. The fraud-scoring pipeline, the synthetic dataset generator, the trained XGBoost model, and the persistence layer with Alembic migrations are landing on Day 2. The intent is to ship steadily, in public, with honest commits — not to pretend it is further along than it is.
+> 🚧 **Active build.** This is a flagship portfolio project being built across four focused days as a public engineering showcase. Day 1 is complete, and Day 2 is in progress — the SQLAlchemy 2.0 models, Alembic migrations, Pydantic v2 schemas, and repository layer are in place, and the synthetic dataset generator has shipped (50,010 transactions across 500 customers and 200 merchants, 1.52% fraud rate, six injected fraud patterns, reproducible from `seed=42`). Still ahead on Day 2: feature engineering, the XGBoost training run, SHAP explainability, and the model card. The intent is to ship steadily, in public, with honest commits — not to pretend it is further along than it is.
 
 ---
 
@@ -241,20 +241,26 @@ The dashboard will be live at **http://localhost:5173**.
 - [x] Repository scaffolding with Conventional Commits
 - [x] FastAPI backend with health endpoint
 - [x] React + TypeScript + Tailwind frontend
-- [ ] SQLAlchemy models + Alembic migrations
-- [ ] Synthetic dataset generator
-- [ ] XGBoost model training + SHAP integration
+- [x] Portfolio-grade README with architecture and roadmap
 
-### Day 2 — Fraud Pipeline + API
+### Day 2 — Data Layer + ML Foundation
+
+- [x] SQLAlchemy 2.0 ORM models with Decimal money typing
+- [x] Alembic migrations with CHECK constraints and indexes
+- [x] Pydantic v2 schemas with ISO 4217/3166 validation
+- [x] Repository layer with velocity-query support
+- [x] Synthetic dataset generator (50,010 transactions, 6 fraud patterns)
+- [ ] Feature engineering module
+- [ ] XGBoost classifier training
+- [ ] SHAP explainability integration
+- [ ] Model card with metrics
+
+### Day 3 — API + Frontend Dashboard
 
 - [ ] Rules engine
-- [ ] Feature engineering module
 - [ ] Transaction ingestion endpoint with idempotency
 - [ ] Fraud scoring pipeline integration
 - [ ] Background transaction simulator
-
-### Day 3 — Frontend Dashboard
-
 - [ ] Dashboard overview with KPIs
 - [ ] Transactions list with filters
 - [ ] Transaction detail with fraud-score breakdown
