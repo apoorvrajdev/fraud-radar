@@ -22,7 +22,7 @@
 
 ## Status
 
-> 🚧 **Active build.** This is a flagship portfolio project being built across four focused days as a public engineering showcase. Day 1 is complete, and Day 2 is in progress — the SQLAlchemy 2.0 models, Alembic migrations, Pydantic v2 schemas, and repository layer are in place, and the synthetic dataset generator has shipped (50,010 transactions across 500 customers and 200 merchants, 1.52% fraud rate, six injected fraud patterns, reproducible from `seed=42`). Still ahead on Day 2: feature engineering, the XGBoost training run, SHAP explainability, and the model card. The intent is to ship steadily, in public, with honest commits — not to pretend it is further along than it is.
+> 🚧 **Active build.** This is a flagship portfolio project being built across four focused days as a public engineering showcase. Day 1 is complete, and Day 2 is in progress — the SQLAlchemy 2.0 models, Alembic migrations, Pydantic v2 schemas, repository layer, synthetic dataset generator, and feature extractor are all in place. The dataset holds 50,010 transactions across 500 customers and 200 merchants at a 1.52% fraud rate with six injected fraud patterns, reproducible from `seed=42`. The feature extractor turns each transaction into a 17-dimensional vector covering amount, time-of-day, geographic mismatch, velocity, customer history, and merchant context. Still ahead on Day 2: the XGBoost training run, SHAP explainability, and the model card. The intent is to ship steadily, in public, with honest commits — not to pretend it is further along than it is.
 
 ---
 
@@ -250,7 +250,7 @@ The dashboard will be live at **http://localhost:5173**.
 - [x] Pydantic v2 schemas with ISO 4217/3166 validation
 - [x] Repository layer with velocity-query support
 - [x] Synthetic dataset generator (50,010 transactions, 6 fraud patterns)
-- [ ] Feature engineering module
+- [x] Feature extractor (17 features: amount, time, geo, velocity, history, merchant)
 - [ ] XGBoost classifier training
 - [ ] SHAP explainability integration
 - [ ] Model card with metrics
