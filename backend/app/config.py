@@ -31,8 +31,9 @@ class Settings(BaseSettings):
     api_cors_origins: str = "http://localhost:5173"
 
     # ML
-    model_path: str = "./ml/artifacts/model.joblib"
-    preprocessor_path: str = "./ml/artifacts/preprocessor.joblib"
+    # Directory holding model.json, feature_list.json, threshold.json, and
+    # metrics.json — produced by `python -m ml.train`.
+    model_artifacts_dir: str = "./ml/artifacts"
 
     # Simulator
     simulator_enabled: bool = True

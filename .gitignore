@@ -63,3 +63,6 @@ backend/ml/artifacts/*.png
 # Misc
 *.bak
 *.tmp
+
+# Debug PNGs from curl-based endpoint testing
+backend/*.png
