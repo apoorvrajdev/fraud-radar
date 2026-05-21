@@ -22,7 +22,7 @@
 
 ## Status
 
-> 🚧 **Active build.** This is a flagship portfolio project being built across four focused days as a public engineering showcase. Day 1 is complete, and Day 2 is in progress — the SQLAlchemy 2.0 models, Alembic migrations, Pydantic v2 schemas, repository layer, synthetic dataset generator, feature extractor, and XGBoost training pipeline are all in place. The dataset holds 50,010 transactions across 500 customers and 200 merchants at a 1.52% fraud rate with six injected fraud patterns, reproducible from `seed=42`. The feature extractor turns each transaction into a 17-dimensional vector covering amount, time-of-day, geographic mismatch, velocity, customer history, and merchant context. The trained classifier scores **0.9327 PR-AUC** and **0.9785 Recall @ 1% FPR** on a chronological held-out test fold. Still ahead on Day 2: SHAP explainability and the model card. The intent is to ship steadily, in public, with honest commits — not to pretend it is further along than it is.
+> 🚧 **Active build.** This is a flagship portfolio project being built across four focused days as a public engineering showcase. Day 1 and Day 2 are both complete — the SQLAlchemy 2.0 models, Alembic migrations, Pydantic v2 schemas, repository layer, synthetic dataset generator, feature extractor, XGBoost training pipeline, SHAP explanation endpoint, and auto-regenerated model card (segment metrics, calibration analysis, global SHAP) are all in place. The dataset holds 50,010 transactions across 500 customers and 200 merchants at a 1.52% fraud rate with six injected fraud patterns, reproducible from `seed=42`. The feature extractor turns each transaction into a 17-dimensional vector covering amount, time-of-day, geographic mismatch, velocity, customer history, and merchant context. The trained classifier scores **0.9327 PR-AUC** and **0.9785 Recall @ 1% FPR** on a chronological held-out test fold. Day 3 picks up with the rules engine, the transaction-ingestion endpoint, and the React dashboard. The intent is to ship steadily, in public, with honest commits — not to pretend it is further along than it is.
 
 > 📊 **Headline results (held-out test fold).** PR-AUC **0.9327** · ROC-AUC **0.9989** · Recall @ 1% FPR **0.9785** · Recall @ 5% FPR **1.0000** · at operating threshold 0.7431 → precision **0.61**, recall **0.96**. Source: [`backend/ml/artifacts/metrics.json`](backend/ml/artifacts/metrics.json). Detailed breakdown in [Test-Set Metrics](#-test-set-metrics) below.
 
@@ -158,7 +158,19 @@ The synthetic dataset that trains the model deliberately injects **six real-worl
 - **Off-hours patterns** — clustering of transactions at unusual times for the cardholder.
 - **Merchant concentration** — abnormal density of activity at a single merchant or merchant category.
 
-> 📊 **Metrics landed.** Test-set PR-AUC **0.9327**, Recall @ 1% FPR **0.9785**, ROC-AUC **0.9989** — measured on the chronological held-out fold (last 15% of rows by time). Full table in [Test-Set Metrics](#-test-set-metrics). Inference latency will be measured once the scoring endpoint ships.
+---
+
+## 🔍 Explainability
+
+Every scored transaction can be inspected via `GET /api/v1/transactions/{id}/explain`. The endpoint runs the same `FeatureExtractor` the scorer uses and returns the fraud score, the decision, the top 5 SHAP contributors, and the full 17-feature attribution map:
+
+```bash
+curl http://localhost:8000/api/v1/transactions/<TX_ID>/explain
+```
+
+Two PNG formats are also supported for embedding in dashboard tiles: `?format=force` (top-8 features plus an aggregated remainder) and `?format=waterfall` (all 17 features).
+
+SHAP is computed at inference time against a `TreeExplainer` cached at process startup — not pre-computed in batch. Every explanation is live for every scored transaction, and the same feature-extraction code path serves both training and inference, so the explainer never drifts from the scorer.
 
 ---
 
@@ -179,26 +191,50 @@ The synthetic dataset that trains the model deliberately injects **six real-worl
 
 ```
 fraud-radar/
-├── backend/                    # FastAPI service + ML pipeline
-│   ├── app/
-│   │   ├── api/                # Routers — thin orchestration only
-│   │   ├── services/           # Business logic (fraud pipeline, scoring)
-│   │   ├── repositories/       # SQLAlchemy data access
-│   │   ├── models/             # ORM + Pydantic schemas
-│   │   └── ml/                 # Training, features, SHAP, artifact loading
+├── backend/                          # FastAPI service + ML pipeline
+│   ├── app/                          # Web/API layer
+│   │   ├── api/v1/                   # Routers — thin orchestration only
+│   │   ├── services/                 # Business logic (planned, Day 3)
+│   │   ├── repositories/             # SQLAlchemy data access
+│   │   ├── models/                   # SQLAlchemy ORM models
+│   │   ├── schemas/                  # Pydantic v2 request/response schemas
+│   │   ├── fraud/                    # FeatureExtractor, FraudExplainer, plots
+│   │   ├── core/                     # Reserved cross-cutting utilities
+│   │   ├── db/                       # Session, engine
+│   │   └── simulator/                # Background transaction simulator (planned, Day 3)
+│   ├── ml/                           # Training + analysis + artifacts
+│   │   ├── synthesis/                # Synthetic dataset generators
+│   │   ├── analysis/                 # Segment, calibration, global SHAP
+│   │   ├── data/                     # Generated CSV (gitignored)
+│   │   ├── artifacts/                # Trained model + metrics JSONs
+│   │   ├── notebooks/                # Exploratory notebooks
+│   │   ├── train.py                  # XGBoost training pipeline
+│   │   ├── analyze.py                # Post-training analysis + model card
+│   │   ├── generate_dataset.py       # CLI to seed DB + write labelled CSV
+│   │   ├── splits.py                 # Chronological train/val/test split
+│   │   ├── tuning.py                 # RandomizedSearchCV wrapper
+│   │   ├── evaluation.py             # PR-AUC, Recall@FPR, threshold selection
+│   │   ├── data.py                   # Dataset loader (DB rows + CSV labels)
+│   │   ├── artifacts.py              # Save/load model artifacts (JSON)
+│   │   └── MODEL_CARD.md             # Auto-regenerated from analyze.py
 │   ├── tests/
-│   │   ├── unit/
-│   │   └── integration/
-│   └── pyproject.toml          # uv-managed dependencies
-├── frontend/                   # React + TypeScript dashboard
+│   │   ├── unit/                     # 87 unit tests
+│   │   └── integration/              # 5 integration tests
+│   ├── alembic/                      # DB migrations
+│   │   └── versions/
+│   └── pyproject.toml                # uv-managed dependencies
+├── frontend/                         # React + TypeScript dashboard (Day 3)
 │   ├── src/
-│   │   ├── components/         # Presentation components
-│   │   ├── pages/              # Route-level views
-│   │   └── lib/                # API client, hooks, utilities
+│   │   ├── components/
+│   │   ├── pages/
+│   │   ├── hooks/
+│   │   ├── lib/
+│   │   ├── types/
+│   │   └── assets/
 │   └── package.json
-├── docs/                       # Architecture notes and design records
-├── data/                       # Synthetic datasets (gitignored)
-├── models/                     # Trained artifacts (gitignored)
+├── docs/
+│   ├── adr/                          # Architecture decision records
+│   └── screenshots/
 ├── LICENSE
 └── README.md
 ```
@@ -243,10 +279,22 @@ cd backend
 uv sync
 uv run python -m ml.generate_dataset   # ~2 min: populates DB + writes labelled CSV
 uv run python -m ml.train              # ~5–10 min: tunes, fits, evaluates, saves artifacts
+uv run python -m ml.analyze            # ~1 min: regenerates MODEL_CARD.md + segment / calibration / feature-importance artifacts
 cat ml/artifacts/metrics.json
 ```
 
 The training run writes `model.json`, `feature_list.json`, `threshold.json`, `metrics.json`, `training_metadata.json`, and `pr_curve.png` into `backend/ml/artifacts/`. Of those, `model.json` and `pr_curve.png` are gitignored; the rest are committed so each training run is reviewable in version control.
+
+`ml.analyze` then adds `segment_metrics.json`, `calibration_metrics.json`, `feature_importance.json`, plus `calibration_curve.png`, `global_shap_beeswarm.png`, and `global_shap_bar.png`, and rewrites [`backend/ml/MODEL_CARD.md`](backend/ml/MODEL_CARD.md) with the current numbers. JSON outputs are committed; the PNGs are gitignored.
+
+### Tests
+
+```bash
+cd backend
+uv run pytest -v
+```
+
+Runs ~92 test cases covering the chronological splitter, evaluation metrics, artifact round-trip, SHAP additivity, force / waterfall plot rendering, segment routing, calibration math (including positive-class variants), and the `/explain` endpoint via `TestClient`.
 
 ---
 
@@ -268,8 +316,8 @@ The training run writes `model.json`, `feature_list.json`, `threshold.json`, `me
 - [x] Synthetic dataset generator (50,010 transactions, 6 fraud patterns)
 - [x] Feature extractor (17 features: amount, time, geo, velocity, history, merchant)
 - [x] XGBoost classifier training (PR-AUC 0.9327, Recall @ 1% FPR 0.9785; chronological split, randomised CV)
-- [ ] SHAP explainability integration
-- [ ] Model card with metrics
+- [x] SHAP explainability integration (inference-time `TreeExplainer`; JSON, force, waterfall response formats)
+- [x] Model card with metrics (segment analysis, calibration, global SHAP, limitations)
 
 ### Day 3 — API + Frontend Dashboard
 
@@ -325,7 +373,7 @@ Measured on the held-out chronological test fold — last 15% of 50,010 transact
 | F1 @ threshold 0.7431             | —       | **0.7479** |
 | Inference latency (p99)           | < 100ms | _pending — scoring endpoint not yet shipped_ |
 
-> 📝 **Note.** The forthcoming model card will include the full confusion matrix, calibration plot, feature importance ranking, and a frank assessment of where the model still falls short.
+> 📝 **Note.** The full [model card](backend/ml/MODEL_CARD.md) — segment performance, calibration analysis (aggregate and positives-only), global SHAP, limitations, and ethical considerations — is rebuilt on every `ml/analyze.py` run.
 
 ---
 
