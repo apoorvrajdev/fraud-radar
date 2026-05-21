@@ -1,0 +1,91 @@
+{
+  "features": [
+    {
+      "feature": "log_amount",
+      "mean_abs_shap": 2.7716995600965526,
+      "rank": 1
+    },
+    {
+      "feature": "is_card_present",
+      "mean_abs_shap": 2.5195198262081053,
+      "rank": 2
+    },
+    {
+      "feature": "hour_of_day",
+      "mean_abs_shap": 0.723006481866769,
+      "rank": 3
+    },
+    {
+      "feature": "country_mismatch_customer",
+      "mean_abs_shap": 0.7008755248993008,
+      "rank": 4
+    },
+    {
+      "feature": "merchant_risk_encoded",
+      "mean_abs_shap": 0.510506419703456,
+      "rank": 5
+    },
+    {
+      "feature": "country_mismatch_merchant",
+      "mean_abs_shap": 0.40627856085623654,
+      "rank": 6
+    },
+    {
+      "feature": "log_amount_sum_24h",
+      "mean_abs_shap": 0.3506820868279494,
+      "rank": 7
+    },
+    {
+      "feature": "amount_zscore_30d",
+      "mean_abs_shap": 0.21028420177144938,
+      "rank": 8
+    },
+    {
+      "feature": "tx_count_24h",
+      "mean_abs_shap": 0.165010100245916,
+      "rank": 9
+    },
+    {
+      "feature": "customer_risk_tier_encoded",
+      "mean_abs_shap": 0.15932125024999608,
+      "rank": 10
+    },
+    {
+      "feature": "is_high_risk_category",
+      "mean_abs_shap": 0.13230673905826512,
+      "rank": 11
+    },
+    {
+      "feature": "tx_count_1h",
+      "mean_abs_shap": 0.07997681440094352,
+      "rank": 12
+    },
+    {
+      "feature": "avg_amount_30d",
+      "mean_abs_shap": 0.06769802592997452,
+      "rank": 13
+    },
+    {
+      "feature": "is_off_hours",
+      "mean_abs_shap": 0.06399460148063303,
+      "rank": 14
+    },
+    {
+      "feature": "customer_account_age_days",
+      "mean_abs_shap": 0.05654291721959869,
+      "rank": 15
+    },
+    {
+      "feature": "is_weekend",
+      "mean_abs_shap": 0.02803728430493683,
+      "rank": 16
+    },
+    {
+      "feature": "days_since_last_tx",
+      "mean_abs_shap": 0.01107243631603262,
+      "rank": 17
+    }
+  ],
+  "method": "mean absolute SHAP value over test set",
+  "n_test_samples": 7502
+}

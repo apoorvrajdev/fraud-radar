@@ -1,0 +1,46 @@
+{
+  "global": {
+    "fraud_rate": 0.012396694214876033,
+    "n_frauds": 93,
+    "n_negatives": 7409,
+    "n_transactions": 7502,
+    "pr_auc": 0.936797417590835,
+    "recall_at_1pct_fpr": 0.978494623655914
+  },
+  "notes": "Segment analysis measures performance stability across geographic distributions, not demographic fairness. The synthetic dataset has no protected attributes.",
+  "segments": {
+    "Developed": {
+      "fraud_rate": 0.006818956699624957,
+      "n_frauds": 20,
+      "n_negatives": 2913,
+      "n_transactions": 2933,
+      "pr_auc": 0.92452906162465,
+      "recall_at_1pct_fpr": 1.0
+    },
+    "High-fraud": {
+      "fraud_rate": 1.0,
+      "n_frauds": 16,
+      "n_negatives": 0,
+      "n_transactions": 16,
+      "pr_auc": null,
+      "recall_at_1pct_fpr": null,
+      "skipped_reason": "no negative samples \u2014 PR-AUC and Recall@FPR are undefined"
+    },
+    "Other": {
+      "fraud_rate": 0.013157894736842105,
+      "n_frauds": 8,
+      "n_negatives": 600,
+      "n_transactions": 608,
+      "pr_auc": 1.0,
+      "recall_at_1pct_fpr": 1.0
+    },
+    "US": {
+      "fraud_rate": 0.012420785804816223,
+      "n_frauds": 49,
+      "n_negatives": 3896,
+      "n_transactions": 3945,
+      "pr_auc": 0.9210093654909997,
+      "recall_at_1pct_fpr": 0.9387755102040817
+    }
+  }
+}

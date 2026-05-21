@@ -1,0 +1,64 @@
+{
+  "bin_counts": [
+    7241,
+    31,
+    19,
+    17,
+    20,
+    14,
+    16,
+    16,
+    24,
+    104
+  ],
+  "bin_mean_observed": [
+    0.0,
+    0.03225806451612903,
+    0.0,
+    0.0,
+    0.05,
+    0.0,
+    0.125,
+    0.0625,
+    0.20833333333333334,
+    0.7980769230769231
+  ],
+  "bin_mean_predicted": [
+    0.0020093799686065035,
+    0.13172803290428653,
+    0.25703482094563934,
+    0.3512301602784325,
+    0.4622085988521576,
+    0.532581763608115,
+    0.6409849859774113,
+    0.7548949420452118,
+    0.8528197954098383,
+    0.9818453381840999
+  ],
+  "bin_positive_counts": [
+    0,
+    1,
+    0,
+    0,
+    1,
+    0,
+    2,
+    1,
+    5,
+    83
+  ],
+  "brier_score": 0.00815648378784189,
+  "expected_calibration_error": 0.013076786120009906,
+  "n_test_samples": 7502,
+  "note": "Aggregate Brier and ECE are dominated by the well-calibrated negative-class bin. The positive-class variants surface the systematic over-prediction on harder cases that a Platt or isotonic post-hoc calibration step would correct.",
+  "positive_class_brier": 0.01590997169188959,
+  "positive_class_ece": 0.4247188954077699,
+  "worst_positive_bin": {
+    "bin_index": 7,
+    "gap": 0.6923949420452118,
+    "mean_observed": 0.0625,
+    "mean_predicted": 0.7548949420452118,
+    "n_positives": 1,
+    "n_samples": 16
+  }
+}
