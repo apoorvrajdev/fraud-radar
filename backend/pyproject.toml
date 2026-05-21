@@ -13,18 +13,16 @@ dependencies = [
     "python-dotenv>=1.0.0",
     "structlog>=24.4.0",
     "httpx>=0.27.0",
+    "xgboost>=3.2.0",
+    "scikit-learn>=1.8.0",
+    "shap>=0.51.0",
+    "pandas>=3.0.3",
+    "numpy>=2.4.6",
+    "matplotlib>=3.10.9",
+    "faker>=40.18.0",
 ]
 
 [dependency-groups]
-ml = [
-    "scikit-learn>=1.5.0",
-    "xgboost>=2.1.0",
-    "pandas>=2.2.0",
-    "numpy>=2.0.0",
-    "shap>=0.46.0",
-    "joblib>=1.4.0",
-    "faker>=30.0.0",
-]
 dev = [
     "pytest>=8.3.0",
     "pytest-asyncio>=0.24.0",

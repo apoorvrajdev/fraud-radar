@@ -53,6 +53,8 @@ Thumbs.db
 # ML artifacts
 backend/ml/data/*.csv
 backend/ml/artifacts/*.joblib
+backend/ml/artifacts/model.json
+backend/ml/artifacts/*.png
 !backend/ml/artifacts/.gitkeep
 
 # Docker
