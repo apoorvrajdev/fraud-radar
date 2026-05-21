@@ -22,7 +22,9 @@
 
 ## Status
 
-> 🚧 **Active build.** This is a flagship portfolio project being built across four focused days as a public engineering showcase. Day 1 is complete, and Day 2 is in progress — the SQLAlchemy 2.0 models, Alembic migrations, Pydantic v2 schemas, repository layer, synthetic dataset generator, and feature extractor are all in place. The dataset holds 50,010 transactions across 500 customers and 200 merchants at a 1.52% fraud rate with six injected fraud patterns, reproducible from `seed=42`. The feature extractor turns each transaction into a 17-dimensional vector covering amount, time-of-day, geographic mismatch, velocity, customer history, and merchant context. Still ahead on Day 2: the XGBoost training run, SHAP explainability, and the model card. The intent is to ship steadily, in public, with honest commits — not to pretend it is further along than it is.
+> 🚧 **Active build.** This is a flagship portfolio project being built across four focused days as a public engineering showcase. Day 1 is complete, and Day 2 is in progress — the SQLAlchemy 2.0 models, Alembic migrations, Pydantic v2 schemas, repository layer, synthetic dataset generator, feature extractor, and XGBoost training pipeline are all in place. The dataset holds 50,010 transactions across 500 customers and 200 merchants at a 1.52% fraud rate with six injected fraud patterns, reproducible from `seed=42`. The feature extractor turns each transaction into a 17-dimensional vector covering amount, time-of-day, geographic mismatch, velocity, customer history, and merchant context. The trained classifier scores **0.9327 PR-AUC** and **0.9785 Recall @ 1% FPR** on a chronological held-out test fold. Still ahead on Day 2: SHAP explainability and the model card. The intent is to ship steadily, in public, with honest commits — not to pretend it is further along than it is.
+
+> 📊 **Headline results (held-out test fold).** PR-AUC **0.9327** · ROC-AUC **0.9989** · Recall @ 1% FPR **0.9785** · Recall @ 5% FPR **1.0000** · at operating threshold 0.7431 → precision **0.61**, recall **0.96**. Source: [`backend/ml/artifacts/metrics.json`](backend/ml/artifacts/metrics.json). Detailed breakdown in [Test-Set Metrics](#-test-set-metrics) below.
 
 ---
 
@@ -156,7 +158,7 @@ The synthetic dataset that trains the model deliberately injects **six real-worl
 - **Off-hours patterns** — clustering of transactions at unusual times for the cardholder.
 - **Merchant concentration** — abnormal density of activity at a single merchant or merchant category.
 
-> 📊 **Metrics pending.** PR-AUC, recall at fixed FPR, and inference latency numbers will land in this README the moment Day 2 training completes. I am not publishing aspirational numbers as if they were measured.
+> 📊 **Metrics landed.** Test-set PR-AUC **0.9327**, Recall @ 1% FPR **0.9785**, ROC-AUC **0.9989** — measured on the chronological held-out fold (last 15% of rows by time). Full table in [Test-Set Metrics](#-test-set-metrics). Inference latency will be measured once the scoring endpoint ships.
 
 ---
 
@@ -232,6 +234,20 @@ npm run dev
 
 The dashboard will be live at **http://localhost:5173**.
 
+### Reproduce Training
+
+`fraud_radar.db` and `ml/data/synthetic_transactions.csv` are gitignored — they must be regenerated locally before training:
+
+```bash
+cd backend
+uv sync
+uv run python -m ml.generate_dataset   # ~2 min: populates DB + writes labelled CSV
+uv run python -m ml.train              # ~5–10 min: tunes, fits, evaluates, saves artifacts
+cat ml/artifacts/metrics.json
+```
+
+The training run writes `model.json`, `feature_list.json`, `threshold.json`, `metrics.json`, `training_metadata.json`, and `pr_curve.png` into `backend/ml/artifacts/`. Of those, `model.json` and `pr_curve.png` are gitignored; the rest are committed so each training run is reviewable in version control.
+
 ---
 
 ## 🗺️ Roadmap
@@ -251,7 +267,7 @@ The dashboard will be live at **http://localhost:5173**.
 - [x] Repository layer with velocity-query support
 - [x] Synthetic dataset generator (50,010 transactions, 6 fraud patterns)
 - [x] Feature extractor (17 features: amount, time, geo, velocity, history, merchant)
-- [ ] XGBoost classifier training
+- [x] XGBoost classifier training (PR-AUC 0.9327, Recall @ 1% FPR 0.9785; chronological split, randomised CV)
 - [ ] SHAP explainability integration
 - [ ] Model card with metrics
 
@@ -289,20 +305,27 @@ The dashboard will be live at **http://localhost:5173**.
 > **Why XGBoost?**
 > It is the industry standard for tabular fraud detection. It trains fast on modest hardware, handles the extreme class imbalance that fraud data always carries, and pairs naturally with SHAP for per-decision explanations. A deep network would be a worse fit and harder to explain.
 
+> **Why does the trainer call the production feature extractor?**
+> Labels live in the synthetic CSV companion to the database; features come straight from [`backend/app/fraud/`](backend/app/fraud/) — the same `FeatureExtractor` the scoring endpoint will call at inference time. Running `python -m ml.train` is several minutes slower than a vectorised pandas implementation would be, but it guarantees zero train/inference skew: the bytes that enter XGBoost during training are byte-identical to the bytes that will enter it when a live transaction is scored. Train/inference skew is the bug that quietly destroys fraud-model precision in production, and the only durable fix is to share one code path.
+
 ---
 
-## 📊 Planned Metrics
+## 📊 Test-Set Metrics
 
-These are **targets**, not measured results. The final numbers will land here as soon as the Day 2 training run completes, with the corresponding evaluation code committed alongside.
+Measured on the held-out chronological test fold — last 15% of 50,010 transactions by `created_at`, no shuffling. Hyperparameters were selected by a 25-iteration `RandomizedSearchCV` scored on PR-AUC; the final fit used `early_stopping_rounds=50` against the validation fold. Numbers come straight from [`backend/ml/artifacts/metrics.json`](backend/ml/artifacts/metrics.json).
 
-| Metric                       | Target  |
-| ---------------------------- | ------- |
-| PR-AUC                       | > 0.75  |
-| Recall @ 1% FPR              | > 0.60  |
-| Precision @ top 1% scores    | > 0.50  |
-| Inference latency (p99)      | < 100ms |
+| Metric                            | Target  | Measured   |
+| --------------------------------- | ------- | ---------- |
+| PR-AUC                            | > 0.75  | **0.9327** |
+| ROC-AUC                           | —       | **0.9989** |
+| Recall @ 1% FPR                   | > 0.60  | **0.9785** |
+| Recall @ 5% FPR                   | —       | **1.0000** |
+| Precision @ threshold 0.7431      | —       | **0.6138** |
+| Recall @ threshold 0.7431         | —       | **0.9570** |
+| F1 @ threshold 0.7431             | —       | **0.7479** |
+| Inference latency (p99)           | < 100ms | _pending — scoring endpoint not yet shipped_ |
 
-> 📝 **Note.** The published model card on Day 4 will include the full confusion matrix, calibration plot, feature importance ranking, and a frank assessment of where the model still falls short.
+> 📝 **Note.** The forthcoming model card will include the full confusion matrix, calibration plot, feature importance ranking, and a frank assessment of where the model still falls short.
 
 ---
 
