@@ -302,40 +302,41 @@ Runs ~92 test cases covering the chronological splitter, evaluation metrics, art
 
 ### Day 1 — Foundations
 
-- [x] Repository scaffolding with Conventional Commits
-- [x] FastAPI backend with health endpoint
-- [x] React + TypeScript + Tailwind frontend
-- [x] Portfolio-grade README with architecture and roadmap
+- [x] **1A** — Repository scaffolding with Conventional Commits
+- [x] **1B** — FastAPI backend with health endpoint
+- [x] **1C** — React + TypeScript + Tailwind frontend
+- [x] **1D** — Portfolio-grade README with architecture and roadmap
 
 ### Day 2 — Data Layer + ML Foundation
 
-- [x] SQLAlchemy 2.0 ORM models with Decimal money typing
-- [x] Alembic migrations with CHECK constraints and indexes
-- [x] Pydantic v2 schemas with ISO 4217/3166 validation
-- [x] Repository layer with velocity-query support
-- [x] Synthetic dataset generator (50,010 transactions, 6 fraud patterns)
-- [x] Feature extractor (17 features: amount, time, geo, velocity, history, merchant)
-- [x] XGBoost classifier training (PR-AUC 0.9327, Recall @ 1% FPR 0.9785; chronological split, randomised CV)
-- [x] SHAP explainability integration (inference-time `TreeExplainer`; JSON, force, waterfall response formats)
-- [x] Model card with metrics (segment analysis, calibration, global SHAP, limitations)
+- [x] **2A** — SQLAlchemy 2.0 ORM models with Decimal money typing
+- [x] **2B** — Alembic migrations with CHECK constraints and indexes
+- [x] **2C** — Pydantic v2 schemas with ISO 4217/3166 validation
+- [x] **2D** — Repository layer with velocity-query support
+- [x] **2E** — Synthetic dataset generator (50,010 transactions, 6 fraud patterns)
+- [x] **2F** — Feature extractor (17 features: amount, time, geo, velocity, history, merchant)
+- [x] **2G** — XGBoost classifier training (PR-AUC 0.9327, Recall @ 1% FPR 0.9785; chronological split, randomised CV)
+- [x] **2H** — SHAP explainability integration (inference-time `TreeExplainer`; JSON, force, waterfall response formats)
+- [x] **2I** — Model card with metrics (segment analysis, calibration, global SHAP, limitations)
+- [x] **2J** — README polish marking Day 2 complete
 
 ### Day 3 — API + Frontend Dashboard
 
-- [ ] Rules engine
-- [ ] Transaction ingestion endpoint with idempotency
-- [ ] Fraud scoring pipeline integration
-- [ ] Background transaction simulator
-- [ ] Dashboard overview with KPIs
-- [ ] Transactions list with filters
-- [ ] Transaction detail with fraud-score breakdown
-- [ ] Alerts / review queue page
+- [ ] **3A** — Rules engine
+- [ ] **3B** — Transaction ingestion endpoint with idempotency
+- [ ] **3C** — Fraud scoring pipeline integration
+- [ ] **3D** — Background transaction simulator
+- [ ] **3E** — Dashboard overview with KPIs
+- [ ] **3F** — Transactions list with filters
+- [ ] **3G** — Transaction detail with fraud-score breakdown
+- [ ] **3H** — Alerts / review queue page
 
 ### Day 4 — Polish & Documentation
 
-- [ ] Docker / Podman Compose setup
-- [ ] Architecture diagrams
-- [ ] Screenshots and demo GIF
-- [ ] Final README with measured metrics
+- [ ] **4A** — Docker / Podman Compose setup
+- [ ] **4B** — Architecture diagrams
+- [ ] **4C** — Screenshots and demo GIF
+- [ ] **4D** — Final README with measured metrics
 
 ---
 
