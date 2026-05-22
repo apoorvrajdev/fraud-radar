@@ -22,7 +22,7 @@
 
 ## Status
 
-> 🚧 **Active build.** This is a flagship portfolio project being built across four focused days as a public engineering showcase. Day 1 and Day 2 are both complete — the SQLAlchemy 2.0 models, Alembic migrations, Pydantic v2 schemas, repository layer, synthetic dataset generator, feature extractor, XGBoost training pipeline, SHAP explanation endpoint, and auto-regenerated model card (segment metrics, calibration analysis, global SHAP) are all in place. The dataset holds 50,010 transactions across 500 customers and 200 merchants at a 1.52% fraud rate with six injected fraud patterns, reproducible from `seed=42`. The feature extractor turns each transaction into a 17-dimensional vector covering amount, time-of-day, geographic mismatch, velocity, customer history, and merchant context. The trained classifier scores **0.9327 PR-AUC** and **0.9785 Recall @ 1% FPR** on a chronological held-out test fold. Day 3 picks up with the rules engine, the transaction-ingestion endpoint, and the React dashboard. The intent is to ship steadily, in public, with honest commits — not to pretend it is further along than it is.
+> 🚧 **Active build.** This is a flagship portfolio project being built across four focused days as a public engineering showcase. Phase 1 and Phase 2 are both complete — the SQLAlchemy 2.0 models, Alembic migrations, Pydantic v2 schemas, repository layer, synthetic dataset generator, feature extractor, XGBoost training pipeline, SHAP explanation endpoint, and auto-regenerated model card (segment metrics, calibration analysis, global SHAP) are all in place. The dataset holds 50,010 transactions across 500 customers and 200 merchants at a 1.52% fraud rate with six injected fraud patterns, reproducible from `seed=42`. The feature extractor turns each transaction into a 17-dimensional vector covering amount, time-of-day, geographic mismatch, velocity, customer history, and merchant context. The trained classifier scores **0.9327 PR-AUC** and **0.9785 Recall @ 1% FPR** on a chronological held-out test fold. Phase 3 picks up with the rules engine, the transaction-ingestion endpoint, and the React dashboard. The intent is to ship steadily, in public, with honest commits — not to pretend it is further along than it is.
 
 > 📊 **Headline results (held-out test fold).** PR-AUC **0.9327** · ROC-AUC **0.9989** · Recall @ 1% FPR **0.9785** · Recall @ 5% FPR **1.0000** · at operating threshold 0.7431 → precision **0.61**, recall **0.96**. Source: [`backend/ml/artifacts/metrics.json`](backend/ml/artifacts/metrics.json). Detailed breakdown in [Test-Set Metrics](#-test-set-metrics) below.
 
@@ -183,7 +183,7 @@ SHAP is computed at inference time against a `TreeExplainer` cached at process s
 | **Frontend** | React 18, TypeScript (strict), Vite, Tailwind CSS, TanStack Query, Recharts |
 | **Database** | SQLite (dev), Postgres-compatible schemas via SQLAlchemy              |
 | **Tooling**  | ruff, mypy (strict), pytest, ESLint                                   |
-| **Infra**    | Docker / Podman Compose (planned, Day 4)                              |
+| **Infra**    | Docker / Podman Compose (planned, Phase 4)                              |
 
 ---
 
@@ -194,14 +194,14 @@ fraud-radar/
 ├── backend/                          # FastAPI service + ML pipeline
 │   ├── app/                          # Web/API layer
 │   │   ├── api/v1/                   # Routers — thin orchestration only
-│   │   ├── services/                 # Business logic (planned, Day 3)
+│   │   ├── services/                 # Business logic (planned, Phase 3)
 │   │   ├── repositories/             # SQLAlchemy data access
 │   │   ├── models/                   # SQLAlchemy ORM models
 │   │   ├── schemas/                  # Pydantic v2 request/response schemas
 │   │   ├── fraud/                    # FeatureExtractor, FraudExplainer, plots
 │   │   ├── core/                     # Reserved cross-cutting utilities
 │   │   ├── db/                       # Session, engine
-│   │   └── simulator/                # Background transaction simulator (planned, Day 3)
+│   │   └── simulator/                # Background transaction simulator (planned, Phase 3)
 │   ├── ml/                           # Training + analysis + artifacts
 │   │   ├── synthesis/                # Synthetic dataset generators
 │   │   ├── analysis/                 # Segment, calibration, global SHAP
@@ -223,7 +223,7 @@ fraud-radar/
 │   ├── alembic/                      # DB migrations
 │   │   └── versions/
 │   └── pyproject.toml                # uv-managed dependencies
-├── frontend/                         # React + TypeScript dashboard (Day 3)
+├── frontend/                         # React + TypeScript dashboard (Phase 3)
 │   ├── src/
 │   │   ├── components/
 │   │   ├── pages/
@@ -300,14 +300,14 @@ Runs ~92 test cases covering the chronological splitter, evaluation metrics, art
 
 ## 🗺️ Roadmap
 
-### Day 1 — Foundations
+### Phase 1 — Foundations
 
 - [x] **1A** — Repository scaffolding with Conventional Commits
 - [x] **1B** — FastAPI backend with health endpoint
 - [x] **1C** — React + TypeScript + Tailwind frontend
 - [x] **1D** — Portfolio-grade README with architecture and roadmap
 
-### Day 2 — Data Layer + ML Foundation
+### Phase 2 — Data Layer + ML Foundation
 
 - [x] **2A** — SQLAlchemy 2.0 ORM models with Decimal money typing
 - [x] **2B** — Alembic migrations with CHECK constraints and indexes
@@ -318,9 +318,9 @@ Runs ~92 test cases covering the chronological splitter, evaluation metrics, art
 - [x] **2G** — XGBoost classifier training (PR-AUC 0.9327, Recall @ 1% FPR 0.9785; chronological split, randomised CV)
 - [x] **2H** — SHAP explainability integration (inference-time `TreeExplainer`; JSON, force, waterfall response formats)
 - [x] **2I** — Model card with metrics (segment analysis, calibration, global SHAP, limitations)
-- [x] **2J** — README polish marking Day 2 complete
+- [x] **2J** — README polish marking Phase 2 complete
 
-### Day 3 — API + Frontend Dashboard
+### Phase 3 — API + Frontend Dashboard
 
 - [ ] **3A** — Rules engine
 - [ ] **3B** — Transaction ingestion endpoint with idempotency
@@ -331,7 +331,7 @@ Runs ~92 test cases covering the chronological splitter, evaluation metrics, art
 - [ ] **3G** — Transaction detail with fraud-score breakdown
 - [ ] **3H** — Alerts / review queue page
 
-### Day 4 — Polish & Documentation
+### Phase 4 — Polish & Documentation
 
 - [ ] **4A** — Docker / Podman Compose setup
 - [ ] **4B** — Architecture diagrams
