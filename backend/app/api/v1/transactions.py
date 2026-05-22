@@ -1,19 +1,25 @@
 """Transaction-scoped API endpoints.
 
-Currently exposes the SHAP explanation endpoint added in Phase 2H. The
-transaction CRUD endpoints will land in Phase 3 alongside the rules engine
-and ingestion pipeline.
+Phase 2H added the SHAP /explain endpoint. Phase 3B adds POST /transactions
+(ingestion with Stripe-style idempotency) and GET /transactions/{id}
+(read-back of a persisted decision). Real rules-plus-ML scoring is
+deferred to Phase 3C; this layer persists a stub with `decision=PENDING`
+and caches the response.
 """
 from __future__ import annotations
 
+import json
+import uuid
 from datetime import datetime, timezone
+from typing import Any
 
 import numpy as np
-from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
+from fastapi import APIRouter, Depends, Header, HTTPException, Query, Response, status
 from sqlalchemy.orm import Session
 
 from app.db import get_db
 from app.fraud import FEATURE_NAMES, FeatureExtractor, FraudExplainer
+from app.fraud.decision import Decision
 from app.fraud.explainer import get_explainer, top_contributors
 from app.fraud.plots import render_force_plot, render_waterfall_plot
 from app.models.transaction import Transaction
@@ -22,6 +28,8 @@ from app.schemas.explanation import (
     ExplanationFormat,
     ExplanationResponse,
 )
+from app.schemas.transaction import TransactionCreate, TransactionScored
+from app.services.idempotency import hash_request, lookup, store
 
 router = APIRouter(prefix="/transactions", tags=["transactions"])
 
@@ -117,3 +125,163 @@ def explain_transaction(
         status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
         detail=f"Unsupported format: {format!r}",
     )
+
+
+# ---------------------------------------------------------------------------
+# POST /api/v1/transactions — Phase 3B ingestion
+# ---------------------------------------------------------------------------
+
+
+def _scored_from_transaction(tx: Transaction) -> TransactionScored:
+    """Build a TransactionScored response from a persisted Transaction row.
+
+    Reads SHAP attribution and triggered rules from the `top_features` and
+    `rules_triggered` TEXT columns — the explainer is NOT re-invoked. SHAP
+    is computed and persisted on POST (in Phase 3C; in 3B both columns are
+    NULL and the response carries empty lists).
+    """
+    top_contributors_list: list[dict[str, Any]] = []
+    if tx.top_features:
+        try:
+            parsed = json.loads(tx.top_features)
+            if isinstance(parsed, list):
+                top_contributors_list = parsed
+        except json.JSONDecodeError:
+            top_contributors_list = []
+
+    rules_list: list[str] = []
+    if tx.rules_triggered:
+        try:
+            parsed = json.loads(tx.rules_triggered)
+            if isinstance(parsed, list):
+                rules_list = [str(r) for r in parsed]
+        except json.JSONDecodeError:
+            rules_list = []
+
+    return TransactionScored(
+        transaction_id=tx.id,
+        fraud_score=float(tx.fraud_score) if tx.fraud_score is not None else None,
+        decision=(
+            Decision(tx.fraud_decision) if tx.fraud_decision else Decision.PENDING
+        ),
+        threshold=None,  # Phase 3B does not persist threshold; 3C will.
+        rules_triggered=rules_list,
+        top_contributors=top_contributors_list,
+        computed_at=tx.created_at,
+    )
+
+
+@router.post(
+    "",
+    status_code=status.HTTP_201_CREATED,
+    response_model=TransactionScored,
+    summary="Ingest a new transaction (Phase 3B stub — scoring lands in 3C)",
+)
+def create_transaction(
+    payload: TransactionCreate,
+    response: Response,
+    idempotency_key: str = Header(
+        ...,
+        alias="Idempotency-Key",
+        min_length=1,
+        max_length=64,
+        description="Stripe-style request key; required, 1-64 chars.",
+    ),
+    db: Session = Depends(get_db),
+) -> TransactionScored:
+    """Persist a transaction and cache the response for replay.
+
+    See `docs/adr/PHASE_3_DESIGN.md` "API surface" and "Idempotency design".
+    Phase 3B does not invoke the rules engine, the ML scorer, or the SHAP
+    explainer — those land in Phase 3C. The response carries
+    `decision=PENDING`, `fraud_score=None`, and empty
+    `rules_triggered` / `top_contributors`.
+    """
+    request_hash = hash_request(payload)
+    existing = lookup(db, idempotency_key)
+
+    if existing is not None:
+        if existing.request_hash != request_hash:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="idempotency key reused with different payload",
+            )
+        response.headers["X-Idempotency-Replay"] = "true"
+        response.status_code = existing.status_code
+        return TransactionScored.model_validate_json(existing.response_body)
+
+    tx_id = str(uuid.uuid4())
+    now = datetime.now(timezone.utc)
+    tx = Transaction(
+        id=tx_id,
+        idempotency_key=idempotency_key,
+        customer_id=payload.customer_id,
+        merchant_id=payload.merchant_id,
+        amount=payload.amount,
+        currency=payload.currency,
+        # `status` CHECK allows {APPROVED, DECLINED, PENDING_REVIEW}; the
+        # closest semantic fit for a not-yet-scored row is PENDING_REVIEW.
+        # Phase 3C overwrites both `status` and `fraud_decision`.
+        status="PENDING_REVIEW",
+        payment_method=payload.payment_method,
+        card_last4=payload.card_last4,
+        ip_address=payload.ip_address,
+        device_id=payload.device_id,
+        country=payload.country,
+        is_card_present=payload.is_card_present,
+        fraud_score=None,
+        fraud_decision=Decision.PENDING.value,
+        rules_triggered=None,
+        top_features=None,
+        created_at=now,
+    )
+    db.add(tx)
+    db.flush()  # surface FK / CHECK violations before we cache the response
+
+    scored = TransactionScored(
+        transaction_id=tx_id,
+        fraud_score=None,
+        decision=Decision.PENDING,
+        threshold=None,
+        rules_triggered=[],
+        top_contributors=[],
+        computed_at=now,
+    )
+    response_body = scored.model_dump_json()
+
+    # `store` commits the session, which atomically flushes both the new
+    # Transaction (staged via `db.add` above) and the IdempotencyKey row.
+    store(
+        db,
+        key=idempotency_key,
+        request_hash=request_hash,
+        transaction_id=tx_id,
+        response_body=response_body,
+        status_code=status.HTTP_201_CREATED,
+    )
+    return scored
+
+
+@router.get(
+    "/{transaction_id}",
+    response_model=TransactionScored,
+    summary="Read a persisted transaction's decision and SHAP attribution",
+)
+def get_transaction(
+    transaction_id: str,
+    db: Session = Depends(get_db),
+) -> TransactionScored:
+    """Return a persisted transaction's decision (no recomputation).
+
+    Reads from the `transactions.top_features` and `rules_triggered`
+    TEXT columns. The explainer is NOT re-invoked — SHAP is computed and
+    persisted on POST in Phase 3C. In 3B the response carries empty
+    lists because the stub POST does not yet populate those columns.
+    """
+    tx = db.get(Transaction, transaction_id)
+    if tx is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Transaction {transaction_id} not found",
+        )
+    return _scored_from_transaction(tx)

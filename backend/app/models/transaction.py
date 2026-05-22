@@ -82,7 +82,7 @@ class Transaction(Base, TimestampMixin):
         ),
         CheckConstraint(
             "fraud_decision IS NULL OR fraud_decision IN "
-            "('APPROVE', 'REVIEW', 'DECLINE')",
+            "('APPROVE', 'REVIEW', 'DECLINE', 'PENDING')",
             name="ck_transactions_fraud_decision",
         ),
         CheckConstraint(

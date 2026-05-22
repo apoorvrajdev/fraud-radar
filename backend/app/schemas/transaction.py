@@ -1,9 +1,12 @@
 """Pydantic schemas for transaction ingestion and retrieval."""
 from datetime import datetime
 from decimal import Decimal
+from typing import Any
+from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from app.fraud.decision import Decision
 from app.schemas.common import PaymentMethod, TransactionStatus
 from app.schemas.fraud import FraudScoreResult
 
@@ -74,6 +77,26 @@ class TransactionDetail(TransactionResponse):
     analyst_label: str | None = None
     analyst_notes: str | None = None
     reviewed_at: datetime | None = None
+
+
+class TransactionScored(BaseModel):
+    """Response payload for POST /transactions and GET /transactions/{id}.
+
+    In Phase 3B `fraud_score`, `threshold`, `rules_triggered`, and
+    `top_contributors` are placeholders (None / empty) because real
+    scoring lands in Phase 3C. The schema shape stays stable; 3C just
+    fills the fields in.
+    """
+
+    model_config = ConfigDict(from_attributes=True)
+
+    transaction_id: UUID
+    fraud_score: float | None
+    decision: Decision
+    threshold: float | None
+    rules_triggered: list[str] = Field(default_factory=list)
+    top_contributors: list[dict[str, Any]] = Field(default_factory=list)
+    computed_at: datetime
 
 
 class AnalystDecisionRequest(BaseModel):
