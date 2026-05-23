@@ -345,7 +345,7 @@ Runs 146 test cases covering the chronological splitter, evaluation metrics, art
 
 - [x] **3A** — Rules engine (six pure rules calibrated to Phase 2E injection patterns: velocity, geo-velocity, amount ceiling, high-risk country, dormant account, off-hours)
 - [x] **3B** — Transaction ingestion endpoint with idempotency (Stripe pattern, 24h TTL, full 201 / 200-replay / 409 / 422 coverage)
-- [ ] **3C** — Fraud scoring pipeline integration
+- [x] **3C** — Fraud scoring pipeline integration (TransactionContext loader, decision matrix, audit log, service-layer p50=3.7ms / p95=5.8ms; full latency methodology in [`backend/ml/artifacts/latency_metrics.json`](backend/ml/artifacts/latency_metrics.json))
 - [ ] **3D** — Background transaction simulator
 - [ ] **3E** — Dashboard overview with KPIs
 - [ ] **3F** — Transactions list with filters
