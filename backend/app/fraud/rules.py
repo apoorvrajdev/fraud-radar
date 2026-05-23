@@ -18,7 +18,7 @@ following the decision matrix in `docs/adr/PHASE_3_DESIGN.md`.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import timedelta
+from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 from enum import Enum
 
@@ -26,6 +26,24 @@ from app.fraud.transaction_context import TransactionContext
 
 
 HIGH_RISK_COUNTRIES: frozenset[str] = frozenset({"RU", "CN", "NG", "RO", "VE", "ID"})
+
+
+def _ensure_utc(ts: datetime) -> datetime:
+    """Normalize a datetime to offset-aware UTC.
+
+    SQLAlchemy's `DateTime` column returns offset-naive datetimes on SQLite;
+    in-memory Transactions and Customers built by the endpoint use
+    offset-aware UTC. Comparisons and subtractions across flavors raise
+    TypeError in Python, so we normalize at every boundary.
+
+    Naive datetimes are assumed to represent UTC — matches the project
+    convention (Phase 2A migrations, the idempotency module, and the
+    matching helper in `app/fraud/features.py`).
+
+    Defined locally rather than imported from features.py — cross-module
+    private imports cost more than a duplicated three-line helper.
+    """
+    return ts if ts.tzinfo is not None else ts.replace(tzinfo=timezone.utc)
 
 
 class Severity(str, Enum):
@@ -83,12 +101,12 @@ def rule_velocity_burst(ctx: TransactionContext) -> RuleResult:
     current one and within the last 120 seconds.
     """
     name = "velocity_burst"
-    cutoff = ctx.transaction.created_at - _VELOCITY_WINDOW
+    tx_ts = _ensure_utc(ctx.transaction.created_at)
+    cutoff = tx_ts - _VELOCITY_WINDOW
 
     in_window = [
         tx for tx in ctx.recent_transactions
-        if tx.created_at < ctx.transaction.created_at
-        and tx.created_at >= cutoff
+        if cutoff <= _ensure_utc(tx.created_at) < tx_ts
     ]
     total = len(in_window) + 1  # +1 for the current transaction
 
@@ -105,13 +123,13 @@ def rule_velocity_burst(ctx: TransactionContext) -> RuleResult:
 def rule_geo_velocity_impossible(ctx: TransactionContext) -> RuleResult:
     """Same customer in two distinct countries within 60 minutes."""
     name = "geo_velocity_impossible"
-    cutoff = ctx.transaction.created_at - _GEO_WINDOW
+    tx_ts = _ensure_utc(ctx.transaction.created_at)
+    cutoff = tx_ts - _GEO_WINDOW
     current_country = ctx.transaction.country
 
     mismatched = [
         tx for tx in ctx.recent_transactions
-        if tx.created_at < ctx.transaction.created_at
-        and tx.created_at >= cutoff
+        if cutoff <= _ensure_utc(tx.created_at) < tx_ts
         and tx.country != current_country
     ]
 
@@ -120,9 +138,9 @@ def rule_geo_velocity_impossible(ctx: TransactionContext) -> RuleResult:
         # `recent_transactions` is sorted descending by convention, but the
         # list comprehension above doesn't guarantee it preserved that
         # order, so be explicit.
-        most_recent = max(mismatched, key=lambda tx: tx.created_at)
+        most_recent = max(mismatched, key=lambda tx: _ensure_utc(tx.created_at))
         minutes_ago = int(
-            (ctx.transaction.created_at - most_recent.created_at).total_seconds() // 60
+            (tx_ts - _ensure_utc(most_recent.created_at)).total_seconds() // 60
         )
         return RuleResult(
             rule_name=name,
@@ -183,8 +201,8 @@ def rule_dormant_account_high_value(ctx: TransactionContext) -> RuleResult:
     rule deterministic and replayable for tests and the audit log.
     """
     name = "dormant_account_high_value"
-    now = ctx.transaction.created_at
-    age = now - ctx.customer.created_at
+    now = _ensure_utc(ctx.transaction.created_at)
+    age = now - _ensure_utc(ctx.customer.created_at)
     amount = ctx.transaction.amount
 
     if age <= _DORMANT_AGE:
@@ -192,17 +210,18 @@ def rule_dormant_account_high_value(ctx: TransactionContext) -> RuleResult:
     if amount <= _DORMANT_AMOUNT:
         return RuleResult(name, False, Severity.REVIEW, None)
 
-    recent_within_gap = [
-        tx for tx in ctx.recent_transactions
-        if tx.created_at < now and (now - tx.created_at) <= _DORMANT_GAP
-    ]
+    recent_within_gap = []
+    for tx in ctx.recent_transactions:
+        tx_ts = _ensure_utc(tx.created_at)
+        if tx_ts < now and (now - tx_ts) <= _DORMANT_GAP:
+            recent_within_gap.append(tx)
     if recent_within_gap:
         return RuleResult(name, False, Severity.REVIEW, None)
 
     age_days = age.days
     if ctx.recent_transactions:
-        last_tx = max(ctx.recent_transactions, key=lambda tx: tx.created_at)
-        gap_days = (now - last_tx.created_at).days
+        last_tx = max(ctx.recent_transactions, key=lambda tx: _ensure_utc(tx.created_at))
+        gap_days = (now - _ensure_utc(last_tx.created_at)).days
         gap_clause = f"last tx {gap_days}d ago"
     else:
         gap_clause = "no prior transactions"

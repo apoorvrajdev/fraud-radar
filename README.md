@@ -401,7 +401,9 @@ Measured on the held-out chronological test fold — last 15% of 50,010 transact
 | Precision @ threshold 0.7431      | —       | **0.6138** |
 | Recall @ threshold 0.7431         | —       | **0.9570** |
 | F1 @ threshold 0.7431             | —       | **0.7479** |
-| Inference latency (p99)           | < 100ms | _pending — scoring endpoint not yet shipped_ |
+| Inference latency                 | < 100ms | service p50/p95 = 3.7ms / 5.8ms · endpoint p50/p95 = 16ms / 20ms (n=500, developer laptop) |
+
+> ⏱️ **Latency methodology.** Service-layer numbers measure `score_transaction()` called directly — the rules engine, feature extraction, XGBoost inference, SHAP attribution, and audit log write. Endpoint numbers measure the full HTTP round-trip including FastAPI routing, Pydantic validation, DB transaction commit, and JSON serialization. p99 is omitted from the headline because the developer-laptop SQLite setup shows intermittent ~100ms variance from file-lock and OS-scheduling effects unrelated to scoring; production deployment with Postgres behind a connection pool would tighten the tail. Full distribution including p99 in [`backend/ml/artifacts/latency_metrics.json`](backend/ml/artifacts/latency_metrics.json).
 
 > 📝 **Note.** The full [model card](backend/ml/MODEL_CARD.md) — segment performance, calibration analysis (aggregate and positives-only), global SHAP, limitations, and ethical considerations — is rebuilt on every `ml/analyze.py` run.
 

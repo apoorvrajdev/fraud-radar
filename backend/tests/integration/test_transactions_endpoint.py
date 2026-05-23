@@ -2,12 +2,15 @@
 
 In-memory SQLite (`StaticPool` so the shared connection survives across
 Starlette's request threadpool — see test_explain_endpoint.py for the
-rationale). The FastAPI `lifespan` is intentionally not invoked: the
-POST endpoint does not use the SHAP explainer, so loading model
-artifacts on every test run would be wasteful and would couple this
-suite to Phase 2G artifacts being on disk. Skipping lifespan by using
-TestClient directly (not as a context manager) keeps these tests
-self-contained.
+rationale). The FastAPI `lifespan` is intentionally not invoked: loading
+the SHAP explainer would couple this suite to Phase 2G artifacts being
+on disk. Instead, `app.services.scoring.get_explainer` is monkeypatched
+to return a deterministic stub so Phase 3C-2's POST endpoint scores
+without touching the trained model.
+
+The truly artifact-dependent integration tests live in
+test_scoring_endpoint.py; this file owns the contract surface (status
+codes, idempotency, validation).
 """
 from __future__ import annotations
 
@@ -15,6 +18,7 @@ from collections.abc import Iterator
 from typing import Any
 from uuid import UUID
 
+import numpy as np
 import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
@@ -22,6 +26,7 @@ from sqlalchemy.orm import Session, sessionmaker
 from sqlalchemy.pool import StaticPool
 
 from app.db import get_db
+from app.fraud.explainer import LocalExplanation
 from app.main import app
 from app.models import Customer, Merchant
 from app.models.base import Base
@@ -88,13 +93,34 @@ def db_session() -> Iterator[Session]:
         Base.metadata.drop_all(engine)
 
 
+class _StubExplainer:
+    """Minimal FraudExplainer surface for Phase 3C-2 scoring.
+
+    Returns a low fraud_score so the default seeded payload (US $100
+    card-present, no recent history) consistently classifies as APPROVE.
+    Tests that need a specific decision (REVIEW/DECLINE) trigger a rule
+    that overrides the model output.
+    """
+
+    threshold = 0.5
+
+    def explain_local(self, x_row: np.ndarray) -> LocalExplanation:
+        return LocalExplanation(
+            fraud_score=0.05,
+            shap_values=np.linspace(-0.05, 0.05, 17),
+            base_value=0.02,
+        )
+
+
 @pytest.fixture
-def client(db_session: Session) -> Iterator[TestClient]:
+def client(
+    db_session: Session, monkeypatch: pytest.MonkeyPatch,
+) -> Iterator[TestClient]:
+    """TestClient without lifespan; stub explainer injected for scoring."""
     app.dependency_overrides[get_db] = lambda: db_session
+    import app.services.scoring as scoring_module
+    monkeypatch.setattr(scoring_module, "get_explainer", lambda: _StubExplainer())
     try:
-        # Skip lifespan — the POST endpoint does not need the explainer
-        # singleton, and loading it would tie this suite to Phase 2G
-        # artifacts being on disk.
         yield TestClient(app, raise_server_exceptions=True)
     finally:
         app.dependency_overrides.clear()
@@ -105,7 +131,7 @@ def client(db_session: Session) -> Iterator[TestClient]:
 # ---------------------------------------------------------------------------
 
 
-def test_post_returns_201_with_pending_decision_for_new_key(client: TestClient) -> None:
+def test_post_returns_201_with_real_decision_for_new_key(client: TestClient) -> None:
     resp = client.post(
         "/api/v1/transactions",
         json=_payload(),
@@ -114,11 +140,16 @@ def test_post_returns_201_with_pending_decision_for_new_key(client: TestClient) 
     assert resp.status_code == 201, resp.text
     body = resp.json()
 
-    assert body["decision"] == "PENDING"
-    assert body["fraud_score"] is None
-    assert body["threshold"] is None
+    # Phase 3C-2: the scoring service now resolves the real decision on POST.
+    # The stub explainer returns a low fraud_score, so the clean seeded
+    # payload classifies as APPROVE; we assert membership in the valid set
+    # so the test stays robust if the stub is retuned later.
+    assert body["decision"] in {"APPROVE", "REVIEW", "DECLINE"}
+    assert isinstance(body["fraud_score"], float)
+    assert 0.0 <= body["fraud_score"] <= 1.0
+    assert isinstance(body["threshold"], float)
     assert body["rules_triggered"] == []
-    assert body["top_contributors"] == []
+    assert len(body["top_contributors"]) == 5
 
     # transaction_id must be a valid UUID string
     UUID(body["transaction_id"])  # raises ValueError if malformed
@@ -131,7 +162,7 @@ def test_post_returns_201_with_pending_decision_for_new_key(client: TestClient) 
     assert resp.headers.get("X-Idempotency-Replay") in (None, "false")
 
 
-def test_post_persists_transaction_with_pending_decision(client: TestClient) -> None:
+def test_post_persists_transaction_with_real_decision(client: TestClient) -> None:
     post_resp = client.post(
         "/api/v1/transactions",
         json=_payload(),
@@ -146,10 +177,13 @@ def test_post_persists_transaction_with_pending_decision(client: TestClient) -> 
     fetched = get_resp.json()
 
     assert fetched["transaction_id"] == tx_id
-    assert fetched["decision"] == posted["decision"] == "PENDING"
-    assert fetched["fraud_score"] == posted["fraud_score"]
-    assert fetched["rules_triggered"] == []
-    assert fetched["top_contributors"] == []
+    assert fetched["decision"] == posted["decision"]
+    assert fetched["decision"] in {"APPROVE", "REVIEW", "DECLINE"}
+    # `fraud_score` round-trips through Numeric(5, 4) so precision differs
+    # by up to a half-ulp at the 4th decimal. approx handles it.
+    assert fetched["fraud_score"] == pytest.approx(posted["fraud_score"], abs=1e-4)
+    assert fetched["rules_triggered"] == posted["rules_triggered"]
+    assert fetched["top_contributors"] == posted["top_contributors"]
 
 
 # ---------------------------------------------------------------------------
@@ -269,7 +303,11 @@ def test_get_returns_persisted_transaction(client: TestClient) -> None:
 
     assert fetched["transaction_id"] == tx_id
     assert fetched["decision"] == posted["decision"]
-    assert fetched["fraud_score"] == posted["fraud_score"]
-    assert fetched["threshold"] == posted["threshold"]
+    assert fetched["fraud_score"] == pytest.approx(posted["fraud_score"], abs=1e-4)
+    # GET reads from the transactions row, which does not persist the
+    # operating threshold (it lives in the explainer artifact). The POST
+    # response includes threshold; the GET response carries None. This
+    # asymmetry is documented in `_scored_from_transaction`.
+    assert fetched["threshold"] is None
     assert fetched["rules_triggered"] == posted["rules_triggered"]
     assert fetched["top_contributors"] == posted["top_contributors"]

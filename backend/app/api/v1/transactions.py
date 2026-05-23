@@ -11,6 +11,7 @@ from __future__ import annotations
 import json
 import uuid
 from datetime import datetime, timezone
+from decimal import Decimal
 from typing import Any
 
 import numpy as np
@@ -30,6 +31,7 @@ from app.schemas.explanation import (
 )
 from app.schemas.transaction import TransactionCreate, TransactionScored
 from app.services.idempotency import hash_request, lookup, store
+from app.services.scoring import score_transaction
 
 router = APIRouter(prefix="/transactions", tags=["transactions"])
 
@@ -219,9 +221,9 @@ def create_transaction(
         merchant_id=payload.merchant_id,
         amount=payload.amount,
         currency=payload.currency,
-        # `status` CHECK allows {APPROVED, DECLINED, PENDING_REVIEW}; the
-        # closest semantic fit for a not-yet-scored row is PENDING_REVIEW.
-        # Phase 3C overwrites both `status` and `fraud_decision`.
+        # `status` CHECK allows {APPROVED, DECLINED, PENDING_REVIEW}. The
+        # initial insert uses PENDING_REVIEW; `score_transaction` resolves
+        # the real decision below and we overwrite the row before commit.
         status="PENDING_REVIEW",
         payment_method=payload.payment_method,
         card_last4=payload.card_last4,
@@ -236,16 +238,38 @@ def create_transaction(
         created_at=now,
     )
     db.add(tx)
-    db.flush()  # surface FK / CHECK violations before we cache the response
+    db.flush()  # surface FK / CHECK violations before scoring
+
+    # Phase 3C-2: end-to-end scoring. `score_transaction` reads the just-
+    # added Transaction back through the session, runs rules + ML + SHAP,
+    # writes one audit_log row, and returns the composed decision. It does
+    # NOT commit — `idempotency.store` below commits both the Transaction
+    # and the audit log row atomically.
+    result = score_transaction(db, tx, write_audit=True)
+    tx.fraud_score = (
+        Decimal(str(result.fraud_score)) if result.fraud_score is not None else None
+    )
+    tx.fraud_decision = result.decision.value
+    tx.top_features = (
+        json.dumps(result.top_contributors) if result.top_contributors else None
+    )
+    tx.rules_triggered = (
+        json.dumps(result.rules_triggered) if result.rules_triggered else None
+    )
+    tx.status = (
+        "APPROVED" if result.decision == Decision.APPROVE
+        else "DECLINED" if result.decision == Decision.DECLINE
+        else "PENDING_REVIEW"  # for REVIEW
+    )
 
     scored = TransactionScored(
         transaction_id=tx_id,
-        fraud_score=None,
-        decision=Decision.PENDING,
-        threshold=None,
-        rules_triggered=[],
-        top_contributors=[],
-        computed_at=now,
+        fraud_score=result.fraud_score,
+        decision=result.decision,
+        threshold=result.threshold,
+        rules_triggered=result.rules_triggered,
+        top_contributors=result.top_contributors,
+        computed_at=result.computed_at,
     )
     response_body = scored.model_dump_json()
 
