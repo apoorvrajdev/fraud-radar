@@ -4,12 +4,24 @@ The FeatureExtractor reads from a Session to compute customer-aware
 velocity and history features. At inference time, it's called for one
 transaction; at training time, the batch generator iterates the dataset
 and calls it per row.
+
+When the caller has already loaded the customer's recent transactions
+(Phase 3C scoring service does this so the rules engine and the feature
+extractor share one fetch), the optional `recent_transactions` keyword
+on `extract()` and the four velocity/recency helpers lets them aggregate
+in-Python instead of issuing per-call SELECT statements. Both paths
+produce byte-identical `FeatureRow.values` for the same input data; see
+`tests/unit/test_features_parity.py` for the safety net.
+
+All `created_at` comparisons normalize to offset-aware UTC via
+`_ensure_utc()` — SQLAlchemy returns naive datetimes from `DateTime`
+columns on SQLite; the project convention is UTC throughout.
 """
 from __future__ import annotations
 
 import math
 from dataclasses import dataclass
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 
 from sqlalchemy import and_, select
@@ -19,6 +31,26 @@ from app.fraud.feature_spec import FEATURE_NAMES, N_FEATURES
 from app.models.customer import Customer
 from app.models.merchant import Merchant
 from app.models.transaction import Transaction
+
+
+def _ensure_utc(ts: datetime) -> datetime:
+    """Normalize a datetime to offset-aware UTC.
+
+    SQLAlchemy's `DateTime` column returns offset-naive datetimes regardless
+    of how they were inserted (SQLite has no native timezone type, so the
+    tzinfo is dropped on round-trip). Recent-history comparisons mix
+    freshly-constructed in-memory transactions (typically offset-aware UTC
+    from `datetime.now(timezone.utc)`) with DB-loaded transactions (naive).
+    Python refuses to compare or subtract across flavors, so we normalize
+    everything to offset-aware UTC at every comparison point.
+
+    Naive datetimes are assumed to represent UTC — matches the project
+    convention (Phase 2A migration timestamps, the idempotency module,
+    `datetime.now(timezone.utc)` everywhere else in the codebase).
+
+    No-op when the input is already offset-aware.
+    """
+    return ts if ts.tzinfo is not None else ts.replace(tzinfo=timezone.utc)
 
 
 # Risk-tier encoding: lower is safer
@@ -63,10 +95,19 @@ class FeatureExtractor:
         *,
         customer: Customer | None = None,
         merchant: Merchant | None = None,
+        recent_transactions: list[Transaction] | None = None,
     ) -> FeatureRow:
         """Compute the full feature vector for a single transaction.
 
         Pass customer/merchant if already loaded (avoids extra DB hits).
+
+        Pass `recent_transactions` to skip the four velocity/recency SQL
+        queries — useful when the caller has already loaded the customer's
+        history for another purpose (e.g. the Phase 3C scoring service
+        loads it once for both the rules engine and the feature extractor).
+        The list must already be filtered to a single customer (this one)
+        and must NOT include `tx` itself. When `recent_transactions` is
+        None the helpers query the database as before.
         """
         if customer is None:
             customer = db.get(Customer, tx.customer_id)
@@ -89,14 +130,14 @@ class FeatureExtractor:
             float(tx.country != customer.country),
             float(tx.country != merchant.country),
             # Velocity
-            float(self._tx_count_within(db, tx, timedelta(hours=1))),
-            float(self._tx_count_within(db, tx, timedelta(hours=24))),
-            self._log_amount_sum_within(db, tx, timedelta(hours=24)),
+            float(self._tx_count_within(db, tx, timedelta(hours=1), recent_transactions)),
+            float(self._tx_count_within(db, tx, timedelta(hours=24), recent_transactions)),
+            self._log_amount_sum_within(db, tx, timedelta(hours=24), recent_transactions),
             # Customer history
             float(customer.account_age_days or 0),
             _RISK_TIER_MAP.get(customer.risk_tier or "LOW", 0.0),
-            *self._customer_amount_stats(db, tx),
-            float(self._days_since_last_tx(db, tx)),
+            *self._customer_amount_stats(db, tx, recent_transactions),
+            float(self._days_since_last_tx(db, tx, recent_transactions)),
             # Merchant context
             _RISK_TIER_MAP.get(merchant.risk_rating or "LOW", 0.0),
             float(merchant.category in _HIGH_RISK_CATEGORIES),
@@ -132,29 +173,60 @@ class FeatureExtractor:
     # ------------------------------------------------------------------
 
     @staticmethod
-    def _tx_count_within(db: Session, tx: Transaction, window: timedelta) -> int:
-        """Count of this customer's transactions before `tx` within `window`."""
-        cutoff = tx.created_at - window
+    def _tx_count_within(
+        db: Session,
+        tx: Transaction,
+        window: timedelta,
+        recent_transactions: list[Transaction] | None = None,
+    ) -> int:
+        """Count of this customer's transactions before `tx` within `window`.
+
+        When `recent_transactions` is provided, counts in-memory using the
+        same `cutoff <= created_at < tx.created_at` predicate the SQL uses.
+        """
+        tx_ts = _ensure_utc(tx.created_at)
+        cutoff = tx_ts - window
+        if recent_transactions is not None:
+            return sum(
+                1 for t in recent_transactions
+                if cutoff <= _ensure_utc(t.created_at) < tx_ts
+            )
         stmt = select(Transaction).where(
             and_(
                 Transaction.customer_id == tx.customer_id,
                 Transaction.created_at >= cutoff,
-                Transaction.created_at < tx.created_at,
+                Transaction.created_at < tx_ts,
             )
         )
         return len(list(db.execute(stmt).scalars().all()))
 
     @staticmethod
     def _log_amount_sum_within(
-        db: Session, tx: Transaction, window: timedelta
+        db: Session,
+        tx: Transaction,
+        window: timedelta,
+        recent_transactions: list[Transaction] | None = None,
     ) -> float:
-        """log1p of the total amount in the window — compresses scale."""
-        cutoff = tx.created_at - window
+        """log1p of the total amount in the window — compresses scale.
+
+        When `recent_transactions` is provided, sums amounts in-memory using
+        the same `cutoff <= created_at < tx.created_at` predicate the SQL
+        uses, then applies log1p — identical to the DB path.
+        """
+        tx_ts = _ensure_utc(tx.created_at)
+        cutoff = tx_ts - window
+        if recent_transactions is not None:
+            amounts_iter = (
+                float(t.amount) for t in recent_transactions
+                if cutoff <= _ensure_utc(t.created_at) < tx_ts
+            )
+            total = sum(amounts_iter, start=0.0)
+            return float(math.log1p(total))
         stmt = select(Transaction.amount).where(
             and_(
                 Transaction.customer_id == tx.customer_id,
                 Transaction.created_at >= cutoff,
-                Transaction.created_at < tx.created_at,
+                Transaction.created_at < tx_ts,
             )
         )
         amounts = list(db.execute(stmt).scalars().all())
@@ -167,22 +239,36 @@ class FeatureExtractor:
 
     @staticmethod
     def _customer_amount_stats(
-        db: Session, tx: Transaction
+        db: Session,
+        tx: Transaction,
+        recent_transactions: list[Transaction] | None = None,
     ) -> tuple[float, float]:
         """Return (avg_amount_30d, amount_zscore_30d).
 
         z-score: how many std-deviations above/below customer's 30-day mean.
         Captures the amount_anomaly fraud pattern directly.
+
+        When `recent_transactions` is provided, filters the list with the
+        same `cutoff <= created_at < tx.created_at` predicate the SQL uses
+        and runs the identical mean/variance/z-score math (biased stdev,
+        `(0.0, 0.0)` when fewer than two amounts are in the window).
         """
-        cutoff = tx.created_at - timedelta(days=30)
-        stmt = select(Transaction.amount).where(
-            and_(
-                Transaction.customer_id == tx.customer_id,
-                Transaction.created_at >= cutoff,
-                Transaction.created_at < tx.created_at,
+        tx_ts = _ensure_utc(tx.created_at)
+        cutoff = tx_ts - timedelta(days=30)
+        if recent_transactions is not None:
+            amounts = [
+                float(t.amount) for t in recent_transactions
+                if cutoff <= _ensure_utc(t.created_at) < tx_ts
+            ]
+        else:
+            stmt = select(Transaction.amount).where(
+                and_(
+                    Transaction.customer_id == tx.customer_id,
+                    Transaction.created_at >= cutoff,
+                    Transaction.created_at < tx_ts,
+                )
             )
-        )
-        amounts = [float(a) for a in db.execute(stmt).scalars().all()]
+            amounts = [float(a) for a in db.execute(stmt).scalars().all()]
         if len(amounts) < 2:
             return (0.0, 0.0)
 
@@ -193,18 +279,37 @@ class FeatureExtractor:
         return (mean, zscore)
 
     @staticmethod
-    def _days_since_last_tx(db: Session, tx: Transaction) -> int:
+    def _days_since_last_tx(
+        db: Session,
+        tx: Transaction,
+        recent_transactions: list[Transaction] | None = None,
+    ) -> int:
         """Days since this customer's previous transaction.
 
         Captures the account_takeover pattern: long dormancy then high value.
         Returns 999 if no prior transaction exists (effectively "very dormant").
+
+        When `recent_transactions` is provided, picks the most recent prior
+        in-memory using the same `created_at < tx.created_at` predicate
+        the SQL uses, with the same 999 fallback when no prior exists.
         """
+        tx_ts = _ensure_utc(tx.created_at)
+        if recent_transactions is not None:
+            priors = []
+            for t in recent_transactions:
+                t_ts = _ensure_utc(t.created_at)
+                if t_ts < tx_ts:
+                    priors.append(t_ts)
+            if not priors:
+                return 999
+            last_ts = max(priors)
+            return (tx_ts - last_ts).days
         stmt = (
             select(Transaction.created_at)
             .where(
                 and_(
                     Transaction.customer_id == tx.customer_id,
-                    Transaction.created_at < tx.created_at,
+                    Transaction.created_at < tx_ts,
                 )
             )
             .order_by(Transaction.created_at.desc())
@@ -213,7 +318,7 @@ class FeatureExtractor:
         last_ts = db.execute(stmt).scalar_one_or_none()
         if last_ts is None:
             return 999
-        return (tx.created_at - last_ts).days
+        return (tx_ts - _ensure_utc(last_ts)).days
 
 
 # Module-level convenience function -------------------------------------------
@@ -227,6 +332,17 @@ def extract_features(
     *,
     customer: Customer | None = None,
     merchant: Merchant | None = None,
+    recent_transactions: list[Transaction] | None = None,
 ) -> FeatureRow:
-    """Convenience wrapper using a shared FeatureExtractor instance."""
-    return _default_extractor.extract(db, tx, customer=customer, merchant=merchant)
+    """Convenience wrapper using a shared FeatureExtractor instance.
+
+    Forwards `recent_transactions` so callers that have already loaded the
+    customer's history (Phase 3C scoring service) can skip the velocity
+    SQL queries — see `FeatureExtractor.extract` for the contract.
+    """
+    return _default_extractor.extract(
+        db, tx,
+        customer=customer,
+        merchant=merchant,
+        recent_transactions=recent_transactions,
+    )
