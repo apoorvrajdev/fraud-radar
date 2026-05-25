@@ -22,7 +22,7 @@
 
 ## Status
 
-> 🚧 **Active build.** This is a flagship portfolio project being built across four focused days as a public engineering showcase. Phase 1 and Phase 2 are both complete — the SQLAlchemy 2.0 models, Alembic migrations, Pydantic v2 schemas, repository layer, synthetic dataset generator, feature extractor, XGBoost training pipeline, SHAP explanation endpoint, and auto-regenerated model card (segment metrics, calibration analysis, global SHAP) are all in place. The dataset holds 50,010 transactions across 500 customers and 200 merchants at a 1.52% fraud rate with six injected fraud patterns, reproducible from `seed=42`. The feature extractor turns each transaction into a 17-dimensional vector covering amount, time-of-day, geographic mismatch, velocity, customer history, and merchant context. The trained classifier scores **0.9327 PR-AUC** and **0.9785 Recall @ 1% FPR** on a chronological held-out test fold. Phase 3 backend is half-shipped: the rules engine (3A) and the ingestion endpoint with Stripe-style idempotency (3B) are live. Phase 3C will wire those into end-to-end scoring; design captured in [`docs/adr/PHASE_3C_INTEGRATION.md`](docs/adr/PHASE_3C_INTEGRATION.md). Frontend phases (3E–3H) follow once the backend pipeline lands. The intent is to ship steadily, in public, with honest commits — not to pretend it is further along than it is.
+> 🚧 **Active build.** This is a flagship portfolio project being built across four focused days as a public engineering showcase. Phase 1, Phase 2, and the full Phase 3 backend are complete — the SQLAlchemy 2.0 models, Alembic migrations, Pydantic v2 schemas, repository layer, synthetic dataset generator, feature extractor, XGBoost training pipeline, SHAP explanation endpoint, and auto-regenerated model card (segment metrics, calibration analysis, global SHAP) are all in place. The dataset holds 50,010 transactions across 500 customers and 200 merchants at a 1.52% fraud rate with six injected fraud patterns, reproducible from `seed=42`. The feature extractor turns each transaction into a 17-dimensional vector covering amount, time-of-day, geographic mismatch, velocity, customer history, and merchant context. The trained classifier scores **0.9327 PR-AUC** and **0.9785 Recall @ 1% FPR** on a chronological held-out test fold. The Phase 3 backend is fully shipped: the rules engine (3A), the ingestion endpoint with Stripe-style idempotency (3B), the end-to-end scoring pipeline with audit log (3C, service-layer p50=3.7ms / p95=5.8ms), and the background transaction simulator (3D) that continuously feeds the live API at a dashboard-friendly rate. Integration decisions captured in [`docs/adr/PHASE_3C_INTEGRATION.md`](docs/adr/PHASE_3C_INTEGRATION.md). Frontend phases (3E–3H) are next. The intent is to ship steadily, in public, with honest commits — not to pretend it is further along than it is.
 
 > 📊 **Headline results (held-out test fold).** PR-AUC **0.9327** · ROC-AUC **0.9989** · Recall @ 1% FPR **0.9785** · Recall @ 5% FPR **1.0000** · at operating threshold 0.7431 → precision **0.61**, recall **0.96**. Source: [`backend/ml/artifacts/metrics.json`](backend/ml/artifacts/metrics.json). Detailed breakdown in [Test-Set Metrics](#-test-set-metrics) below.
 
@@ -189,7 +189,7 @@ curl -X POST http://localhost:8000/api/v1/transactions \
 
 Idempotency follows the Stripe pattern: same key + same body returns the cached response with an `X-Idempotency-Replay: true` header; same key + different body returns `409 Conflict`. The cache key is a SHA-256 over `TransactionCreate(**body).model_dump_json()` — not raw HTTP bytes — so the hash is stable across whitespace differences and field reordering by intermediaries. Cached entries expire after 24 hours.
 
-Phase 3B ships ingestion with a `PENDING`-decision stub; the rules + ML + SHAP pipeline lands in Phase 3C (see [`docs/adr/PHASE_3C_INTEGRATION.md`](docs/adr/PHASE_3C_INTEGRATION.md)). The endpoint, schema, and idempotency contract are stable — only the inside of the scoring function changes.
+Every accepted transaction now runs the full pipeline synchronously — rules engine → feature extraction → XGBoost score → SHAP attribution → decision composition → audit log — and the response body carries `fraud_score`, `decision`, `threshold`, `rules_triggered`, and `top_contributors` (top-5 SHAP, same shape as `/explain`). `PENDING` remains a legitimate `Decision` enum value, reserved for rows that error mid-scoring and need re-attempting.
 
 ---
 
@@ -213,14 +213,14 @@ fraud-radar/
 ├── backend/                          # FastAPI service + ML pipeline
 │   ├── app/                          # Web/API layer
 │   │   ├── api/v1/                   # Routers — thin orchestration only
-│   │   ├── services/                 # Idempotency cache (Phase 3B); scoring (Phase 3C)
+│   │   ├── services/                 # Idempotency cache, scoring orchestrator (rules → features → model → SHAP → decision matrix)
 │   │   ├── repositories/             # SQLAlchemy data access
 │   │   ├── models/                   # SQLAlchemy ORM models (incl. idempotency_keys)
 │   │   ├── schemas/                  # Pydantic v2 request/response schemas
 │   │   ├── fraud/                    # FeatureExtractor, FraudExplainer, plots, rules engine
 │   │   ├── core/                     # Reserved cross-cutting utilities
 │   │   ├── db/                       # Session, engine
-│   │   └── simulator/                # Background transaction simulator (planned, Phase 3D)
+│   │   └── simulator/                # CLI HTTP client that feeds the live API with synthetic traffic
 │   ├── ml/                           # Training + analysis + artifacts
 │   │   ├── synthesis/                # Synthetic dataset generators
 │   │   ├── analysis/                 # Segment, calibration, global SHAP
@@ -315,7 +315,18 @@ cd backend
 uv run pytest -v
 ```
 
-Runs 146 test cases covering the chronological splitter, evaluation metrics, artifact round-trip, SHAP additivity, force / waterfall plot rendering, segment routing, calibration math (including positive-class variants), the six-rule engine (hour and high-risk-country boundaries parametrised), Stripe-pattern idempotency (hash determinism, replay path, 409 conflict, 422 paths), and the `/explain` and `/transactions` endpoints via `TestClient`.
+Runs 178 test cases covering the chronological splitter, evaluation metrics, artifact round-trip, SHAP additivity, force / waterfall plot rendering, segment routing, calibration math (including positive-class variants), the six-rule engine (hour and high-risk-country boundaries parametrised), Stripe-pattern idempotency (hash determinism, replay path, 409 conflict, 422 paths), the scoring orchestrator (decision matrix, audit-log writes, hard-block short-circuit), the feature extractor's pre-loaded-history parity contract, the simulator payload builder, and the `/explain` and `/transactions` endpoints via `TestClient`.
+
+### Simulator
+
+With the backend running, kick off continuous synthetic traffic against the live API:
+
+```bash
+cd backend
+uv run python -m app.simulator.main --rate 1 --fraud-rate 0.10
+```
+
+Defaults to 1 transaction per second with 10% of transactions shaped to trip a fraud pattern (geo-velocity, high-amount, off-hours, high-risk-country, dormant-account, or stealth foreign). The simulator is a normal HTTP client — every transaction goes through the rules engine, ML scorer, SHAP attribution, audit log, and idempotency cache exactly as any other client would. Ctrl+C stops it cleanly.
 
 ---
 
