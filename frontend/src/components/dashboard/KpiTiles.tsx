@@ -54,7 +54,13 @@ export function KpiTiles() {
       <Stat
         label="Pending review"
         value={value((d) => formatInt(d.pending_review_count))}
-        hint="analyst queue depth"
+        hint={hint((d) =>
+          d.total_transactions_24h > 0
+            ? `${formatPercent(
+                d.pending_review_count / d.total_transactions_24h,
+              )} of 24h volume`
+            : "no recent volume",
+        )}
       />
       <Stat
         label="Fraud caught · 24h"

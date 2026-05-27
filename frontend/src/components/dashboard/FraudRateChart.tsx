@@ -27,7 +27,11 @@ export function FraudRateChart() {
   const points =
     data?.points.map((p) => ({
       hour: `${HOUR_FMT.format(new Date(p.timestamp))}:00`,
-      fraud_rate_pct: +(p.fraud_rate * 100).toFixed(2),
+      // Empty hours have no fraud rate to speak of — a 0% point would
+      // be a lie that flattens the line. Emit null so Recharts breaks
+      // the line and the reader sees a genuine gap.
+      fraud_rate_pct:
+        p.transaction_count > 0 ? +(p.fraud_rate * 100).toFixed(2) : null,
       transaction_count: p.transaction_count,
     })) ?? [];
 
@@ -99,6 +103,7 @@ export function FraudRateChart() {
                 stroke="#a78bfa"
                 strokeWidth={2}
                 dot={false}
+                connectNulls={false}
                 isAnimationActive={false}
               />
             </LineChart>
