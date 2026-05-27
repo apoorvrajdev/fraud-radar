@@ -18,9 +18,9 @@ function scoreBucket(score: number): Bucket {
 }
 
 const TONE: Record<Bucket, string> = {
-  high: "bg-rose-500/15 text-rose-300 border-rose-500/30",
-  mid: "bg-amber-500/15 text-amber-300 border-amber-500/30",
-  low: "bg-neutral-700/30 text-neutral-400 border-neutral-700/60",
+  high: "bg-rose-500/20 text-rose-200 border-rose-500/40",
+  mid: "bg-amber-500/15 text-amber-200 border-amber-500/40",
+  low: "bg-neutral-800/60 text-neutral-300 border-neutral-700",
 };
 
 export function ScoreChip({ score }: { score: string }) {

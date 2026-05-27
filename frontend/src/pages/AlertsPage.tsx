@@ -52,6 +52,7 @@ export function AlertsPage() {
         hasMore={query.hasNextPage}
         isFetchingMore={query.isFetchingNextPage}
         onLoadMore={() => query.fetchNextPage()}
+        isQueueClear={summary?.pending_count === 0}
       />
     </div>
   );

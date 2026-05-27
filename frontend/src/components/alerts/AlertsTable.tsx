@@ -33,6 +33,12 @@ interface Props {
   hasMore: boolean;
   isFetchingMore: boolean;
   onLoadMore: () => void;
+  /**
+   * True when the queue itself is empty (summary.pending_count === 0),
+   * not just when the current filters produced no matches. Drives the
+   * celebratory empty state copy.
+   */
+  isQueueClear?: boolean;
 }
 
 export function AlertsTable({
@@ -43,6 +49,7 @@ export function AlertsTable({
   hasMore,
   isFetchingMore,
   onLoadMore,
+  isQueueClear = false,
 }: Props) {
   const showSkeleton = isLoading && rows.length === 0;
   const showEmpty = !isLoading && !isError && rows.length === 0;
@@ -99,9 +106,22 @@ export function AlertsTable({
               <tr>
                 <td
                   colSpan={COLUMNS.length}
-                  className="px-4 py-10 text-center text-sm text-neutral-500"
+                  className="px-4 py-12 text-center"
                 >
-                  No alerts match these filters.
+                  {isQueueClear ? (
+                    <div className="space-y-1">
+                      <div className="text-sm font-medium text-emerald-300">
+                        Queue clear.
+                      </div>
+                      <div className="text-xs text-neutral-500">
+                        No transactions are waiting on a review.
+                      </div>
+                    </div>
+                  ) : (
+                    <span className="text-sm text-neutral-500">
+                      No alerts match these filters.
+                    </span>
+                  )}
                 </td>
               </tr>
             ) : (
