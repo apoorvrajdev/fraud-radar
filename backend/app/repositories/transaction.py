@@ -3,7 +3,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from decimal import Decimal
 
-from sqlalchemy import and_, or_, select
+from sqlalchemy import and_, case, func, or_, select
 from sqlalchemy.orm import Session
 
 from app.fraud.decision import Decision
@@ -62,19 +62,6 @@ class TransactionRepository(BaseRepository[Transaction]):
             .order_by(Transaction.created_at.desc())
             .limit(limit)
             .offset(offset)
-        )
-        return list(db.execute(stmt).scalars().all())
-
-    def list_pending_review(
-        self, db: Session, *, limit: int = 50
-    ) -> list[Transaction]:
-        """Return transactions awaiting analyst review."""
-        stmt = (
-            select(Transaction)
-            .where(Transaction.fraud_decision == "REVIEW")
-            .where(Transaction.analyst_label.is_(None))
-            .order_by(Transaction.created_at.desc())
-            .limit(limit)
         )
         return list(db.execute(stmt).scalars().all())
 
@@ -222,6 +209,158 @@ class TransactionRepository(BaseRepository[Transaction]):
         db.add(tx)
         db.flush()
         return tx
+
+    # ---------------------------------------------------------------
+    # Phase 3H — analyst alerts queue
+    # ---------------------------------------------------------------
+
+    def list_alerts_paginated(
+        self,
+        db: Session,
+        *,
+        filters: "AlertsListFilters",
+        limit: int,
+        cursor: tuple[Decimal, datetime, str] | None,
+        now: datetime,
+    ) -> tuple[
+        list[Transaction], tuple[Decimal, datetime, str] | None
+    ]:
+        """Keyset-paginated pending-review queue.
+
+        Queue predicate: ``fraud_decision = 'REVIEW' AND
+        analyst_label IS NULL``. Sort key:
+        ``(fraud_score DESC, created_at ASC, id ASC)`` — riskiest
+        first, oldest as tiebreaker so old rows do not get stranded
+        behind a flood of fresh high-score arrivals.
+
+        Returns ``(rows, next_cursor_or_None)``. The cursor is the
+        ``(fraud_score, created_at, id)`` of the last row in the
+        returned page; ``None`` means end-of-stream. Fetches
+        ``limit + 1`` rows internally so the caller learns whether
+        more pages exist without a second round-trip.
+        """
+        stmt = (
+            select(Transaction)
+            .where(Transaction.fraud_decision == "REVIEW")
+            .where(Transaction.analyst_label.is_(None))
+        )
+
+        if filters.min_score is not None:
+            stmt = stmt.where(Transaction.fraud_score >= filters.min_score)
+        if filters.country is not None:
+            stmt = stmt.where(Transaction.country == filters.country)
+        if filters.max_created_at is not None:
+            # min_age_seconds → row must be older than (now - min_age)
+            stmt = stmt.where(Transaction.created_at <= filters.max_created_at)
+        if filters.min_created_at is not None:
+            # max_age_seconds → row must be newer than (now - max_age)
+            stmt = stmt.where(Transaction.created_at >= filters.min_created_at)
+
+        if cursor is not None:
+            c_score, c_ts, c_id = cursor
+            # Rows strictly "after" the cursor in
+            #   (fraud_score DESC, created_at ASC, id ASC)
+            # which expands to:
+            #   fraud_score < c_score
+            #   OR (fraud_score = c_score AND created_at > c_ts)
+            #   OR (fraud_score = c_score AND created_at = c_ts AND id > c_id)
+            stmt = stmt.where(
+                or_(
+                    Transaction.fraud_score < c_score,
+                    and_(
+                        Transaction.fraud_score == c_score,
+                        Transaction.created_at > c_ts,
+                    ),
+                    and_(
+                        Transaction.fraud_score == c_score,
+                        Transaction.created_at == c_ts,
+                        Transaction.id > c_id,
+                    ),
+                )
+            )
+
+        stmt = stmt.order_by(
+            Transaction.fraud_score.desc(),
+            Transaction.created_at.asc(),
+            Transaction.id.asc(),
+        ).limit(limit + 1)
+
+        rows = list(db.execute(stmt).scalars().all())
+        if len(rows) > limit:
+            page = rows[:limit]
+            last = page[-1]
+            assert last.fraud_score is not None  # guaranteed by predicate
+            return page, (last.fraud_score, last.created_at, last.id)
+        return rows, None
+
+    def pending_review_summary(
+        self, db: Session
+    ) -> tuple[int, datetime | None, dict[str, int]]:
+        """Single aggregate over the pending-review predicate.
+
+        Returns ``(pending_count, oldest_created_at, score_buckets)``.
+        Bucket boundaries are fixed (see PHASE_3H_DESIGN.md):
+        ``low`` (< 0.20), ``mid`` (0.20 <= x < 0.50),
+        ``high`` (>= 0.50). Counts sum exactly to ``pending_count``.
+        """
+        bucket = case(
+            (Transaction.fraud_score < Decimal("0.20"), "low"),
+            (Transaction.fraud_score < Decimal("0.50"), "mid"),
+            else_="high",
+        ).label("bucket")
+
+        stmt = (
+            select(
+                func.count().label("total"),
+                func.min(Transaction.created_at).label("oldest"),
+                bucket,
+                func.count().label("bucket_count"),
+            )
+            .where(Transaction.fraud_decision == "REVIEW")
+            .where(Transaction.analyst_label.is_(None))
+            .group_by(bucket)
+        )
+
+        # Per-bucket rows. Each row carries the same `total` and `oldest`
+        # (they are window-like aggregates here only because SQLite is
+        # lenient; we read them off the first row deliberately).
+        buckets: dict[str, int] = {"low": 0, "mid": 0, "high": 0}
+        total = 0
+        oldest: datetime | None = None
+        for row in db.execute(stmt).all():
+            # `row.total` here is the count *per bucket* under strict
+            # SQL, so we sum buckets to get the true total. SQLite's
+            # behaviour around bare aggregates with GROUP BY is loose,
+            # so we never trust `row.total` and instead recompute below.
+            buckets[str(row.bucket)] = int(row.bucket_count)
+
+        total = sum(buckets.values())
+
+        if total > 0:
+            oldest_stmt = (
+                select(func.min(Transaction.created_at))
+                .where(Transaction.fraud_decision == "REVIEW")
+                .where(Transaction.analyst_label.is_(None))
+            )
+            oldest = db.execute(oldest_stmt).scalar_one_or_none()
+
+        return total, oldest, buckets
+
+
+@dataclass(frozen=True)
+class AlertsListFilters:
+    """Filter set for the alerts-queue keyset query.
+
+    The router maps the public ``min_age_seconds`` / ``max_age_seconds``
+    parameters into absolute ``min_created_at`` / ``max_created_at``
+    timestamps at the service boundary, so the repository never has to
+    know what "now" is.
+    """
+
+    min_score: Decimal | None = None
+    country: str | None = None
+    min_created_at: datetime | None = None
+    max_created_at: datetime | None = None
 
 
 transaction_repository = TransactionRepository()
