@@ -1,12 +1,32 @@
 """Repository for Transaction queries — the core entity."""
+from dataclasses import dataclass
 from datetime import datetime
 from decimal import Decimal
 
-from sqlalchemy import and_, select
+from sqlalchemy import and_, or_, select
 from sqlalchemy.orm import Session
 
+from app.fraud.decision import Decision
 from app.models.transaction import Transaction
 from app.repositories.base import BaseRepository
+
+
+@dataclass(frozen=True)
+class TransactionListFilters:
+    """Filter set for the paginated transactions list endpoint (Phase 3F).
+
+    Every field is optional; an empty instance returns the most recent
+    rows unfiltered.
+    """
+
+    decision: Decision | None = None
+    country: str | None = None
+    min_amount: Decimal | None = None
+    max_amount: Decimal | None = None
+    start_time: datetime | None = None
+    end_time: datetime | None = None
+    customer_id: str | None = None
+    merchant_id: str | None = None
 
 
 class TransactionRepository(BaseRepository[Transaction]):
@@ -108,6 +128,69 @@ class TransactionRepository(BaseRepository[Transaction]):
         )
         amounts = list(db.execute(stmt).scalars().all())
         return sum(amounts, start=Decimal("0"))
+
+    def list_paginated(
+        self,
+        db: Session,
+        *,
+        filters: TransactionListFilters,
+        limit: int = 50,
+        cursor: tuple[datetime, str] | None = None,
+    ) -> tuple[list[Transaction], tuple[datetime, str] | None]:
+        """Keyset-paginated list, newest first.
+
+        Returns ``(rows, next_cursor_or_None)``. The cursor is the
+        ``(created_at, id)`` of the last row in the returned page;
+        ``None`` means the caller has reached the end. Fetches
+        ``limit + 1`` rows internally to detect end-of-stream without a
+        second round-trip.
+        """
+        stmt = select(Transaction)
+
+        if filters.decision is not None:
+            stmt = stmt.where(Transaction.fraud_decision == filters.decision.value)
+        if filters.country is not None:
+            stmt = stmt.where(Transaction.country == filters.country)
+        if filters.min_amount is not None:
+            stmt = stmt.where(Transaction.amount >= filters.min_amount)
+        if filters.max_amount is not None:
+            stmt = stmt.where(Transaction.amount <= filters.max_amount)
+        if filters.start_time is not None:
+            stmt = stmt.where(Transaction.created_at >= filters.start_time)
+        if filters.end_time is not None:
+            stmt = stmt.where(Transaction.created_at < filters.end_time)
+        if filters.customer_id is not None:
+            stmt = stmt.where(Transaction.customer_id == filters.customer_id)
+        if filters.merchant_id is not None:
+            stmt = stmt.where(Transaction.merchant_id == filters.merchant_id)
+
+        if cursor is not None:
+            cursor_ts, cursor_id = cursor
+            # Tuple comparison: rows strictly "after" the cursor in the
+            # (created_at DESC, id DESC) ordering. Equivalent to
+            #   created_at < ts OR (created_at = ts AND id < id)
+            # but lets the planner use a composite index when present.
+            stmt = stmt.where(
+                or_(
+                    Transaction.created_at < cursor_ts,
+                    and_(
+                        Transaction.created_at == cursor_ts,
+                        Transaction.id < cursor_id,
+                    ),
+                )
+            )
+
+        stmt = stmt.order_by(
+            Transaction.created_at.desc(),
+            Transaction.id.desc(),
+        ).limit(limit + 1)
+
+        rows = list(db.execute(stmt).scalars().all())
+        if len(rows) > limit:
+            page = rows[:limit]
+            last = page[-1]
+            return page, (last.created_at, last.id)
+        return rows, None
 
 
 transaction_repository = TransactionRepository()

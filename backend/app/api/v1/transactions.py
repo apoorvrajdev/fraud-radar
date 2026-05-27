@@ -12,7 +12,7 @@ import json
 import uuid
 from datetime import datetime, timezone
 from decimal import Decimal
-from typing import Any
+from typing import Annotated, Any
 
 import numpy as np
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, Response, status
@@ -29,9 +29,15 @@ from app.schemas.explanation import (
     ExplanationFormat,
     ExplanationResponse,
 )
-from app.schemas.transaction import TransactionCreate, TransactionScored
+from app.schemas.transaction import (
+    TransactionCreate,
+    TransactionList,
+    TransactionListQuery,
+    TransactionScored,
+)
 from app.services.idempotency import hash_request, lookup, store
 from app.services.scoring import score_transaction
+from app.services.transactions import list_transactions as list_transactions_service
 
 router = APIRouter(prefix="/transactions", tags=["transactions"])
 
@@ -309,3 +315,31 @@ def get_transaction(
             detail=f"Transaction {transaction_id} not found",
         )
     return _scored_from_transaction(tx)
+
+
+# ---------------------------------------------------------------------------
+# GET /api/v1/transactions — Phase 3F paginated list
+# ---------------------------------------------------------------------------
+
+
+@router.get(
+    "",
+    response_model=TransactionList,
+    summary="List transactions with filters and keyset pagination",
+)
+def list_transactions(
+    query: Annotated[TransactionListQuery, Query()],
+    db: Session = Depends(get_db),
+) -> TransactionList:
+    """Return a page of transactions, newest first.
+
+    See `docs/adr/PHASE_3F_DESIGN.md` for the cursor format, filter
+    semantics, and pagination contract. Malformed cursors return 422.
+    """
+    try:
+        return list_transactions_service(db, query)
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=str(exc),
+        ) from exc
