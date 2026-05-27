@@ -258,7 +258,8 @@ fraud-radar/
 │   ├── adr/                          # Architecture decision records
 │   │   ├── PHASE_3_DESIGN.md         # Backend design for Phases 3A–3D
 │   │   ├── PHASE_3C_INTEGRATION.md   # Phase 3C integration decisions
-│   │   └── PHASE_3E_DESIGN.md        # Dashboard endpoints + frontend foundation
+│   │   ├── PHASE_3E_DESIGN.md        # Dashboard endpoints + frontend foundation
+│   │   └── PHASE_3F_DESIGN.md        # Transactions list endpoint + frontend plan
 │   └── screenshots/
 ├── LICENSE
 └── README.md
@@ -363,7 +364,10 @@ Defaults to 1 transaction per second with 10% of transactions shaped to trip a f
 - [x] **3C** — Fraud scoring pipeline integration (TransactionContext loader, decision matrix, audit log, service-layer p50=3.7ms / p95=5.8ms; full latency methodology in [`backend/ml/artifacts/latency_metrics.json`](backend/ml/artifacts/latency_metrics.json))
 - [x] **3D** — Background transaction simulator (CLI HTTP client; 3 fraud patterns at 10% rate; graceful shutdown; populates the dashboard with continuous live traffic)
 - [x] **3E** — Dashboard overview with KPIs (backend: `/stats/overview`, `/stats/timeseries`, `/stats/breakdown` with CORS, 19 new tests; frontend: React 19 + TanStack Query app shell with five live KPI tiles, 24h fraud-rate line chart, volume sparkline, and top-10 country breakdown table; per-tile loading skeletons + error fallbacks so one broken aggregate never blanks the screen; design in [`docs/adr/PHASE_3E_DESIGN.md`](docs/adr/PHASE_3E_DESIGN.md))
-- [ ] **3F** — Transactions list with filters
+- [ ] **3F** — Transactions list with filters (in progress; design in [`docs/adr/PHASE_3F_DESIGN.md`](docs/adr/PHASE_3F_DESIGN.md))
+  - [x] **3F-1** — Backend `GET /api/v1/transactions` with opaque-cursor keyset pagination, eight query filters (decision, country, amount range, time window, customer, merchant), Pydantic cross-field validation, and 23 new tests covering cursor round-trip, page walks, tie-break ordering, and 422 paths
+  - [ ] **3F-2** — Frontend `/transactions` route with URL-synced filter state and skeleton table
+  - [ ] **3F-3** — Full transactions table UI with infinite scroll
 - [ ] **3G** — Transaction detail with fraud-score breakdown
 - [ ] **3H** — Alerts / review queue page
 
@@ -381,6 +385,7 @@ Defaults to 1 transaction per second with 10% of transactions shaped to trip a f
 - [`docs/adr/PHASE_3_DESIGN.md`](docs/adr/PHASE_3_DESIGN.md) — backend design for Phases 3A–3D (rules engine, ingestion endpoint, idempotency, scoring pipeline, simulator).
 - [`docs/adr/PHASE_3C_INTEGRATION.md`](docs/adr/PHASE_3C_INTEGRATION.md) — implementation decisions for the integration phase.
 - [`docs/adr/PHASE_3E_DESIGN.md`](docs/adr/PHASE_3E_DESIGN.md) — design for the dashboard slice (aggregate endpoints, CORS posture, frontend foundation).
+- [`docs/adr/PHASE_3F_DESIGN.md`](docs/adr/PHASE_3F_DESIGN.md) — design for the transactions list slice (keyset pagination, filter contract, frontend URL-state plan).
 - [`backend/ml/MODEL_CARD.md`](backend/ml/MODEL_CARD.md) — auto-regenerated model card with segment, calibration, and global SHAP analyses.
 
 ---
