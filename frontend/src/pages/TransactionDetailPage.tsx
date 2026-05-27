@@ -13,6 +13,7 @@ import { RulesPanel } from "../components/transactions/detail/RulesPanel";
 import { ContributorsPanel } from "../components/transactions/detail/ContributorsPanel";
 import { FeaturesPanel } from "../components/transactions/detail/FeaturesPanel";
 import { AuditPanel } from "../components/transactions/detail/AuditPanel";
+import { AnalystDecisionForm } from "../components/transactions/detail/AnalystDecisionForm";
 import { useTransactionDetail } from "../hooks/useTransactionDetail";
 
 export function TransactionDetailPage() {
@@ -55,6 +56,7 @@ export function TransactionDetailPage() {
               <RulesPanel rules={query.data.rules_triggered} />
             </div>
             <div className="space-y-5">
+              <AnalystDecisionForm detail={query.data} />
               <FeaturesPanel detail={query.data} />
             </div>
           </div>

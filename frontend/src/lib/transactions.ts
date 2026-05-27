@@ -7,6 +7,7 @@
  */
 import { api } from "./api";
 import type {
+  AnalystLabel,
   TransactionDetail,
   TransactionList,
   TransactionListFilters,
@@ -52,5 +53,33 @@ export async function fetchTransactionDetail(
   id: string,
 ): Promise<TransactionDetail> {
   const { data } = await api.get<TransactionDetail>(`/transactions/${id}`);
+  return data;
+}
+
+export interface AnalystDecisionInput {
+  id: string;
+  analystId: string;
+  label: AnalystLabel;
+  notes?: string;
+}
+
+/**
+ * POST /transactions/{id}/decision. Records the analyst's verdict;
+ * the response is the updated TransactionDetail envelope so the page
+ * can swap state without a follow-up GET. The backend is idempotent
+ * on identical resubmit (no extra audit row) and writes an
+ * `ANALYST_DECISION_REVISED` row when the label or notes change.
+ */
+export async function submitAnalystDecision({
+  id,
+  analystId,
+  label,
+  notes,
+}: AnalystDecisionInput): Promise<TransactionDetail> {
+  const { data } = await api.post<TransactionDetail>(
+    `/transactions/${id}/decision`,
+    { label, notes: notes && notes.length > 0 ? notes : null },
+    { headers: { "X-Analyst-Id": analystId } },
+  );
   return data;
 }
