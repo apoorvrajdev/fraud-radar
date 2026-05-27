@@ -22,7 +22,7 @@
 
 ## Status
 
-> 🚧 **Active build.** This is a flagship portfolio project being built across four focused days as a public engineering showcase. Phase 1, Phase 2, and the full Phase 3 backend are complete — the SQLAlchemy 2.0 models, Alembic migrations, Pydantic v2 schemas, repository layer, synthetic dataset generator, feature extractor, XGBoost training pipeline, SHAP explanation endpoint, and auto-regenerated model card (segment metrics, calibration analysis, global SHAP) are all in place. The dataset holds 50,010 transactions across 500 customers and 200 merchants at a 1.52% fraud rate with six injected fraud patterns, reproducible from `seed=42`. The feature extractor turns each transaction into a 17-dimensional vector covering amount, time-of-day, geographic mismatch, velocity, customer history, and merchant context. The trained classifier scores **0.9327 PR-AUC** and **0.9785 Recall @ 1% FPR** on a chronological held-out test fold. The Phase 3 backend is fully shipped: the rules engine (3A), the ingestion endpoint with Stripe-style idempotency (3B), the end-to-end scoring pipeline with audit log (3C, service-layer p50=3.7ms / p95=5.8ms), and the background transaction simulator (3D) that continuously feeds the live API at a dashboard-friendly rate. Integration decisions captured in [`docs/adr/PHASE_3C_INTEGRATION.md`](docs/adr/PHASE_3C_INTEGRATION.md). Frontend phases (3E–3H) are next. The intent is to ship steadily, in public, with honest commits — not to pretend it is further along than it is.
+> 🚧 **Active build.** This is a flagship portfolio project being built across four focused days as a public engineering showcase. Phase 1, Phase 2, and the full Phase 3 backend are complete — the SQLAlchemy 2.0 models, Alembic migrations, Pydantic v2 schemas, repository layer, synthetic dataset generator, feature extractor, XGBoost training pipeline, SHAP explanation endpoint, and auto-regenerated model card (segment metrics, calibration analysis, global SHAP) are all in place. The dataset holds 50,010 transactions across 500 customers and 200 merchants at a 1.52% fraud rate with six injected fraud patterns, reproducible from `seed=42`. The feature extractor turns each transaction into a 17-dimensional vector covering amount, time-of-day, geographic mismatch, velocity, customer history, and merchant context. The trained classifier scores **0.9327 PR-AUC** and **0.9785 Recall @ 1% FPR** on a chronological held-out test fold. The Phase 3 backend is fully shipped: the rules engine (3A), the ingestion endpoint with Stripe-style idempotency (3B), the end-to-end scoring pipeline with audit log (3C, service-layer p50=3.7ms / p95=5.8ms), and the background transaction simulator (3D) that continuously feeds the live API at a dashboard-friendly rate. Phase 3E is now mid-flight: the dashboard's three read-only aggregate endpoints — `/api/v1/stats/overview`, `/stats/timeseries`, and `/stats/breakdown` — are live behind a CORS-aware FastAPI app, with full repository / service / router coverage and 19 new tests (197 total, all green). Integration decisions captured in [`docs/adr/PHASE_3C_INTEGRATION.md`](docs/adr/PHASE_3C_INTEGRATION.md) and [`docs/adr/PHASE_3E_DESIGN.md`](docs/adr/PHASE_3E_DESIGN.md). Frontend slices (3E-2 → 3H) are next. The intent is to ship steadily, in public, with honest commits — not to pretend it is further along than it is.
 
 > 📊 **Headline results (held-out test fold).** PR-AUC **0.9327** · ROC-AUC **0.9989** · Recall @ 1% FPR **0.9785** · Recall @ 5% FPR **1.0000** · at operating threshold 0.7431 → precision **0.61**, recall **0.96**. Source: [`backend/ml/artifacts/metrics.json`](backend/ml/artifacts/metrics.json). Detailed breakdown in [Test-Set Metrics](#-test-set-metrics) below.
 
@@ -237,8 +237,8 @@ fraud-radar/
 │   │   ├── artifacts.py              # Save/load model artifacts (JSON)
 │   │   └── MODEL_CARD.md             # Auto-regenerated from analyze.py
 │   ├── tests/
-│   │   ├── unit/                     # 131 unit tests
-│   │   └── integration/              # 15 integration tests
+│   │   ├── unit/                     # 166 unit tests
+│   │   └── integration/              # 31 integration tests
 │   ├── alembic/                      # DB migrations
 │   │   └── versions/                 # 3 migrations (initial schema + 2 for Phase 3B)
 │   └── pyproject.toml                # uv-managed dependencies
@@ -315,7 +315,7 @@ cd backend
 uv run pytest -v
 ```
 
-Runs 178 test cases covering the chronological splitter, evaluation metrics, artifact round-trip, SHAP additivity, force / waterfall plot rendering, segment routing, calibration math (including positive-class variants), the six-rule engine (hour and high-risk-country boundaries parametrised), Stripe-pattern idempotency (hash determinism, replay path, 409 conflict, 422 paths), the scoring orchestrator (decision matrix, audit-log writes, hard-block short-circuit), the feature extractor's pre-loaded-history parity contract, the simulator payload builder, and the `/explain` and `/transactions` endpoints via `TestClient`.
+Runs 197 test cases covering the chronological splitter, evaluation metrics, artifact round-trip, SHAP additivity, force / waterfall plot rendering, segment routing, calibration math (including positive-class variants), the six-rule engine (hour and high-risk-country boundaries parametrised), Stripe-pattern idempotency (hash determinism, replay path, 409 conflict, 422 paths), the scoring orchestrator (decision matrix, audit-log writes, hard-block short-circuit), the feature extractor's pre-loaded-history parity contract, the simulator payload builder, the dashboard stats service (24h window edges, hourly bucket fill, decimal quantisation, top-10 cap), and the `/explain`, `/transactions`, and `/stats/*` endpoints via `TestClient`.
 
 ### Simulator
 
@@ -358,7 +358,7 @@ Defaults to 1 transaction per second with 10% of transactions shaped to trip a f
 - [x] **3B** — Transaction ingestion endpoint with idempotency (Stripe pattern, 24h TTL, full 201 / 200-replay / 409 / 422 coverage)
 - [x] **3C** — Fraud scoring pipeline integration (TransactionContext loader, decision matrix, audit log, service-layer p50=3.7ms / p95=5.8ms; full latency methodology in [`backend/ml/artifacts/latency_metrics.json`](backend/ml/artifacts/latency_metrics.json))
 - [x] **3D** — Background transaction simulator (CLI HTTP client; 3 fraud patterns at 10% rate; graceful shutdown; populates the dashboard with continuous live traffic)
-- [ ] **3E** — Dashboard overview with KPIs
+- [ ] **3E** — Dashboard overview with KPIs *(in progress — backend slice 3E-1 shipped: `/stats/overview`, `/stats/timeseries`, `/stats/breakdown` with CORS, 19 new tests; frontend slices 3E-2/3/4 next)*
 - [ ] **3F** — Transactions list with filters
 - [ ] **3G** — Transaction detail with fraud-score breakdown
 - [ ] **3H** — Alerts / review queue page
@@ -376,6 +376,7 @@ Defaults to 1 transaction per second with 10% of transactions shaped to trip a f
 
 - [`docs/adr/PHASE_3_DESIGN.md`](docs/adr/PHASE_3_DESIGN.md) — backend design for Phases 3A–3D (rules engine, ingestion endpoint, idempotency, scoring pipeline, simulator).
 - [`docs/adr/PHASE_3C_INTEGRATION.md`](docs/adr/PHASE_3C_INTEGRATION.md) — implementation decisions for the integration phase.
+- [`docs/adr/PHASE_3E_DESIGN.md`](docs/adr/PHASE_3E_DESIGN.md) — design for the dashboard slice (aggregate endpoints, CORS posture, frontend foundation).
 - [`backend/ml/MODEL_CARD.md`](backend/ml/MODEL_CARD.md) — auto-regenerated model card with segment, calibration, and global SHAP analyses.
 
 ---
