@@ -1,12 +1,14 @@
-import { Card } from "../components/ui/Card";
+import { KpiTiles } from "../components/dashboard/KpiTiles";
+import { FraudRateChart } from "../components/dashboard/FraudRateChart";
+import { VolumeSparkline } from "../components/dashboard/VolumeSparkline";
+import { CountryBreakdownTable } from "../components/dashboard/CountryBreakdownTable";
 
 /**
- * Dashboard overview — Phase 3E-2 placeholder.
+ * Live dashboard overview.
  *
- * Slice 3E-3 will replace the empty state with KPI tiles, the 24h
- * fraud-rate chart, and the country breakdown table. For now this
- * page exists so the router has a route to mount and `npm run build`
- * has a real page entry to type-check.
+ * Each tile / chart owns its own query so partial backend failures
+ * never blank the whole page (ADR decision 6). Polling cadences live
+ * on the hooks: KPIs + breakdown at 30s, timeseries at 60s.
  */
 export function DashboardPage() {
   return (
@@ -14,13 +16,20 @@ export function DashboardPage() {
       <div>
         <h1 className="text-2xl font-semibold tracking-tight">Overview</h1>
         <p className="text-sm text-neutral-500 mt-1">
-          Trailing 24-hour fraud activity, updated on a polling interval.
+          Trailing 24-hour fraud activity. Updates automatically.
         </p>
       </div>
 
-      <Card className="p-8 text-center text-neutral-500 text-sm">
-        Dashboard tiles ship in Phase 3E-3.
-      </Card>
+      <KpiTiles />
+
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+        <div className="lg:col-span-2">
+          <FraudRateChart />
+        </div>
+        <VolumeSparkline />
+      </div>
+
+      <CountryBreakdownTable />
     </div>
   );
 }
