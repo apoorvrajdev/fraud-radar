@@ -45,7 +45,11 @@ By end of Phase 3H:
    `fraud_decision = 'REVIEW' AND analyst_label IS NULL`), sorted
    by `fraud_score DESC, created_at ASC` by default — riskiest
    first, with age as the tiebreaker so old rows do not get
-   stranded behind a flood of fresh high-score arrivals.
+   stranded behind a flood of fresh high-score arrivals. The
+   predicate intentionally excludes `PENDING` (idempotency-conflict
+   rows that have not been scored yet — they do not belong in a
+   human queue) and `NULL` `fraud_decision` (seed rows that never
+   ran through scoring); both are handled by exact equality.
 2. The same envelope carries a `summary` block with queue health:
    total pending count, oldest pending age in seconds, score
    distribution buckets. The frontend renders that block as a
@@ -226,12 +230,34 @@ class AlertItem(BaseModel):
 class AlertsSummary(BaseModel):
     pending_count: int
     oldest_pending_seconds: int | None
-    score_buckets: dict[str, int]  # keys: "0.40_0.60", "0.60_0.80", "0.80_1.00", "1.00_plus" (for >1.0 robustness)
+    score_buckets: dict[str, int]  # keys: "low", "mid", "high"
 ```
 
 Score buckets use stringly-typed keys (not nested objects) so the
 JSON stays trivial to consume in TypeScript without a generated
 union type per bucket.
+
+Bucket boundaries, fixed in code and documented here:
+
+| Key | Range | Meaning |
+| --- | --- | --- |
+| `low` | `fraud_score < 0.20` | Rules-flagged but the ML model thinks the row is safe — leans false-positive. |
+| `mid` | `0.20 <= fraud_score < 0.50` | Moderate ML signal plus a rule trip — the bulk of an analyst's day. |
+| `high` | `fraud_score >= 0.50` | Strong ML signal that nonetheless landed under the auto-decline threshold. Surface first. |
+
+> **Pre-implementation review (2026-05-27):** the original ADR
+> proposed `0.40_0.60 / 0.60_0.80 / 0.80_1.00` buckets aligned
+> visually to the auto-decline threshold (`0.7431` per
+> `ml/artifacts/threshold.json`). A live-DB sanity check showed
+> the actual REVIEW-row score distribution is `min=0.0002,
+> max=0.6839, avg=0.0353` across 181 unlabeled rows — REVIEW is
+> driven by the rules engine, not by a score band near threshold,
+> so anything `>= 0.7431` is auto-declined and never enters the
+> queue. The original buckets would have rendered the `0.80_1.00`
+> bucket as a perma-zero and silently dropped most rows below
+> `0.40`. The revised `low / mid / high` boundaries above are
+> chosen against the empirical distribution and sum exactly to
+> `pending_count` (no overflow, no silent drop).
 
 ### AlertsResponse
 
@@ -247,13 +273,21 @@ class AlertsResponse(BaseModel):
 
 ## Cursor format
 
-Same `urlsafe_b64` envelope as 3F, but the encoded tuple is
-`(fraud_score, created_at, id)` not `(created_at, id)` because the
-sort key is score-first. Decode failures map to 422 with a
-"malformed cursor" detail string. The cursor is signed only by
-construction (no HMAC) — same posture as 3F, where the cursor is
-not security-sensitive because there is no authorization to
-bypass.
+Follows the same urlsafe-b64 JSON envelope **pattern** as 3F, but
+the 3F encoder (`encode_cursor` in `app/services/transactions.py`)
+is hardcoded to a `(ts, id)` keyspace with no parameterization, so
+3H ships its own `encode_alert_cursor(score, ts, id)` /
+`decode_alert_cursor` pair in `app/services/alerts.py` rather than
+refactoring 3F's encoder for a single new caller. The encoded
+tuple is `(fraud_score, created_at, id)` because the sort key is
+score-first. Decode failures map to 422 with a "malformed cursor"
+detail string. The cursor is signed only by construction (no
+HMAC) — same posture as 3F, where the cursor is not
+security-sensitive because there is no authorization to bypass.
+
+> **Pre-implementation review (2026-05-27):** confirmed against
+> the live SQLite DB. The 3F encoder is genuinely single-purpose;
+> the ADR previously implied free reuse and has been corrected.
 
 ---
 
@@ -280,16 +314,13 @@ entity. There is no `alerts` table and there will not be.
 
 The `score_buckets` query uses three explicit `CASE WHEN`
 branches rather than `GROUP BY width_bucket(...)` so the same SQL
-runs on SQLite. The bucket boundaries (`0.40`, `0.60`, `0.80`,
-`1.00`) match the existing decision thresholds visually but are
-not coupled to them — they are presentation choices documented in
-the schema, not policy. Scores below `0.40` should never appear
-in the queue because the scoring pipeline does not flag those as
-REVIEW; if they do (e.g. via a future threshold change), they are
-silently excluded from the summary buckets (logged via the
-`logger.info` in the repository for observability) but still
-counted in `pending_count`. The total of the buckets may therefore
-be `<= pending_count`, which is documented on the schema.
+runs on SQLite. The bucket boundaries (`0.20`, `0.50`) are
+presentation choices documented in the schema (and in the table
+above), not policy. They are chosen against the empirical REVIEW
+score distribution observed on the live DB so the `high` bucket
+is a meaningful triage signal rather than a perma-zero, and so
+the three buckets sum exactly to `pending_count` with no overflow
+category needed.
 
 ## Service layer
 
@@ -391,11 +422,15 @@ would just split one fetch into two and create a render race.
    - "Pending" → `summary.pending_count`
    - "Oldest" → `formatAge(summary.oldest_pending_seconds)` (e.g.
      "5h 12m") with an empty-state dash if the queue is clear
-   - "High risk" → `summary.score_buckets["0.80_1.00"]`
+   - "Strong ML signal" → `summary.score_buckets["high"]` (renamed
+     from a previous "High risk" draft so the label is anchored to
+     what the data can actually produce — REVIEW rows never reach
+     the `>= 0.7431` auto-decline band, so `high` here means
+     `>= 0.50`, just under threshold)
    - "Avg score" — derived client-side from the visible page as a
      gentle "you are looking at" indicator; the summary block
-     itself does not need to carry it because the high-risk
-     bucket already conveys the queue-wide picture
+     itself does not need to carry it because the `high` bucket
+     already conveys the queue-wide picture
 3. **Filter bar** — three controls reusing the existing
    `FilterShell` pattern from 3F: min score (number input,
    0.00–1.00), country (text input, 2 chars), age band (a small
@@ -404,8 +439,11 @@ would just split one fetch into two and create a render race.
    `max_age_seconds` underneath).
 4. **Queue table** — a dense table:
    - Columns: Age · Score · Amount · Country · Rules · Customer
-   - Score is rendered as a colored chip (rose at >=0.8, amber
-     at 0.6–0.8, yellow at 0.4–0.6).
+   - Score is rendered as a colored chip aligned to the same
+     buckets the summary uses: rose at `>= 0.50` (high), amber
+     at `0.20–0.50` (mid), neutral at `< 0.20` (low). Aligning
+     the per-row chip to the header-strip bucketing keeps the
+     visual vocabulary consistent across the page.
    - Rules cell shows the first two rule tags + a "+N more"
      pill if needed.
    - Each row is a `<Link to={`/transactions/${row.id}`}>` so
