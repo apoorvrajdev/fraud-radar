@@ -3,7 +3,6 @@ import {
   LayoutDashboard,
   ListChecks,
   ShieldAlert,
-  ActivitySquare,
 } from "lucide-react";
 import { cn } from "../../lib/cn";
 
@@ -18,14 +17,15 @@ interface NavItem {
 const NAV_ITEMS: NavItem[] = [
   { to: "/", label: "Overview", icon: LayoutDashboard },
   { to: "/transactions", label: "Transactions", icon: ListChecks },
-  { to: "/transactions/detail", label: "Transaction detail", icon: ActivitySquare, disabled: true, comingIn: "3G" },
-  { to: "/alerts", label: "Alerts", icon: ShieldAlert, disabled: true, comingIn: "3H" },
+  { to: "/alerts", label: "Alerts", icon: ShieldAlert },
 ];
 
 /**
- * Left rail. Only the Overview link is live in Phase 3E; the rest
- * render as disabled placeholders with their target phase noted so
- * the nav shape is visible without being misleading.
+ * Left rail. Overview, Transactions, and Alerts are all live
+ * (transaction detail is reached by clicking a row in either the
+ * Transactions table or the Alerts queue). Disabled entries would
+ * render as muted placeholders with their target phase noted, so the
+ * nav shape stays visible without being misleading.
  */
 export function Sidebar() {
   return (
@@ -82,7 +82,7 @@ export function Sidebar() {
       </nav>
 
       <div className="px-5 py-3 border-t border-neutral-800 text-[10px] text-neutral-600">
-        Phase 3E · live
+        Phase 3H · live
       </div>
     </aside>
   );

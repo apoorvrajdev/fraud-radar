@@ -152,3 +152,64 @@ export interface TransactionDetail {
   created_at: string;
   audit: AuditEntry[];
 }
+
+// ---------------------------------------------------------------------------
+// Phase 3H: analyst alerts queue
+// ---------------------------------------------------------------------------
+
+/**
+ * One row in the analyst alerts queue. The backend guarantees
+ * `fraud_decision === "REVIEW"` and `analyst_label IS NULL` for every
+ * item in this envelope. `age_seconds` is computed server-side at
+ * response time against the queue's `now` so the value is stable for
+ * the duration of a single fetch.
+ */
+export interface AlertItem {
+  id: string;
+  created_at: string;
+  age_seconds: number;
+  amount: string;
+  currency: string;
+  country: string;
+  customer_id: string;
+  merchant_id: string;
+  fraud_score: string;
+  fraud_decision: "REVIEW";
+  rules_triggered: string[];
+}
+
+/**
+ * Queue-wide health summary. The buckets are fixed:
+ * `low` (< 0.20), `mid` (0.20–0.50), `high` (>= 0.50). Counts sum
+ * exactly to `pending_count`. The summary block ignores the
+ * caller's filters by design — it reports the whole queue, not the
+ * visible page.
+ */
+export interface AlertsSummary {
+  pending_count: number;
+  oldest_pending_seconds: number | null;
+  score_buckets: {
+    low: number;
+    mid: number;
+    high: number;
+  };
+}
+
+export interface AlertsResponse {
+  summary: AlertsSummary;
+  items: AlertItem[];
+  next_cursor: string | null;
+  has_more: boolean;
+}
+
+/**
+ * Wire-format query parameters for GET /alerts. The age window
+ * params are integer seconds; the score floor is a string (Decimal)
+ * so backend precision is preserved.
+ */
+export interface AlertsFilters {
+  min_score?: string;
+  country?: string;
+  min_age_seconds?: number;
+  max_age_seconds?: number;
+}

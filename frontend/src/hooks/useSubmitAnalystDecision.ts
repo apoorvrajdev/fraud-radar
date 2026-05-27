@@ -24,6 +24,10 @@ export function useSubmitAnalystDecision() {
         updated,
       );
       queryClient.invalidateQueries({ queryKey: ["transactions"] });
+      // Phase 3H: a submitted verdict moves the row off the alerts
+      // queue, so refresh that surface too. TanStack matches the key
+      // prefix so every filtered alerts query updates in one go.
+      queryClient.invalidateQueries({ queryKey: ["alerts"] });
     },
   });
 }

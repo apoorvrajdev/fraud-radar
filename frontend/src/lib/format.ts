@@ -90,3 +90,22 @@ export function formatFraudScore(value: string | null): string {
   if (!Number.isFinite(n)) return value;
   return n.toFixed(4);
 }
+
+/**
+ * Compact human-readable duration for queue ages, e.g. "5h 12m",
+ * "32m", "2d 3h", "just now". The seconds input mirrors the backend
+ * `age_seconds` field on alerts items.
+ */
+export function formatAge(seconds: number | null | undefined): string {
+  if (seconds == null) return "—";
+  if (!Number.isFinite(seconds) || seconds < 0) return "—";
+  if (seconds < 60) return "just now";
+  const minutes = Math.floor(seconds / 60);
+  if (minutes < 60) return `${minutes}m`;
+  const hours = Math.floor(minutes / 60);
+  const mins = minutes % 60;
+  if (hours < 24) return mins > 0 ? `${hours}h ${mins}m` : `${hours}h`;
+  const days = Math.floor(hours / 24);
+  const hrs = hours % 24;
+  return hrs > 0 ? `${days}d ${hrs}h` : `${days}d`;
+}
