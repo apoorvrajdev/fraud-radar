@@ -119,7 +119,14 @@ def client(
     """TestClient without lifespan; stub explainer injected for scoring."""
     app.dependency_overrides[get_db] = lambda: db_session
     import app.services.scoring as scoring_module
-    monkeypatch.setattr(scoring_module, "get_explainer", lambda: _StubExplainer())
+    import app.services.transaction_detail as detail_module
+    stub = _StubExplainer()
+    monkeypatch.setattr(scoring_module, "get_explainer", lambda: stub)
+    # The Phase 3G detail builder also reads the live operating threshold
+    # from `get_explainer()` — patch the symbol in that module too so the
+    # detail envelope reports the stub's threshold instead of trying to
+    # load the trained artifact.
+    monkeypatch.setattr(detail_module, "get_explainer", lambda: stub)
     try:
         yield TestClient(app, raise_server_exceptions=True)
     finally:
@@ -172,18 +179,21 @@ def test_post_persists_transaction_with_real_decision(client: TestClient) -> Non
     posted = post_resp.json()
     tx_id = posted["transaction_id"]
 
+    # GET now returns the Phase 3G TransactionDetail envelope; assert on
+    # the fields that round-trip from the POST response.
     get_resp = client.get(f"/api/v1/transactions/{tx_id}")
     assert get_resp.status_code == 200, get_resp.text
     fetched = get_resp.json()
 
-    assert fetched["transaction_id"] == tx_id
-    assert fetched["decision"] == posted["decision"]
-    assert fetched["decision"] in {"APPROVE", "REVIEW", "DECLINE"}
+    assert fetched["id"] == tx_id
+    assert fetched["fraud_decision"] == posted["decision"]
+    assert fetched["fraud_decision"] in {"APPROVE", "REVIEW", "DECLINE"}
     # `fraud_score` round-trips through Numeric(5, 4) so precision differs
     # by up to a half-ulp at the 4th decimal. approx handles it.
-    assert fetched["fraud_score"] == pytest.approx(posted["fraud_score"], abs=1e-4)
+    assert float(fetched["fraud_score"]) == pytest.approx(
+        posted["fraud_score"], abs=1e-4,
+    )
     assert fetched["rules_triggered"] == posted["rules_triggered"]
-    assert fetched["top_contributors"] == posted["top_contributors"]
 
 
 # ---------------------------------------------------------------------------
@@ -301,13 +311,23 @@ def test_get_returns_persisted_transaction(client: TestClient) -> None:
     assert get_resp.status_code == 200, get_resp.text
     fetched = get_resp.json()
 
-    assert fetched["transaction_id"] == tx_id
-    assert fetched["decision"] == posted["decision"]
-    assert fetched["fraud_score"] == pytest.approx(posted["fraud_score"], abs=1e-4)
-    # GET reads from the transactions row, which does not persist the
-    # operating threshold (it lives in the explainer artifact). The POST
-    # response includes threshold; the GET response carries None. This
-    # asymmetry is documented in `_scored_from_transaction`.
-    assert fetched["threshold"] is None
+    # The Phase 3G envelope renames `transaction_id` → `id` and exposes
+    # the row fields directly. `effective_decision` falls through to
+    # `fraud_decision` when no analyst has reviewed.
+    assert fetched["id"] == tx_id
+    assert fetched["fraud_decision"] == posted["decision"]
+    assert fetched["effective_decision"] == posted["decision"]
+    assert float(fetched["fraud_score"]) == pytest.approx(
+        posted["fraud_score"], abs=1e-4,
+    )
+    # The detail envelope now surfaces the live operating threshold
+    # from the explainer artifact (the stub fixture sets it to 0.7).
+    assert fetched["threshold"] is not None
     assert fetched["rules_triggered"] == posted["rules_triggered"]
-    assert fetched["top_contributors"] == posted["top_contributors"]
+    # Top contributors round-trip with a computed `direction` field added.
+    assert len(fetched["top_contributors"]) == len(posted["top_contributors"])
+    for entry in fetched["top_contributors"]:
+        assert entry["direction"] in {"fraud", "legit"}
+    # No analyst has reviewed yet.
+    assert fetched["analyst_label"] is None
+    assert fetched["audit"]  # scoring writes at least one audit row

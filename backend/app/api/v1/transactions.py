@@ -30,13 +30,17 @@ from app.schemas.explanation import (
     ExplanationResponse,
 )
 from app.schemas.transaction import (
+    AnalystDecisionRequest,
     TransactionCreate,
+    TransactionDetail,
     TransactionList,
     TransactionListQuery,
     TransactionScored,
 )
 from app.services.idempotency import hash_request, lookup, store
+from app.services.review import ReviewConflictError, apply_analyst_decision
 from app.services.scoring import score_transaction
+from app.services.transaction_detail import build_detail
 from app.services.transactions import list_transactions as list_transactions_service
 
 router = APIRouter(prefix="/transactions", tags=["transactions"])
@@ -294,19 +298,22 @@ def create_transaction(
 
 @router.get(
     "/{transaction_id}",
-    response_model=TransactionScored,
-    summary="Read a persisted transaction's decision and SHAP attribution",
+    response_model=TransactionDetail,
+    summary="Read the full detail envelope for one transaction (Phase 3G)",
 )
 def get_transaction(
     transaction_id: str,
     db: Session = Depends(get_db),
-) -> TransactionScored:
-    """Return a persisted transaction's decision (no recomputation).
+) -> TransactionDetail:
+    """Return the composite TransactionDetail envelope.
 
-    Reads from the `transactions.top_features` and `rules_triggered`
-    TEXT columns. The explainer is NOT re-invoked — SHAP is computed and
-    persisted on POST in Phase 3C. In 3B the response carries empty
-    lists because the stub POST does not yet populate those columns.
+    Reads from the persisted `transactions.top_features` and
+    `rules_triggered` columns — the explainer is NOT re-invoked. The
+    detail page is a read of what was decided at scoring time, which
+    is what an audit log fundamentally requires.
+
+    See `docs/adr/PHASE_3G_DESIGN.md` for the envelope shape and the
+    `effective_decision` mapping.
     """
     tx = db.get(Transaction, transaction_id)
     if tx is None:
@@ -314,7 +321,62 @@ def get_transaction(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Transaction {transaction_id} not found",
         )
-    return _scored_from_transaction(tx)
+    return build_detail(db, tx)
+
+
+# ---------------------------------------------------------------------------
+# POST /api/v1/transactions/{id}/decision — Phase 3G analyst override
+# ---------------------------------------------------------------------------
+
+
+@router.post(
+    "/{transaction_id}/decision",
+    response_model=TransactionDetail,
+    summary="Commit an analyst CONFIRMED_FRAUD/CONFIRMED_LEGIT label (Phase 3G)",
+)
+def record_analyst_decision(
+    transaction_id: str,
+    payload: AnalystDecisionRequest,
+    analyst_id: str = Header(
+        ...,
+        alias="X-Analyst-Id",
+        min_length=1,
+        max_length=64,
+        description="Identifies the analyst for the audit log; trusted as declared.",
+    ),
+    db: Session = Depends(get_db),
+) -> TransactionDetail:
+    """Apply an analyst override to a REVIEW transaction.
+
+    Returns the full updated TransactionDetail envelope. Idempotent on
+    identical resubmit. Revisions (different label/notes on an
+    already-reviewed row) record an `ANALYST_DECISION_REVISED` audit
+    entry.
+
+    Status codes:
+
+      * 200 — override accepted (or idempotent no-op).
+      * 404 — no transaction with that id.
+      * 409 — transaction is not in REVIEW.
+      * 422 — missing/invalid header or body.
+    """
+    try:
+        return apply_analyst_decision(
+            db,
+            transaction_id=transaction_id,
+            analyst_id=analyst_id,
+            request=payload,
+        )
+    except LookupError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=str(exc),
+        ) from exc
+    except ReviewConflictError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=str(exc),
+        ) from exc
 
 
 # ---------------------------------------------------------------------------

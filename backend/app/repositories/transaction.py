@@ -192,5 +192,36 @@ class TransactionRepository(BaseRepository[Transaction]):
             return page, (last.created_at, last.id)
         return rows, None
 
+    # ---------------------------------------------------------------
+    # Phase 3G — analyst override
+    # ---------------------------------------------------------------
+
+    def apply_analyst_decision(
+        self,
+        db: Session,
+        *,
+        tx: Transaction,
+        label: str,
+        notes: str | None,
+        now: datetime,
+    ) -> Transaction:
+        """Stamp `analyst_label`, `analyst_notes`, `reviewed_at` on a row.
+
+        Flushes inside the caller's session but does **not** commit —
+        the service layer owns the transaction boundary so the column
+        update and the matching audit-log insert land atomically.
+
+        `fraud_decision` is intentionally unchanged: the model's
+        verdict is preserved verbatim for evaluation and retraining,
+        which is the whole reason `analyst_label` exists as a
+        separate column.
+        """
+        tx.analyst_label = label
+        tx.analyst_notes = notes
+        tx.reviewed_at = now
+        db.add(tx)
+        db.flush()
+        return tx
+
 
 transaction_repository = TransactionRepository()

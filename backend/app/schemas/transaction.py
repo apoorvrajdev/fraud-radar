@@ -1,14 +1,14 @@
 """Pydantic schemas for transaction ingestion and retrieval."""
 from datetime import datetime
 from decimal import Decimal
-from typing import Any, Self
+from typing import Any, Literal, Self
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from app.fraud.decision import Decision
 from app.schemas.common import PaymentMethod, TransactionStatus
-from app.schemas.fraud import FraudScoreResult
+from app.schemas.explanation import ContributorEntry
 
 
 class TransactionCreate(BaseModel):
@@ -65,7 +65,19 @@ class TransactionResponse(BaseModel):
 
 
 class TransactionDetail(TransactionResponse):
-    """Detailed transaction view including fraud explanation and analyst feedback."""
+    """Composite detail envelope for GET /api/v1/transactions/{id} (Phase 3G).
+
+    Reads from the persisted `transactions.top_features` and
+    `transactions.rules_triggered` columns — the explainer is **not**
+    re-invoked. The detail page is a read of what was decided at
+    scoring time, which is what an audit log fundamentally requires.
+
+    `effective_decision` is computed: an `analyst_label` of
+    `CONFIRMED_FRAUD` projects to `DECLINE`, `CONFIRMED_LEGIT` to
+    `APPROVE`, and a null label falls through to `fraud_decision`.
+    The original `fraud_decision` column is preserved verbatim so the
+    model's call stays clean for evaluation and retraining.
+    """
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -73,19 +85,37 @@ class TransactionDetail(TransactionResponse):
     ip_address: str | None = None
     device_id: str | None = None
     is_card_present: bool
-    fraud: FraudScoreResult | None = None
+
+    threshold: float | None = None
+    rules_triggered: list[str] = Field(default_factory=list)
+    top_contributors: list["ContributorEntry"] = Field(default_factory=list)
+    effective_decision: Decision
+
     analyst_label: str | None = None
     analyst_notes: str | None = None
     reviewed_at: datetime | None = None
 
+    audit: list["AuditEntry"] = Field(default_factory=list)
+
+
+class AuditEntry(BaseModel):
+    """One audit-log entry surfaced on the detail page."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    actor: str
+    action: str
+    payload: dict[str, Any] | None
+    created_at: datetime
+
 
 class TransactionScored(BaseModel):
-    """Response payload for POST /transactions and GET /transactions/{id}.
+    """Response payload for POST /transactions.
 
-    In Phase 3B `fraud_score`, `threshold`, `rules_triggered`, and
-    `top_contributors` are placeholders (None / empty) because real
-    scoring lands in Phase 3C. The schema shape stays stable; 3C just
-    fills the fields in.
+    Kept lean — the simulator and any external producer only need to
+    know what happened to the row they just submitted. The richer
+    detail envelope (`TransactionDetail`) belongs to the GET path.
     """
 
     model_config = ConfigDict(from_attributes=True)
@@ -100,12 +130,15 @@ class TransactionScored(BaseModel):
 
 
 class AnalystDecisionRequest(BaseModel):
-    """Request body when an analyst confirms or rejects a flagged transaction."""
+    """Body for POST /api/v1/transactions/{id}/decision (Phase 3G).
 
-    label: str = Field(
-        description="Must be CONFIRMED_FRAUD or CONFIRMED_LEGIT",
-        pattern=r"^(CONFIRMED_FRAUD|CONFIRMED_LEGIT)$",
-    )
+    Identical-resubmit is idempotent at the service layer; the schema
+    only enforces shape.
+    """
+
+    model_config = ConfigDict(str_strip_whitespace=True)
+
+    label: Literal["CONFIRMED_FRAUD", "CONFIRMED_LEGIT"]
     notes: str | None = Field(default=None, max_length=2000)
 
 

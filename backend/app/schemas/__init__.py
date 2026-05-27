@@ -6,6 +6,7 @@ from app.schemas.common import (
     RiskTier,
     TransactionStatus,
 )
+from app.schemas.explanation import ContributorEntry
 from app.schemas.fraud import FraudFeature, FraudScoreResult
 from app.schemas.stats import (
     CategoryBreakdown,
@@ -16,6 +17,7 @@ from app.schemas.stats import (
 )
 from app.schemas.transaction import (
     AnalystDecisionRequest,
+    AuditEntry,
     TransactionCreate,
     TransactionDetail,
     TransactionResponse,
@@ -24,7 +26,9 @@ from app.schemas.transaction import (
 __all__ = [
     "AnalystDecisionRequest",
     "AnalystLabel",
+    "AuditEntry",
     "CategoryBreakdown",
+    "ContributorEntry",
     "FraudDecision",
     "FraudFeature",
     "FraudScoreResult",

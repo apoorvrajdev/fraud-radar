@@ -2,6 +2,7 @@
 import json
 from typing import Any
 
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.models.audit_log import AuditLog
@@ -11,8 +12,10 @@ from app.repositories.base import BaseRepository
 class AuditRepository(BaseRepository[AuditLog]):
     """Append-only audit log writer.
 
-    Reads are intentionally not provided here — analyst tooling uses raw
-    queries. The repository's job is to make writes consistent.
+    Reads are intentionally narrow — surface the trailing entries for
+    one resource (used by the Phase 3G detail page). Broader analyst
+    tooling uses raw queries. The repository's job is to make writes
+    consistent.
     """
 
     model = AuditLog
@@ -41,6 +44,28 @@ class AuditRepository(BaseRepository[AuditLog]):
         db.add(entry)
         db.flush()
         return entry
+
+    def recent_for_resource(
+        self,
+        db: Session,
+        *,
+        resource_type: str,
+        resource_id: str,
+        limit: int = 20,
+    ) -> list[AuditLog]:
+        """Return the trailing N audit-log entries for one resource.
+
+        Newest first (created_at DESC, id DESC) so the detail page can
+        render the most-recent action at the top without a second sort.
+        """
+        stmt = (
+            select(AuditLog)
+            .where(AuditLog.resource_type == resource_type)
+            .where(AuditLog.resource_id == resource_id)
+            .order_by(AuditLog.created_at.desc(), AuditLog.id.desc())
+            .limit(limit)
+        )
+        return list(db.execute(stmt).scalars().all())
 
 
 audit_repository = AuditRepository()
