@@ -17,7 +17,7 @@ interface NavItem {
 
 const NAV_ITEMS: NavItem[] = [
   { to: "/", label: "Overview", icon: LayoutDashboard },
-  { to: "/transactions", label: "Transactions", icon: ListChecks, disabled: true, comingIn: "3F" },
+  { to: "/transactions", label: "Transactions", icon: ListChecks },
   { to: "/transactions/detail", label: "Transaction detail", icon: ActivitySquare, disabled: true, comingIn: "3G" },
   { to: "/alerts", label: "Alerts", icon: ShieldAlert, disabled: true, comingIn: "3H" },
 ];
