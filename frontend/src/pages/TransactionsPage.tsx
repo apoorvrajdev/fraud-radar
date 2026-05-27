@@ -1,10 +1,11 @@
 /**
  * Transactions list page (Phase 3F).
  *
- * Slice 3F-2 wires the filter chrome, URL-synced state, and a count
- * summary. Slice 3F-3 swaps the table body for actual rows and adds
- * "Load more" pagination.
+ * Composes the URL-synced filter chrome with the live infinite-query
+ * table. Each filter change re-keys the query (`useTransactionsList`)
+ * so the cursor walk resets cleanly.
  */
+import { useMemo } from "react";
 import { TransactionsFilters } from "../components/transactions/TransactionsFilters";
 import { FilterChips } from "../components/transactions/FilterChips";
 import { TransactionsTable } from "../components/transactions/TransactionsTable";
@@ -15,8 +16,10 @@ export function TransactionsPage() {
   const { filters } = useTransactionFilters();
   const query = useTransactionsList(filters);
 
-  const loadedCount =
-    query.data?.pages.reduce((sum, page) => sum + page.items.length, 0) ?? 0;
+  const rows = useMemo(
+    () => query.data?.pages.flatMap((page) => page.items) ?? [],
+    [query.data],
+  );
 
   return (
     <div className="space-y-5">
@@ -32,10 +35,13 @@ export function TransactionsPage() {
       <FilterChips />
 
       <TransactionsTable
-        loadedCount={loadedCount}
+        rows={rows}
         isLoading={query.isPending}
         isError={query.isError}
         errorMessage={query.error?.message}
+        hasMore={query.hasNextPage}
+        isFetchingMore={query.isFetchingNextPage}
+        onLoadMore={() => query.fetchNextPage()}
       />
     </div>
   );
