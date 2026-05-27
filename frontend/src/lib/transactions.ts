@@ -7,6 +7,7 @@
  */
 import { api } from "./api";
 import type {
+  TransactionDetail,
   TransactionList,
   TransactionListFilters,
 } from "../types/api";
@@ -39,5 +40,17 @@ export async function fetchTransactions({
     params.cursor = cursor;
   }
   const { data } = await api.get<TransactionList>("/transactions", { params });
+  return data;
+}
+
+/**
+ * GET /transactions/{id}. Returns the full TransactionDetail envelope
+ * (Phase 3G): row fields, rules, top SHAP contributors, audit trail,
+ * and any analyst override.
+ */
+export async function fetchTransactionDetail(
+  id: string,
+): Promise<TransactionDetail> {
+  const { data } = await api.get<TransactionDetail>(`/transactions/${id}`);
   return data;
 }

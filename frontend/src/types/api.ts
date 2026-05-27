@@ -90,3 +90,65 @@ export interface TransactionListFilters {
   customer_id?: string;
   merchant_id?: string;
 }
+
+// ---------------------------------------------------------------------------
+// Phase 3G: transaction detail envelope
+// ---------------------------------------------------------------------------
+
+export type AnalystLabel = "CONFIRMED_FRAUD" | "CONFIRMED_LEGIT";
+
+/**
+ * One SHAP contributor surfaced on the detail page. Mirrors the
+ * backend `ContributorEntry` schema. `direction` is pre-classified by
+ * the explainer at scoring time (shap_value > 0 → "fraud", otherwise
+ * "legit") so the frontend never has to interpret the sign.
+ */
+export interface ContributorEntry {
+  feature: string;
+  feature_value: number;
+  shap_value: number;
+  direction: "fraud" | "legit";
+}
+
+/**
+ * One audit-log entry. The backend ships the trailing 20 newest-first.
+ * `payload` is opaque structured JSON; rendering is per-action.
+ */
+export interface AuditEntry {
+  id: number;
+  actor: string;
+  action: string;
+  payload: Record<string, unknown> | null;
+  created_at: string;
+}
+
+/**
+ * Composite detail envelope for GET /transactions/{id}. The original
+ * `fraud_decision` (model verdict) is preserved verbatim;
+ * `effective_decision` reflects any analyst override.
+ */
+export interface TransactionDetail {
+  id: string;
+  customer_id: string;
+  merchant_id: string;
+  amount: string;
+  currency: string;
+  status: string;
+  payment_method: string;
+  country: string;
+  card_last4: string | null;
+  ip_address: string | null;
+  device_id: string | null;
+  is_card_present: boolean;
+  fraud_score: string | null;
+  fraud_decision: Decision | null;
+  threshold: number | null;
+  rules_triggered: string[];
+  top_contributors: ContributorEntry[];
+  effective_decision: Decision;
+  analyst_label: AnalystLabel | null;
+  analyst_notes: string | null;
+  reviewed_at: string | null;
+  created_at: string;
+  audit: AuditEntry[];
+}
