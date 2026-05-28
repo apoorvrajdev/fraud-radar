@@ -385,8 +385,8 @@ Defaults to 1 transaction per second with 10% of transactions shaped to trip a f
 
 - [x] **4A** — Demo scope ADR ([`docs/adr/PHASE_4A_DEMO_SCOPE.md`](docs/adr/PHASE_4A_DEMO_SCOPE.md)) locking the snapshot contract, in-scope routes, disabled-write posture, and honesty banner before any client code is written
 - [x] **4B** — Snapshot export script ([`scripts/export_demo_snapshot.py`](scripts/export_demo_snapshot.py)): paginates the live API and writes `stats-overview.json`, `stats-timeseries.json`, `stats-breakdown.json`, `transactions.json` (300 rows), `transactions/{id}.json` (curated coverage: BLOCK / REVIEW / ALLOW / overridden + every alert ID), `alerts.json` (100 rows + summary), and `manifest.json` to `frontend/public/demo-data/`
-- [ ] **4C** — Frontend demo mode (`VITE_DEMO_MODE` flag, static API client, demo banner, disabled write actions, `vercel.json` SPA rewrite)
-- [ ] **4D** — Architecture diagram + screenshots in `docs/`
+- [x] **4C** — Frontend demo mode: axios adapter ([`frontend/src/lib/demoApi.ts`](frontend/src/lib/demoApi.ts)) resolves every GET from `public/demo-data/*.json` with client-side filtering for transactions and alerts; central api client ([`frontend/src/lib/api.ts`](frontend/src/lib/api.ts)) swaps the adapter in when `VITE_DEMO_MODE=true`; dismissible amber banner stamps the snapshot date and links to GitHub + the Loom; sidebar footer and topbar pulse flip to demo styling; analyst decision form renders visibly disabled with a lock note instead of faking writes; polling is collapsed via `demoRefetchInterval()` across all five query hooks; `vercel.json` rewrite keeps `/transactions/:id` and `/alerts` deep links working on refresh; tsc + production build clean
+- [x] **4D** — Architecture diagram ([`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md)) with four Mermaid diagrams (live vs demo topology, end-to-end scoring sequence, analyst-review loop with cache wiring, layered code structure); `docs/screenshots/` ready with capture conventions (full screenshots dropped in separately)
 - [ ] **4E** — Loom walkthrough recorded against the live local stack
 - [ ] **4F** — Vercel deploy + README "Live Demo" section at the top (Loom + live URL + screenshots)
 
@@ -394,6 +394,7 @@ Defaults to 1 transaction per second with 10% of transactions shaped to trip a f
 
 ## 📑 Documentation
 
+- [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) — one-page system mental model: live vs demo runtime topology, end-to-end scoring sequence, analyst-review loop with cache wiring, layered code structure (all Mermaid, renders natively on GitHub).
 - [`docs/adr/PHASE_3_DESIGN.md`](docs/adr/PHASE_3_DESIGN.md) — backend design for Phases 3A–3D (rules engine, ingestion endpoint, idempotency, scoring pipeline, simulator).
 - [`docs/adr/PHASE_3C_INTEGRATION.md`](docs/adr/PHASE_3C_INTEGRATION.md) — implementation decisions for the integration phase.
 - [`docs/adr/PHASE_3E_DESIGN.md`](docs/adr/PHASE_3E_DESIGN.md) — design for the dashboard slice (aggregate endpoints, CORS posture, frontend foundation).
