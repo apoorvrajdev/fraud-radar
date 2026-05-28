@@ -1,0 +1,9 @@
+{
+  "total_transactions_24h": 7582,
+  "approved_count_24h": 4162,
+  "declined_count_24h": 3250,
+  "pending_review_count": 241,
+  "approved_rate": 0.5489316802954366,
+  "fraud_caught_amount": "3109606.75",
+  "avg_fraud_score": 0.008158992147073049
+}

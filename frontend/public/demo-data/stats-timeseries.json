@@ -1,0 +1,125 @@
+{
+  "window": "24h",
+  "points": [
+    {
+      "timestamp": "2026-05-27T15:00:00Z",
+      "transaction_count": 3407,
+      "fraud_rate": 0.4470208394481949
+    },
+    {
+      "timestamp": "2026-05-27T16:00:00Z",
+      "transaction_count": 905,
+      "fraud_rate": 0.4530386740331492
+    },
+    {
+      "timestamp": "2026-05-27T17:00:00Z",
+      "transaction_count": 0,
+      "fraud_rate": 0.0
+    },
+    {
+      "timestamp": "2026-05-27T18:00:00Z",
+      "transaction_count": 0,
+      "fraud_rate": 0.0
+    },
+    {
+      "timestamp": "2026-05-27T19:00:00Z",
+      "transaction_count": 0,
+      "fraud_rate": 0.0
+    },
+    {
+      "timestamp": "2026-05-27T20:00:00Z",
+      "transaction_count": 0,
+      "fraud_rate": 0.0
+    },
+    {
+      "timestamp": "2026-05-27T21:00:00Z",
+      "transaction_count": 0,
+      "fraud_rate": 0.0
+    },
+    {
+      "timestamp": "2026-05-27T22:00:00Z",
+      "transaction_count": 0,
+      "fraud_rate": 0.0
+    },
+    {
+      "timestamp": "2026-05-27T23:00:00Z",
+      "transaction_count": 0,
+      "fraud_rate": 0.0
+    },
+    {
+      "timestamp": "2026-05-28T00:00:00Z",
+      "transaction_count": 0,
+      "fraud_rate": 0.0
+    },
+    {
+      "timestamp": "2026-05-28T01:00:00Z",
+      "transaction_count": 0,
+      "fraud_rate": 0.0
+    },
+    {
+      "timestamp": "2026-05-28T02:00:00Z",
+      "transaction_count": 0,
+      "fraud_rate": 0.0
+    },
+    {
+      "timestamp": "2026-05-28T03:00:00Z",
+      "transaction_count": 0,
+      "fraud_rate": 0.0
+    },
+    {
+      "timestamp": "2026-05-28T04:00:00Z",
+      "transaction_count": 0,
+      "fraud_rate": 0.0
+    },
+    {
+      "timestamp": "2026-05-28T05:00:00Z",
+      "transaction_count": 0,
+      "fraud_rate": 0.0
+    },
+    {
+      "timestamp": "2026-05-28T06:00:00Z",
+      "transaction_count": 0,
+      "fraud_rate": 0.0
+    },
+    {
+      "timestamp": "2026-05-28T07:00:00Z",
+      "transaction_count": 0,
+      "fraud_rate": 0.0
+    },
+    {
+      "timestamp": "2026-05-28T08:00:00Z",
+      "transaction_count": 0,
+      "fraud_rate": 0.0
+    },
+    {
+      "timestamp": "2026-05-28T09:00:00Z",
+      "transaction_count": 0,
+      "fraud_rate": 0.0
+    },
+    {
+      "timestamp": "2026-05-28T10:00:00Z",
+      "transaction_count": 0,
+      "fraud_rate": 0.0
+    },
+    {
+      "timestamp": "2026-05-28T11:00:00Z",
+      "transaction_count": 0,
+      "fraud_rate": 0.0
+    },
+    {
+      "timestamp": "2026-05-28T12:00:00Z",
+      "transaction_count": 0,
+      "fraud_rate": 0.0
+    },
+    {
+      "timestamp": "2026-05-28T13:00:00Z",
+      "transaction_count": 0,
+      "fraud_rate": 0.0
+    },
+    {
+      "timestamp": "2026-05-28T14:00:00Z",
+      "transaction_count": 0,
+      "fraud_rate": 0.0
+    }
+  ]
+}

@@ -1,0 +1,1507 @@
+{
+  "summary": {
+    "pending_count": 241,
+    "oldest_pending_seconds": 89469,
+    "score_buckets": {
+      "low": 237,
+      "mid": 0,
+      "high": 4
+    }
+  },
+  "items": [
+    {
+      "id": "173d52a6-0238-4c62-8dff-5d5343e46d8d",
+      "created_at": "2026-05-27T13:11:58.466130Z",
+      "age_seconds": 89298,
+      "amount": "92.4000",
+      "currency": "USD",
+      "country": "FR",
+      "customer_id": "cad4fddd-509d-4454-9208-85bb09740631",
+      "merchant_id": "fc191c89-2efd-498f-859a-50d0ad830332",
+      "fraud_score": "0.6839",
+      "fraud_decision": "REVIEW",
+      "rules_triggered": []
+    },
+    {
+      "id": "6ebda69b-237d-4dfe-8e4d-3f3eb537f16f",
+      "created_at": "2026-05-27T13:21:26.814351Z",
+      "age_seconds": 88729,
+      "amount": "91.2100",
+      "currency": "USD",
+      "country": "JP",
+      "customer_id": "edbcb43b-afbc-4277-b33c-ea4c82b022b9",
+      "merchant_id": "ea82d71d-7adf-4b9d-8f4a-7f3dca169c00",
+      "fraud_score": "0.6535",
+      "fraud_decision": "REVIEW",
+      "rules_triggered": []
+    },
+    {
+      "id": "17ea82b8-d095-404d-a2d7-40b79663e82c",
+      "created_at": "2026-05-27T13:15:13.858878Z",
+      "age_seconds": 89102,
+      "amount": "76.4400",
+      "currency": "USD",
+      "country": "FR",
+      "customer_id": "26250090-c71c-421a-b376-27a3dd57395a",
+      "merchant_id": "c4f297e9-5dbd-4de5-88b6-ce7966f3dfc0",
+      "fraud_score": "0.6514",
+      "fraud_decision": "REVIEW",
+      "rules_triggered": []
+    },
+    {
+      "id": "5b525103-10eb-48eb-b246-42acb2296a5b",
+      "created_at": "2026-05-27T13:20:17.436355Z",
+      "age_seconds": 88799,
+      "amount": "70.7600",
+      "currency": "USD",
+      "country": "FR",
+      "customer_id": "a4e35458-969f-4b00-b51a-1de8390400b0",
+      "merchant_id": "79d54a2b-35ed-4f9e-8f25-965095156741",
+      "fraud_score": "0.5746",
+      "fraud_decision": "REVIEW",
+      "rules_triggered": []
+    },
+    {
+      "id": "27d3a850-44b9-40bf-b0da-66565185a6ff",
+      "created_at": "2026-05-27T13:09:34.841624Z",
+      "age_seconds": 89441,
+      "amount": "6152.6000",
+      "currency": "USD",
+      "country": "US",
+      "customer_id": "7ece8173-89cb-4e68-99c6-cf828f326740",
+      "merchant_id": "deb87097-2926-443b-8bc3-2a55eca576ea",
+      "fraud_score": "0.1519",
+      "fraud_decision": "REVIEW",
+      "rules_triggered": [
+        "amount_ceiling"
+      ]
+    },
+    {
+      "id": "169596e3-cfe2-4005-bd0b-0acb509b4705",
+      "created_at": "2026-05-27T13:15:38.727929Z",
+      "age_seconds": 89077,
+      "amount": "7035.9500",
+      "currency": "USD",
+      "country": "US",
+      "customer_id": "8c2bc5dc-11d8-45b9-bd2e-7ccdf90f7ca0",
+      "merchant_id": "f4bfd1db-b147-439e-b329-294a72dda374",
+      "fraud_score": "0.1435",
+      "fraud_decision": "REVIEW",
+      "rules_triggered": [
+        "amount_ceiling"
+      ]
+    },
+    {
+      "id": "6fc3618a-1951-4cf1-afc9-50eb4775f56d",
+      "created_at": "2026-05-27T13:14:22.875536Z",
+      "age_seconds": 89153,
+      "amount": "6806.8600",
+      "currency": "USD",
+      "country": "US",
+      "customer_id": "3b4d08e4-2e90-48df-b2f4-c491ddc05011",
+      "merchant_id": "1747dcdb-893c-4f1b-bc07-da493fec6ee1",
+      "fraud_score": "0.1301",
+      "fraud_decision": "REVIEW",
+      "rules_triggered": [
+        "amount_ceiling"
+      ]
+    },
+    {
+      "id": "27eaff6a-d925-4ae3-a390-3f137fb915a3",
+      "created_at": "2026-05-27T13:10:01.424915Z",
+      "age_seconds": 89415,
+      "amount": "6518.1000",
+      "currency": "USD",
+      "country": "US",
+      "customer_id": "40692a2b-8b48-4e7b-a58b-2ebd9e688d34",
+      "merchant_id": "e72cc0a3-e1ac-461a-9d65-e18b6f3f4114",
+      "fraud_score": "0.1195",
+      "fraud_decision": "REVIEW",
+      "rules_triggered": [
+        "amount_ceiling"
+      ]
+    },
+    {
+      "id": "f35cb065-dfa5-4634-bb39-7f18f3242c85",
+      "created_at": "2026-05-27T13:11:31.831798Z",
+      "age_seconds": 89324,
+      "amount": "5748.2200",
+      "currency": "USD",
+      "country": "US",
+      "customer_id": "52a820f9-68d0-4fa8-a443-9943be746cca",
+      "merchant_id": "94ee12bd-3382-4f73-a7d8-c4779af4be54",
+      "fraud_score": "0.1087",
+      "fraud_decision": "REVIEW",
+      "rules_triggered": [
+        "amount_ceiling"
+      ]
+    },
+    {
+      "id": "7860bc11-94f9-46df-8c88-13720b1835bd",
+      "created_at": "2026-05-27T13:10:10.672014Z",
+      "age_seconds": 89406,
+      "amount": "5603.2000",
+      "currency": "USD",
+      "country": "US",
+      "customer_id": "015bb030-d005-410b-bb71-2e660406e977",
+      "merchant_id": "6bd7000d-c4eb-48a2-a821-6a2ce93ebffa",
+      "fraud_score": "0.1087",
+      "fraud_decision": "REVIEW",
+      "rules_triggered": [
+        "amount_ceiling"
+      ]
+    },
+    {
+      "id": "94a49211-bde7-4a47-ac4c-7b1c7770cfc9",
+      "created_at": "2026-05-27T13:28:31.431975Z",
+      "age_seconds": 88305,
+      "amount": "6621.4500",
+      "currency": "USD",
+      "country": "US",
+      "customer_id": "56e25492-2d16-4f67-a107-a0a7d4da3cbd",
+      "merchant_id": "dea63579-5d56-472c-9670-36c573f60969",
+      "fraud_score": "0.1072",
+      "fraud_decision": "REVIEW",
+      "rules_triggered": [
+        "amount_ceiling"
+      ]
+    },
+    {
+      "id": "3244ac51-3114-4e8d-964a-5d0e6a8b23a1",
+      "created_at": "2026-05-27T13:31:46.196591Z",
+      "age_seconds": 88110,
+      "amount": "6065.5900",
+      "currency": "USD",
+      "country": "US",
+      "customer_id": "cc4e1e36-7641-43aa-ad00-70d22865858c",
+      "merchant_id": "4a6357bc-a9f3-4b45-a93d-fcdff63d9344",
+      "fraud_score": "0.1053",
+      "fraud_decision": "REVIEW",
+      "rules_triggered": [
+        "amount_ceiling"
+      ]
+    },
+    {
+      "id": "138a4fba-bf80-4bd7-a698-cd53f07b57d6",
+      "created_at": "2026-05-27T13:10:35.340869Z",
+      "age_seconds": 89381,
+      "amount": "5668.2900",
+      "currency": "USD",
+      "country": "US",
+      "customer_id": "6e89b8a6-a5e9-4031-877a-3ddb1b618240",
+      "merchant_id": "2bc4e603-09f0-400e-bb16-835123274a4b",
+      "fraud_score": "0.0989",
+      "fraud_decision": "REVIEW",
+      "rules_triggered": [
+        "amount_ceiling"
+      ]
+    },
+    {
+      "id": "adb46d98-6d80-422d-af21-4d355ab9ab89",
+      "created_at": "2026-05-27T13:29:19.454355Z",
+      "age_seconds": 88257,
+      "amount": "7674.5600",
+      "currency": "USD",
+      "country": "US",
+      "customer_id": "7896d6b4-7e33-4d96-8b38-8bfc3f5cd7d4",
+      "merchant_id": "73b24d09-7ea1-4cb8-b12f-99c9f3a3cad7",
+      "fraud_score": "0.0945",
+      "fraud_decision": "REVIEW",
+      "rules_triggered": [
+        "amount_ceiling"
+      ]
+    },
+    {
+      "id": "edc5b95c-2b9e-413f-97f9-c0e446a9169b",
+      "created_at": "2026-05-27T13:13:34.713018Z",
+      "age_seconds": 89201,
+      "amount": "7523.1700",
+      "currency": "USD",
+      "country": "US",
+      "customer_id": "d310e8c8-dfa2-4101-b277-5bb155360d94",
+      "merchant_id": "8ee79fad-3b5f-4163-8afa-412a9fb34a0d",
+      "fraud_score": "0.0911",
+      "fraud_decision": "REVIEW",
+      "rules_triggered": [
+        "amount_ceiling"
+      ]
+    },
+    {
+      "id": "08b7eb30-a2f4-4762-b1c3-c6f9181baf35",
+      "created_at": "2026-05-27T13:16:45.182591Z",
+      "age_seconds": 89011,
+      "amount": "6859.1200",
+      "currency": "USD",
+      "country": "US",
+      "customer_id": "6b477f9a-09d3-41d8-a697-41a86d821e9a",
+      "merchant_id": "ccf9e01f-7060-4083-8898-a59a1791508d",
+      "fraud_score": "0.0728",
+      "fraud_decision": "REVIEW",
+      "rules_triggered": [
+        "amount_ceiling"
+      ]
+    },
+    {
+      "id": "db00a767-4773-4305-8d11-c63d73458d73",
+      "created_at": "2026-05-27T13:21:22.687419Z",
+      "age_seconds": 88733,
+      "amount": "7428.4000",
+      "currency": "USD",
+      "country": "US",
+      "customer_id": "05a3e5b2-dc55-44a4-81dc-6ac534b21023",
+      "merchant_id": "9a177024-d165-4a87-b939-1e5c381f1c86",
+      "fraud_score": "0.0700",
+      "fraud_decision": "REVIEW",
+      "rules_triggered": [
+        "amount_ceiling"
+      ]
+    },
+    {
+      "id": "9d0b9a20-aa4f-41c0-a948-295de8a05a36",
+      "created_at": "2026-05-27T13:33:24.304352Z",
+      "age_seconds": 88012,
+      "amount": "6342.6400",
+      "currency": "USD",
+      "country": "US",
+      "customer_id": "4d9efbcd-9a8b-44b5-a052-75338b937738",
+      "merchant_id": "32e73617-d22e-4fa4-9e89-2b0e33c96c1f",
+      "fraud_score": "0.0690",
+      "fraud_decision": "REVIEW",
+      "rules_triggered": [
+        "amount_ceiling"
+      ]
+    },
+    {
+      "id": "b67df7ab-adf5-4121-8bd3-1af6c9188b04",
+      "created_at": "2026-05-27T13:46:21.930053Z",
+      "age_seconds": 87234,
+      "amount": "6849.7400",
+      "currency": "USD",
+      "country": "US",
+      "customer_id": "f89b0c1d-a494-47b8-a6fe-8e290c63fe6f",
+      "merchant_id": "e72cc0a3-e1ac-461a-9d65-e18b6f3f4114",
+      "fraud_score": "0.0651",
+      "fraud_decision": "REVIEW",
+      "rules_triggered": [
+        "amount_ceiling"
+      ]
+    },
+    {
+      "id": "804f32c8-3b8c-4a98-af07-55bf0f38b398",
+      "created_at": "2026-05-27T13:17:37.303545Z",
+      "age_seconds": 88959,
+      "amount": "7444.8500",
+      "currency": "USD",
+      "country": "US",
+      "customer_id": "9dbd7e6a-fa3b-4026-aee5-65b209be902d",
+      "merchant_id": "b7c216e6-b940-47a8-93a9-6a7c4503aa72",
+      "fraud_score": "0.0639",
+      "fraud_decision": "REVIEW",
+      "rules_triggered": [
+        "amount_ceiling"
+      ]
+    },
+    {
+      "id": "90f9e7a8-359c-4ee1-99e1-960b84976b5b",
+      "created_at": "2026-05-27T16:03:31.950956Z",
+      "age_seconds": 79004,
+      "amount": "7023.8200",
+      "currency": "USD",
+      "country": "US",
+      "customer_id": "a08ba477-34d5-4eff-8af2-96846976bd26",
+      "merchant_id": "6bd7000d-c4eb-48a2-a821-6a2ce93ebffa",
+      "fraud_score": "0.0639",
+      "fraud_decision": "REVIEW",
+      "rules_triggered": [
+        "amount_ceiling"
+      ]
+    },
+    {
+      "id": "7f1e0419-d454-48b7-8749-7fd4617f9451",
+      "created_at": "2026-05-27T13:15:44.938698Z",
+      "age_seconds": 89071,
+      "amount": "7248.6200",
+      "currency": "USD",
+      "country": "US",
+      "customer_id": "2a623de4-45dd-40c2-af85-128c343ac4cf",
+      "merchant_id": "617eca54-447d-4d54-89ce-a5baf4cd9844",
+      "fraud_score": "0.0635",
+      "fraud_decision": "REVIEW",
+      "rules_triggered": [
+        "amount_ceiling"
+      ]
+    },
+    {
+      "id": "82239738-5287-46fe-8c8b-7f5e18f50f17",
+      "created_at": "2026-05-27T13:37:02.347128Z",
+      "age_seconds": 87794,
+      "amount": "5608.8000",
+      "currency": "USD",
+      "country": "US",
+      "customer_id": "0683d497-9f6e-4c02-9815-27ff019fa81a",
+      "merchant_id": "deb87097-2926-443b-8bc3-2a55eca576ea",
+      "fraud_score": "0.0618",
+      "fraud_decision": "REVIEW",
+      "rules_triggered": [
+        "amount_ceiling"
+      ]
+    },
+    {
+      "id": "5750b66d-ad2e-4668-a058-3b60a654d88e",
+      "created_at": "2026-05-27T13:29:35.811557Z",
+      "age_seconds": 88240,
+      "amount": "6311.7500",
+      "currency": "USD",
+      "country": "US",
+      "customer_id": "987f552c-a41c-49fd-96ae-9d3f23ef9218",
+      "merchant_id": "34808ce5-91c0-444b-9aac-204c63f54fda",
+      "fraud_score": "0.0604",
+      "fraud_decision": "REVIEW",
+      "rules_triggered": [
+        "amount_ceiling"
+      ]
+    },
+    {
+      "id": "c6bc86da-3d82-4e60-9e04-2a72bc65ba8e",
+      "created_at": "2026-05-27T13:30:03.454641Z",
+      "age_seconds": 88213,
+      "amount": "6275.4200",
+      "currency": "USD",
+      "country": "US",
+      "customer_id": "ded33be2-ee1b-4069-ac2e-18870ec64c1c",
+      "merchant_id": "8d8421e5-6f97-4956-abd8-30bb8cfb4794",
+      "fraud_score": "0.0574",
+      "fraud_decision": "REVIEW",
+      "rules_triggered": [
+        "amount_ceiling"
+      ]
+    },
+    {
+      "id": "f9f6e29a-b0da-4235-8cba-2acd4c0b5942",
+      "created_at": "2026-05-27T15:09:31.679448Z",
+      "age_seconds": 82244,
+      "amount": "5828.2200",
+      "currency": "USD",
+      "country": "US",
+      "customer_id": "ff7a985a-c0cb-4fff-8c60-e913d1e33354",
+      "merchant_id": "34808ce5-91c0-444b-9aac-204c63f54fda",
+      "fraud_score": "0.0535",
+      "fraud_decision": "REVIEW",
+      "rules_triggered": [
+        "amount_ceiling"
+      ]
+    },
+    {
+      "id": "45fc6d65-36e5-4ebe-8b40-c8bb1f88cba7",
+      "created_at": "2026-05-27T13:23:58.396742Z",
+      "age_seconds": 88578,
+      "amount": "7136.8100",
+      "currency": "USD",
+      "country": "US",
+      "customer_id": "dae79a1d-6964-4ddb-85c8-eef222bfbe9f",
+      "merchant_id": "eeb068e1-11d1-4456-a7e8-0a458518ef10",
+      "fraud_score": "0.0522",
+      "fraud_decision": "REVIEW",
+      "rules_triggered": [
+        "amount_ceiling"
+      ]
+    },
+    {
+      "id": "cba35bc8-3b38-4d89-a3fa-62d085064fba",
+      "created_at": "2026-05-27T13:31:17.554107Z",
+      "age_seconds": 88139,
+      "amount": "5652.1800",
+      "currency": "USD",
+      "country": "US",
+      "customer_id": "b508d9c2-24bd-49fa-8da0-71c0c98f622b",
+      "merchant_id": "f9596d39-0dcf-4989-a7dc-7306fe7db006",
+      "fraud_score": "0.0512",
+      "fraud_decision": "REVIEW",
+      "rules_triggered": [
+        "amount_ceiling"
+      ]
+    },
+    {
+      "id": "ff984862-4484-4759-9d48-dd8caa4f69eb",
+      "created_at": "2026-05-27T13:20:37.205438Z",
+      "age_seconds": 88779,
+      "amount": "7412.2800",
+      "currency": "USD",
+      "country": "US",
+      "customer_id": "db43cee1-14ab-44fb-b37d-d2d6274dcd44",
+      "merchant_id": "9420b12f-58be-4072-bd91-29b091c63cac",
+      "fraud_score": "0.0491",
+      "fraud_decision": "REVIEW",
+      "rules_triggered": [
+        "amount_ceiling"
+      ]
+    },
+    {
+      "id": "84f88a2e-7944-46cc-b91a-f45b78e768e2",
+      "created_at": "2026-05-27T13:49:41.994582Z",
+      "age_seconds": 87034,
+      "amount": "7526.2200",
+      "currency": "USD",
+      "country": "US",
+      "customer_id": "82775dc5-5e35-4eac-bae2-13a480028a31",
+      "merchant_id": "0e01185a-7f17-4d27-95b6-c6a1846a52c0",
+      "fraud_score": "0.0481",
+      "fraud_decision": "REVIEW",
+      "rules_triggered": [
+        "amount_ceiling"
+      ]
+    },
+    {
+      "id": "23d69ccc-0672-4255-84b3-c54da4e02637",
+      "created_at": "2026-05-27T13:24:00.445596Z",
+      "age_seconds": 88576,
+      "amount": "7808.2900",
+      "currency": "USD",
+      "country": "US",
+      "customer_id": "a696f8cf-213f-4a86-b18d-ad7162f3e885",
+      "merchant_id": "65bb2df0-fe73-476c-bfde-23e922a6061b",
+      "fraud_score": "0.0474",
+      "fraud_decision": "REVIEW",
+      "rules_triggered": [
+        "amount_ceiling"
+      ]
+    },
+    {
+      "id": "4ebc4e5f-3f05-4c99-b881-8ee4307929ae",
+      "created_at": "2026-05-27T13:09:07.015929Z",
+      "age_seconds": 89469,
+      "amount": "5561.4900",
+      "currency": "USD",
+      "country": "US",
+      "customer_id": "a8c8cde7-b1d1-4655-bc2d-ffc497d1620e",
+      "merchant_id": "b50bf6b1-f2c0-4e8f-a98b-a19d0a3ca2fe",
+      "fraud_score": "0.0465",
+      "fraud_decision": "REVIEW",
+      "rules_triggered": [
+        "amount_ceiling"
+      ]
+    },
+    {
+      "id": "482f5321-6e37-4a73-9513-bc2ba44bca01",
+      "created_at": "2026-05-27T13:52:11.101466Z",
+      "age_seconds": 86885,
+      "amount": "6907.9300",
+      "currency": "USD",
+      "country": "US",
+      "customer_id": "81884759-07bd-4e42-9b08-bbbcd3e30833",
+      "merchant_id": "b8c9df23-1a90-4771-81c1-0d8f31bf8e5e",
+      "fraud_score": "0.0444",
+      "fraud_decision": "REVIEW",
+      "rules_triggered": [
+        "amount_ceiling"
+      ]
+    },
+    {
+      "id": "3f1cd5bd-bb22-40b0-85c7-c573220d2b1b",
+      "created_at": "2026-05-27T13:37:09.494695Z",
+      "age_seconds": 87787,
+      "amount": "6011.9700",
+      "currency": "USD",
+      "country": "US",
+      "customer_id": "40bef43d-b38e-4d79-ac30-7460da4b7dd0",
+      "merchant_id": "254071c6-11b4-4dc0-985d-826a64815b1a",
+      "fraud_score": "0.0436",
+      "fraud_decision": "REVIEW",
+      "rules_triggered": [
+        "amount_ceiling"
+      ]
+    },
+    {
+      "id": "5a9ff185-5983-42b1-857f-ea10c4b012f0",
+      "created_at": "2026-05-27T13:20:22.655378Z",
+      "age_seconds": 88794,
+      "amount": "7324.9400",
+      "currency": "USD",
+      "country": "US",
+      "customer_id": "0f7897c9-66ce-483e-871c-23f0a5878eb8",
+      "merchant_id": "84c20f20-0366-413a-b2f2-3335fec958e4",
+      "fraud_score": "0.0422",
+      "fraud_decision": "REVIEW",
+      "rules_triggered": [
+        "amount_ceiling"
+      ]
+    },
+    {
+      "id": "d3516ff2-1f3f-40bc-ab8e-b6fb6326b902",
+      "created_at": "2026-05-27T13:28:03.226694Z",
+      "age_seconds": 88333,
+      "amount": "5615.6400",
+      "currency": "USD",
+      "country": "US",
+      "customer_id": "8a033c3a-b77f-48ad-a08b-0ebc48166020",
+      "merchant_id": "0e01185a-7f17-4d27-95b6-c6a1846a52c0",
+      "fraud_score": "0.0392",
+      "fraud_decision": "REVIEW",
+      "rules_triggered": [
+        "amount_ceiling"
+      ]
+    },
+    {
+      "id": "317c7174-89f1-40ac-afc6-0676ff077bc3",
+      "created_at": "2026-05-27T13:41:32.857245Z",
+      "age_seconds": 87523,
+      "amount": "6051.1200",
+      "currency": "USD",
+      "country": "US",
+      "customer_id": "a08ba477-34d5-4eff-8af2-96846976bd26",
+      "merchant_id": "ba89ae55-be45-4e3b-89e5-176a45ecbebf",
+      "fraud_score": "0.0378",
+      "fraud_decision": "REVIEW",
+      "rules_triggered": [
+        "amount_ceiling"
+      ]
+    },
+    {
+      "id": "b0464715-15e1-4cdd-afab-ad8510e49e17",
+      "created_at": "2026-05-27T14:53:20.003875Z",
+      "age_seconds": 83216,
+      "amount": "7632.6100",
+      "currency": "USD",
+      "country": "US",
+      "customer_id": "00d1a276-e9bc-4c53-ba46-3db2dcc64079",
+      "merchant_id": "fc191c89-2efd-498f-859a-50d0ad830332",
+      "fraud_score": "0.0344",
+      "fraud_decision": "REVIEW",
+      "rules_triggered": [
+        "amount_ceiling"
+      ]
+    },
+    {
+      "id": "8e90f8f5-fe60-4a81-8cd6-7122852f268c",
+      "created_at": "2026-05-27T13:16:18.127986Z",
+      "age_seconds": 89038,
+      "amount": "7979.6300",
+      "currency": "USD",
+      "country": "US",
+      "customer_id": "b3ebd114-294e-483c-b72e-bf1da2952b01",
+      "merchant_id": "57267176-4e2d-4bb0-9670-5b6256628bf2",
+      "fraud_score": "0.0286",
+      "fraud_decision": "REVIEW",
+      "rules_triggered": [
+        "amount_ceiling"
+      ]
+    },
+    {
+      "id": "1334b15e-d6c3-4eb1-856e-67c1e1f8eaeb",
+      "created_at": "2026-05-27T13:16:54.551088Z",
+      "age_seconds": 89002,
+      "amount": "7683.4500",
+      "currency": "USD",
+      "country": "US",
+      "customer_id": "81da366b-33b3-42ec-b45d-2b0ad0887edf",
+      "merchant_id": "01e26392-f549-40af-b723-d39d07ac9a25",
+      "fraud_score": "0.0253",
+      "fraud_decision": "REVIEW",
+      "rules_triggered": [
+        "amount_ceiling"
+      ]
+    },
+    {
+      "id": "173135c7-40f9-491e-ba64-adc7c5b2b759",
+      "created_at": "2026-05-27T13:22:11.006050Z",
+      "age_seconds": 88685,
+      "amount": "7239.3700",
+      "currency": "USD",
+      "country": "US",
+      "customer_id": "f7d94e57-2248-4327-9bc2-7daebdc1a7f1",
+      "merchant_id": "4f6cdd1b-4c15-4c5a-bd28-809990e9f36f",
+      "fraud_score": "0.0252",
+      "fraud_decision": "REVIEW",
+      "rules_triggered": [
+        "amount_ceiling"
+      ]
+    },
+    {
+      "id": "724188bd-30d0-4986-8c55-122630c926b6",
+      "created_at": "2026-05-27T14:50:50.061710Z",
+      "age_seconds": 83366,
+      "amount": "7901.3100",
+      "currency": "USD",
+      "country": "US",
+      "customer_id": "2e333e28-8b3d-4e37-9fa1-ab81053d6343",
+      "merchant_id": "7705383f-00ca-42dd-9a72-fdd66f78e758",
+      "fraud_score": "0.0246",
+      "fraud_decision": "REVIEW",
+      "rules_triggered": [
+        "amount_ceiling"
+      ]
+    },
+    {
+      "id": "1d9ec5a7-32a9-421b-bd0b-c746c9f5735a",
+      "created_at": "2026-05-27T13:26:15.761899Z",
+      "age_seconds": 88440,
+      "amount": "6951.0200",
+      "currency": "USD",
+      "country": "US",
+      "customer_id": "b19c0320-cfcb-4297-bbfd-7d950d4e7a39",
+      "merchant_id": "f0577ca0-b0a3-4432-a765-4a2bc868adc8",
+      "fraud_score": "0.0242",
+      "fraud_decision": "REVIEW",
+      "rules_triggered": [
+        "amount_ceiling"
+      ]
+    },
+    {
+      "id": "97052d0b-b805-4e13-b646-60f9a0d8f70a",
+      "created_at": "2026-05-27T13:17:16.444846Z",
+      "age_seconds": 88980,
+      "amount": "7645.6700",
+      "currency": "USD",
+      "country": "US",
+      "customer_id": "9bc39b5a-19af-49c0-94f0-4285c302414e",
+      "merchant_id": "a81cd3a6-2860-4f0b-9f34-38f79eff0e45",
+      "fraud_score": "0.0224",
+      "fraud_decision": "REVIEW",
+      "rules_triggered": [
+        "amount_ceiling"
+      ]
+    },
+    {
+      "id": "a9f74be2-9589-4ce0-868b-aa60f34e3df8",
+      "created_at": "2026-05-27T15:50:49.198617Z",
+      "age_seconds": 79767,
+      "amount": "6437.4100",
+      "currency": "USD",
+      "country": "US",
+      "customer_id": "3ac1a167-f451-48d3-a400-048581766602",
+      "merchant_id": "a9c9fc3e-e669-4196-936b-54933ea60607",
+      "fraud_score": "0.0204",
+      "fraud_decision": "REVIEW",
+      "rules_triggered": [
+        "amount_ceiling"
+      ]
+    },
+    {
+      "id": "5f650bdb-f08a-4d67-b240-14b626cd217e",
+      "created_at": "2026-05-27T15:36:48.497669Z",
+      "age_seconds": 80608,
+      "amount": "6572.2500",
+      "currency": "USD",
+      "country": "US",
+      "customer_id": "69ea8c84-6773-455e-b5a1-d8b4442f0ce8",
+      "merchant_id": "e8723e9b-d388-47bc-af7a-227ee7f51688",
+      "fraud_score": "0.0188",
+      "fraud_decision": "REVIEW",
+      "rules_triggered": [
+        "amount_ceiling"
+      ]
+    },
+    {
+      "id": "dd886a80-5ded-4340-b81d-bc70297cc1f7",
+      "created_at": "2026-05-27T14:13:12.203012Z",
+      "age_seconds": 85624,
+      "amount": "5518.2100",
+      "currency": "USD",
+      "country": "US",
+      "customer_id": "521dfc46-cb71-466f-ba0b-ea3325baeae4",
+      "merchant_id": "8b859cac-a782-4c30-a781-51535e4b84b6",
+      "fraud_score": "0.0184",
+      "fraud_decision": "REVIEW",
+      "rules_triggered": [
+        "amount_ceiling"
+      ]
+    },
+    {
+      "id": "2e86007f-4905-48f6-bcc0-9d5632804b9d",
+      "created_at": "2026-05-27T15:14:34.152254Z",
+      "age_seconds": 81942,
+      "amount": "6536.0300",
+      "currency": "USD",
+      "country": "US",
+      "customer_id": "40692a2b-8b48-4e7b-a58b-2ebd9e688d34",
+      "merchant_id": "6efc18bb-6e76-40b9-8694-5d5eac4112c1",
+      "fraud_score": "0.0183",
+      "fraud_decision": "REVIEW",
+      "rules_triggered": [
+        "amount_ceiling"
+      ]
+    },
+    {
+      "id": "157f1962-6974-4e6b-831e-d0cb39c41f1d",
+      "created_at": "2026-05-27T13:29:21.502043Z",
+      "age_seconds": 88255,
+      "amount": "6061.2900",
+      "currency": "USD",
+      "country": "US",
+      "customer_id": "202787b9-75fe-4259-bf1d-5f496b9eb68f",
+      "merchant_id": "121f78f2-e286-4bb4-b867-ea968bd0ca59",
+      "fraud_score": "0.0181",
+      "fraud_decision": "REVIEW",
+      "rules_triggered": [
+        "amount_ceiling"
+      ]
+    },
+    {
+      "id": "822a446d-0814-43df-9587-ab06142682f6",
+      "created_at": "2026-05-27T13:35:55.933610Z",
+      "age_seconds": 87860,
+      "amount": "6379.6600",
+      "currency": "USD",
+      "country": "US",
+      "customer_id": "ba989a40-c22b-4519-a7a5-ee91b1effbcf",
+      "merchant_id": "16096af0-4f17-4f0b-9d36-d33266aca57e",
+      "fraud_score": "0.0180",
+      "fraud_decision": "REVIEW",
+      "rules_triggered": [
+        "amount_ceiling"
+      ]
+    },
+    {
+      "id": "9fef9bba-1394-4a2d-9e87-e2048a3557e9",
+      "created_at": "2026-05-27T14:26:21.762836Z",
+      "age_seconds": 84834,
+      "amount": "6707.8800",
+      "currency": "USD",
+      "country": "US",
+      "customer_id": "a61009fc-346c-43fb-b5c4-3f8a5bc176ab",
+      "merchant_id": "4d3b8bfb-3e02-4d1e-b495-76b47b174412",
+      "fraud_score": "0.0178",
+      "fraud_decision": "REVIEW",
+      "rules_triggered": [
+        "amount_ceiling"
+      ]
+    },
+    {
+      "id": "3ff80ca7-dce1-4686-9f7a-6827afc45579",
+      "created_at": "2026-05-27T14:34:05.968611Z",
+      "age_seconds": 84370,
+      "amount": "6838.8600",
+      "currency": "USD",
+      "country": "US",
+      "customer_id": "8c2bc5dc-11d8-45b9-bd2e-7ccdf90f7ca0",
+      "merchant_id": "8ee79fad-3b5f-4163-8afa-412a9fb34a0d",
+      "fraud_score": "0.0173",
+      "fraud_decision": "REVIEW",
+      "rules_triggered": [
+        "amount_ceiling"
+      ]
+    },
+    {
+      "id": "c2aff563-1529-45cb-b8ef-f340888a9037",
+      "created_at": "2026-05-27T13:32:43.441615Z",
+      "age_seconds": 88053,
+      "amount": "6117.7300",
+      "currency": "USD",
+      "country": "US",
+      "customer_id": "9edbca79-a2cb-4481-86a2-a23b637f7f1c",
+      "merchant_id": "a9c9fc3e-e669-4196-936b-54933ea60607",
+      "fraud_score": "0.0169",
+      "fraud_decision": "REVIEW",
+      "rules_triggered": [
+        "amount_ceiling"
+      ]
+    },
+    {
+      "id": "24559a71-18f1-4215-994e-4740ee332847",
+      "created_at": "2026-05-27T13:23:43.045009Z",
+      "age_seconds": 88593,
+      "amount": "7314.7900",
+      "currency": "USD",
+      "country": "US",
+      "customer_id": "b1fa0363-7355-421b-b5f7-df954663d9c5",
+      "merchant_id": "258bfe81-89e1-4206-9f95-f0806a8c4739",
+      "fraud_score": "0.0168",
+      "fraud_decision": "REVIEW",
+      "rules_triggered": [
+        "amount_ceiling"
+      ]
+    },
+    {
+      "id": "cb11d7fe-d62e-4269-b67d-f0e7136fa428",
+      "created_at": "2026-05-27T14:33:19.970450Z",
+      "age_seconds": 84416,
+      "amount": "6003.0500",
+      "currency": "USD",
+      "country": "US",
+      "customer_id": "0cb206c1-4c9d-4f5a-a3d1-7dec10f25943",
+      "merchant_id": "b598b83a-dd62-469e-9adc-ed7a6f5dbdc5",
+      "fraud_score": "0.0163",
+      "fraud_decision": "REVIEW",
+      "rules_triggered": [
+        "amount_ceiling"
+      ]
+    },
+    {
+      "id": "a3c768ad-4c34-4ec8-840d-3be7c6964983",
+      "created_at": "2026-05-27T14:28:44.751610Z",
+      "age_seconds": 84691,
+      "amount": "7577.2500",
+      "currency": "USD",
+      "country": "US",
+      "customer_id": "b9878493-fb42-433c-9fbe-1d68dd2e09a5",
+      "merchant_id": "e138a887-e78c-493e-877c-46deed40f38b",
+      "fraud_score": "0.0162",
+      "fraud_decision": "REVIEW",
+      "rules_triggered": [
+        "amount_ceiling"
+      ]
+    },
+    {
+      "id": "9f757de1-9960-49b8-a58b-85b4ca7d73e5",
+      "created_at": "2026-05-27T13:45:12.261211Z",
+      "age_seconds": 87304,
+      "amount": "5709.2600",
+      "currency": "USD",
+      "country": "US",
+      "customer_id": "94d4e003-9cf0-4f54-bb93-4e37b389a5d8",
+      "merchant_id": "7f94eef7-e61d-4892-ad63-ee3eb6c8dc11",
+      "fraud_score": "0.0161",
+      "fraud_decision": "REVIEW",
+      "rules_triggered": [
+        "amount_ceiling"
+      ]
+    },
+    {
+      "id": "c86be4b1-8cae-4c4d-b9e4-87ba8ba26545",
+      "created_at": "2026-05-27T14:56:00.652277Z",
+      "age_seconds": 83056,
+      "amount": "5903.8300",
+      "currency": "USD",
+      "country": "US",
+      "customer_id": "47900916-ed30-4253-a899-b703bdd65fc1",
+      "merchant_id": "6f7e5442-5dfe-4fe9-9dc2-94e36106b99c",
+      "fraud_score": "0.0160",
+      "fraud_decision": "REVIEW",
+      "rules_triggered": [
+        "amount_ceiling"
+      ]
+    },
+    {
+      "id": "1413e19a-02d6-452c-bf50-28e213780e06",
+      "created_at": "2026-05-27T14:01:49.202088Z",
+      "age_seconds": 86307,
+      "amount": "7535.0200",
+      "currency": "USD",
+      "country": "US",
+      "customer_id": "0d9c9ea5-bdca-4e81-b858-f0cca71460af",
+      "merchant_id": "89ab2e76-1699-47e7-a601-3fe0724b7810",
+      "fraud_score": "0.0159",
+      "fraud_decision": "REVIEW",
+      "rules_triggered": [
+        "amount_ceiling"
+      ]
+    },
+    {
+      "id": "f9ee46a2-7e4d-49fb-8376-11b2caddb534",
+      "created_at": "2026-05-27T14:38:05.943936Z",
+      "age_seconds": 84130,
+      "amount": "5783.3100",
+      "currency": "USD",
+      "country": "US",
+      "customer_id": "38c85fb2-4185-4973-b2a9-b3bead5bbaa9",
+      "merchant_id": "7f94eef7-e61d-4892-ad63-ee3eb6c8dc11",
+      "fraud_score": "0.0158",
+      "fraud_decision": "REVIEW",
+      "rules_triggered": [
+        "amount_ceiling"
+      ]
+    },
+    {
+      "id": "01cf7e17-58ba-4d45-9c8f-cbd046621c65",
+      "created_at": "2026-05-27T14:00:53.867431Z",
+      "age_seconds": 86362,
+      "amount": "6419.9600",
+      "currency": "USD",
+      "country": "US",
+      "customer_id": "f586265c-cc12-4312-a52a-40212e46f4b9",
+      "merchant_id": "803bb24c-d3db-4c54-bb1d-a0e2fc0990d5",
+      "fraud_score": "0.0158",
+      "fraud_decision": "REVIEW",
+      "rules_triggered": [
+        "amount_ceiling"
+      ]
+    },
+    {
+      "id": "cc2ae4f3-44b9-4cd0-a26d-3da420bcde21",
+      "created_at": "2026-05-27T13:54:14.000366Z",
+      "age_seconds": 86762,
+      "amount": "7467.2800",
+      "currency": "USD",
+      "country": "US",
+      "customer_id": "d23b7252-8c3d-4389-a4c4-eb6d26b297ef",
+      "merchant_id": "fc191c89-2efd-498f-859a-50d0ad830332",
+      "fraud_score": "0.0158",
+      "fraud_decision": "REVIEW",
+      "rules_triggered": [
+        "amount_ceiling"
+      ]
+    },
+    {
+      "id": "09f895ef-a5a0-4d94-967b-0cc53bb43012",
+      "created_at": "2026-05-27T13:45:38.908679Z",
+      "age_seconds": 87277,
+      "amount": "6864.8300",
+      "currency": "USD",
+      "country": "US",
+      "customer_id": "91c56250-4926-4552-a59d-3a8899abad12",
+      "merchant_id": "2e43cb80-5360-43e0-b186-39cf13883119",
+      "fraud_score": "0.0156",
+      "fraud_decision": "REVIEW",
+      "rules_triggered": [
+        "amount_ceiling"
+      ]
+    },
+    {
+      "id": "37200792-ab36-43f8-83dd-6ff3e6d3349a",
+      "created_at": "2026-05-27T13:48:24.082539Z",
+      "age_seconds": 87112,
+      "amount": "7683.6000",
+      "currency": "USD",
+      "country": "US",
+      "customer_id": "97868b62-d3d9-4a95-938b-1f74b9976015",
+      "merchant_id": "cedd4a57-2140-4483-8841-7862041bd119",
+      "fraud_score": "0.0153",
+      "fraud_decision": "REVIEW",
+      "rules_triggered": [
+        "amount_ceiling"
+      ]
+    },
+    {
+      "id": "b98f3497-d21f-4bf6-9079-2d4eec05d96d",
+      "created_at": "2026-05-27T14:06:47.692752Z",
+      "age_seconds": 86008,
+      "amount": "6545.8700",
+      "currency": "USD",
+      "country": "US",
+      "customer_id": "95e029b0-843e-4bba-9058-a43ce755e33d",
+      "merchant_id": "0a7d98da-166a-424e-a50f-d205fefc8a59",
+      "fraud_score": "0.0151",
+      "fraud_decision": "REVIEW",
+      "rules_triggered": [
+        "amount_ceiling"
+      ]
+    },
+    {
+      "id": "48177b84-9848-403f-9d6f-08c57a6f407a",
+      "created_at": "2026-05-27T15:14:42.413893Z",
+      "age_seconds": 81934,
+      "amount": "5778.2600",
+      "currency": "USD",
+      "country": "US",
+      "customer_id": "964a3726-85b2-4004-8253-ddf126e65db5",
+      "merchant_id": "2e43cb80-5360-43e0-b186-39cf13883119",
+      "fraud_score": "0.0149",
+      "fraud_decision": "REVIEW",
+      "rules_triggered": [
+        "amount_ceiling"
+      ]
+    },
+    {
+      "id": "3fa29da3-b4b3-4689-ae8e-d3a9a14efe8a",
+      "created_at": "2026-05-27T15:44:40.243267Z",
+      "age_seconds": 80136,
+      "amount": "7030.0200",
+      "currency": "USD",
+      "country": "US",
+      "customer_id": "69ea8c84-6773-455e-b5a1-d8b4442f0ce8",
+      "merchant_id": "4e9193fa-996f-4142-a69d-75e1015a639f",
+      "fraud_score": "0.0147",
+      "fraud_decision": "REVIEW",
+      "rules_triggered": [
+        "amount_ceiling"
+      ]
+    },
+    {
+      "id": "9e0a97c5-106b-4d14-9eac-24e8363a10e9",
+      "created_at": "2026-05-27T15:06:01.884499Z",
+      "age_seconds": 82454,
+      "amount": "6130.8300",
+      "currency": "USD",
+      "country": "US",
+      "customer_id": "b2dac3ff-91ae-4029-94c9-bfa481b213ca",
+      "merchant_id": "96c9cdfd-bcd3-431f-b918-6b8397115a79",
+      "fraud_score": "0.0147",
+      "fraud_decision": "REVIEW",
+      "rules_triggered": [
+        "amount_ceiling"
+      ]
+    },
+    {
+      "id": "a31de979-ebc6-489a-ae5e-b20bc105cc2b",
+      "created_at": "2026-05-27T13:49:00.511008Z",
+      "age_seconds": 87076,
+      "amount": "7876.1900",
+      "currency": "USD",
+      "country": "US",
+      "customer_id": "3662170e-2507-484e-ba1d-55370b9b4ceb",
+      "merchant_id": "8d8421e5-6f97-4956-abd8-30bb8cfb4794",
+      "fraud_score": "0.0146",
+      "fraud_decision": "REVIEW",
+      "rules_triggered": [
+        "amount_ceiling"
+      ]
+    },
+    {
+      "id": "2ca4b25e-f418-4ab0-994d-a8c3ab5fa933",
+      "created_at": "2026-05-27T14:58:19.099685Z",
+      "age_seconds": 82917,
+      "amount": "7138.1200",
+      "currency": "USD",
+      "country": "US",
+      "customer_id": "e825a405-b49f-4969-8737-9fc34d4f495b",
+      "merchant_id": "16096af0-4f17-4f0b-9d36-d33266aca57e",
+      "fraud_score": "0.0146",
+      "fraud_decision": "REVIEW",
+      "rules_triggered": [
+        "amount_ceiling"
+      ]
+    },
+    {
+      "id": "4036b5e9-955d-4e22-817d-f53bc2c0d16e",
+      "created_at": "2026-05-27T13:36:31.687785Z",
+      "age_seconds": 87824,
+      "amount": "6829.2400",
+      "currency": "USD",
+      "country": "US",
+      "customer_id": "d4a944b0-2010-4b63-9513-295ff1896aa9",
+      "merchant_id": "f9596d39-0dcf-4989-a7dc-7306fe7db006",
+      "fraud_score": "0.0145",
+      "fraud_decision": "REVIEW",
+      "rules_triggered": [
+        "amount_ceiling"
+      ]
+    },
+    {
+      "id": "0fb0ad7a-1277-4779-8c7f-7d720fa4dff8",
+      "created_at": "2026-05-27T13:57:36.555107Z",
+      "age_seconds": 86560,
+      "amount": "7395.4800",
+      "currency": "USD",
+      "country": "US",
+      "customer_id": "1cd27b90-4ac3-43f8-a2ec-964423cc0bbd",
+      "merchant_id": "30f53253-c386-479b-bda2-e1c99d203555",
+      "fraud_score": "0.0145",
+      "fraud_decision": "REVIEW",
+      "rules_triggered": [
+        "amount_ceiling"
+      ]
+    },
+    {
+      "id": "88a75bda-926a-4a5f-a043-cd49731796bb",
+      "created_at": "2026-05-27T13:37:35.123075Z",
+      "age_seconds": 87761,
+      "amount": "6574.9300",
+      "currency": "USD",
+      "country": "US",
+      "customer_id": "f360a6f4-e954-4485-b5a0-50fff19f3d7a",
+      "merchant_id": "39695319-01f4-4ca7-b534-f35f182dd730",
+      "fraud_score": "0.0144",
+      "fraud_decision": "REVIEW",
+      "rules_triggered": [
+        "amount_ceiling"
+      ]
+    },
+    {
+      "id": "a78b5935-99dd-4e12-b75f-1210de12a092",
+      "created_at": "2026-05-27T15:15:35.284147Z",
+      "age_seconds": 81881,
+      "amount": "6292.6900",
+      "currency": "USD",
+      "country": "US",
+      "customer_id": "a6ff43ff-3b71-4225-bbb0-c9f6d403254d",
+      "merchant_id": "feab4e07-d4b2-4502-8034-ff02f75f4cef",
+      "fraud_score": "0.0144",
+      "fraud_decision": "REVIEW",
+      "rules_triggered": [
+        "amount_ceiling"
+      ]
+    },
+    {
+      "id": "e6315de8-2ce1-45d3-a10f-f9bc07608a5a",
+      "created_at": "2026-05-27T13:38:25.366182Z",
+      "age_seconds": 87711,
+      "amount": "6749.0100",
+      "currency": "USD",
+      "country": "US",
+      "customer_id": "f2b0a5ee-c8f6-423d-a2c1-7927460eb12d",
+      "merchant_id": "9057923e-7d76-4db5-81a3-1ca17f6057e3",
+      "fraud_score": "0.0143",
+      "fraud_decision": "REVIEW",
+      "rules_triggered": [
+        "amount_ceiling"
+      ]
+    },
+    {
+      "id": "70f98b5c-e3d2-4308-ba94-0923acfa5004",
+      "created_at": "2026-05-27T14:54:42.790638Z",
+      "age_seconds": 83133,
+      "amount": "7770.3900",
+      "currency": "USD",
+      "country": "US",
+      "customer_id": "ad6af8f0-6a5e-4b9e-98ce-8dbc5e0f3f4c",
+      "merchant_id": "26317fbe-b315-4c78-9bf9-9846b62a5e03",
+      "fraud_score": "0.0142",
+      "fraud_decision": "REVIEW",
+      "rules_triggered": [
+        "amount_ceiling"
+      ]
+    },
+    {
+      "id": "c2e90b9f-8c7f-4b7e-88fd-e01f1dd5f238",
+      "created_at": "2026-05-27T14:53:05.710778Z",
+      "age_seconds": 83230,
+      "amount": "7849.4100",
+      "currency": "USD",
+      "country": "US",
+      "customer_id": "eb7cc80c-dc76-43a7-aba3-f1139e8ae8a6",
+      "merchant_id": "0a7d98da-166a-424e-a50f-d205fefc8a59",
+      "fraud_score": "0.0142",
+      "fraud_decision": "REVIEW",
+      "rules_triggered": [
+        "amount_ceiling"
+      ]
+    },
+    {
+      "id": "0d9414f6-65d2-41fc-99bc-273556bd6acc",
+      "created_at": "2026-05-27T15:49:45.857158Z",
+      "age_seconds": 79830,
+      "amount": "6421.4700",
+      "currency": "USD",
+      "country": "US",
+      "customer_id": "6b6fa6f1-75a0-4fa6-96de-2d9d22522497",
+      "merchant_id": "10a2e024-bed8-4324-908a-67e71b8c23d9",
+      "fraud_score": "0.0142",
+      "fraud_decision": "REVIEW",
+      "rules_triggered": [
+        "amount_ceiling"
+      ]
+    },
+    {
+      "id": "02a0cddf-e55c-4c67-9e0e-4e2f6e1c9a51",
+      "created_at": "2026-05-27T14:12:46.361679Z",
+      "age_seconds": 85650,
+      "amount": "6156.4400",
+      "currency": "USD",
+      "country": "US",
+      "customer_id": "acc36a60-f584-4a2a-87aa-e9b9cd8bcc4c",
+      "merchant_id": "50ccbbec-bc8b-433d-b1fc-0a9cb375dcd7",
+      "fraud_score": "0.0142",
+      "fraud_decision": "REVIEW",
+      "rules_triggered": [
+        "amount_ceiling"
+      ]
+    },
+    {
+      "id": "55122238-ae72-4a55-a680-4de00acef98c",
+      "created_at": "2026-05-27T14:34:01.882982Z",
+      "age_seconds": 84374,
+      "amount": "6823.1300",
+      "currency": "USD",
+      "country": "US",
+      "customer_id": "2a623de4-45dd-40c2-af85-128c343ac4cf",
+      "merchant_id": "056b232c-67c5-4478-9dd5-a63ace2472b2",
+      "fraud_score": "0.0142",
+      "fraud_decision": "REVIEW",
+      "rules_triggered": [
+        "amount_ceiling"
+      ]
+    },
+    {
+      "id": "22b81b78-d9f4-4f31-8080-f75684a36f72",
+      "created_at": "2026-05-27T14:37:31.994817Z",
+      "age_seconds": 84164,
+      "amount": "6972.1400",
+      "currency": "USD",
+      "country": "US",
+      "customer_id": "8bd9b608-70a8-46b9-9de9-1d9aabfedd94",
+      "merchant_id": "feab4e07-d4b2-4502-8034-ff02f75f4cef",
+      "fraud_score": "0.0142",
+      "fraud_decision": "REVIEW",
+      "rules_triggered": [
+        "amount_ceiling"
+      ]
+    },
+    {
+      "id": "d52129b5-84a3-4878-b2b3-6324a5c528db",
+      "created_at": "2026-05-27T14:46:22.685522Z",
+      "age_seconds": 83633,
+      "amount": "6807.7800",
+      "currency": "USD",
+      "country": "US",
+      "customer_id": "2a623de4-45dd-40c2-af85-128c343ac4cf",
+      "merchant_id": "1747dcdb-893c-4f1b-bc07-da493fec6ee1",
+      "fraud_score": "0.0142",
+      "fraud_decision": "REVIEW",
+      "rules_triggered": [
+        "amount_ceiling"
+      ]
+    },
+    {
+      "id": "937b7490-a713-4f51-b4ab-20193c8848c8",
+      "created_at": "2026-05-27T14:17:31.545817Z",
+      "age_seconds": 85365,
+      "amount": "6199.5200",
+      "currency": "USD",
+      "country": "US",
+      "customer_id": "964a3726-85b2-4004-8253-ddf126e65db5",
+      "merchant_id": "eeb068e1-11d1-4456-a7e8-0a458518ef10",
+      "fraud_score": "0.0141",
+      "fraud_decision": "REVIEW",
+      "rules_triggered": [
+        "amount_ceiling"
+      ]
+    },
+    {
+      "id": "60124381-ab3c-4314-ad10-182702f67f31",
+      "created_at": "2026-05-27T14:19:08.147494Z",
+      "age_seconds": 85268,
+      "amount": "7663.6800",
+      "currency": "USD",
+      "country": "US",
+      "customer_id": "24fe17cf-6aed-478a-9295-7a3653b43c0f",
+      "merchant_id": "9dddcf54-6ecd-44a5-9154-d1a5a5f66637",
+      "fraud_score": "0.0141",
+      "fraud_decision": "REVIEW",
+      "rules_triggered": [
+        "amount_ceiling"
+      ]
+    },
+    {
+      "id": "cd2c44c7-bd17-42d9-977b-8058d0f11ba4",
+      "created_at": "2026-05-27T15:13:46.495955Z",
+      "age_seconds": 81990,
+      "amount": "7199.8000",
+      "currency": "USD",
+      "country": "US",
+      "customer_id": "a6ff43ff-3b71-4225-bbb0-c9f6d403254d",
+      "merchant_id": "1f5b84a3-f1ea-4087-a1e6-e73f589842f9",
+      "fraud_score": "0.0140",
+      "fraud_decision": "REVIEW",
+      "rules_triggered": [
+        "amount_ceiling"
+      ]
+    },
+    {
+      "id": "a02c482d-b69f-4e18-81e5-0a06b54be3e6",
+      "created_at": "2026-05-27T14:35:40.359055Z",
+      "age_seconds": 84276,
+      "amount": "6615.9500",
+      "currency": "USD",
+      "country": "US",
+      "customer_id": "8e8ab89f-ce53-40d2-9f9e-1a3d707a97a6",
+      "merchant_id": "1bf4b956-a936-44b1-8d5b-a1089c59bb70",
+      "fraud_score": "0.0140",
+      "fraud_decision": "REVIEW",
+      "rules_triggered": [
+        "amount_ceiling"
+      ]
+    },
+    {
+      "id": "a558447d-4a72-415e-ac9f-fea1b3b2408d",
+      "created_at": "2026-05-27T14:42:53.559377Z",
+      "age_seconds": 83843,
+      "amount": "7222.3000",
+      "currency": "USD",
+      "country": "US",
+      "customer_id": "79d4b82a-e2af-4893-8e60-8e2e3194201c",
+      "merchant_id": "b7c216e6-b940-47a8-93a9-6a7c4503aa72",
+      "fraud_score": "0.0138",
+      "fraud_decision": "REVIEW",
+      "rules_triggered": [
+        "amount_ceiling"
+      ]
+    },
+    {
+      "id": "615cb08a-2109-4fc0-9172-eaae09005262",
+      "created_at": "2026-05-27T13:59:17.793273Z",
+      "age_seconds": 86458,
+      "amount": "6098.0900",
+      "currency": "USD",
+      "country": "US",
+      "customer_id": "f84529a7-517b-457c-b5ef-828003452347",
+      "merchant_id": "13f4ece2-d152-4a73-a7ae-a558b45bd857",
+      "fraud_score": "0.0137",
+      "fraud_decision": "REVIEW",
+      "rules_triggered": [
+        "amount_ceiling"
+      ]
+    },
+    {
+      "id": "518c6474-7394-433a-9558-152c30e459f2",
+      "created_at": "2026-05-27T15:47:35.158363Z",
+      "age_seconds": 79961,
+      "amount": "6613.8100",
+      "currency": "USD",
+      "country": "US",
+      "customer_id": "cad4fddd-509d-4454-9208-85bb09740631",
+      "merchant_id": "39695319-01f4-4ca7-b534-f35f182dd730",
+      "fraud_score": "0.0135",
+      "fraud_decision": "REVIEW",
+      "rules_triggered": [
+        "amount_ceiling"
+      ]
+    },
+    {
+      "id": "3e028543-5ffd-4466-9e02-4579d03d768b",
+      "created_at": "2026-05-27T14:01:22.632421Z",
+      "age_seconds": 86334,
+      "amount": "7635.5800",
+      "currency": "USD",
+      "country": "US",
+      "customer_id": "105bbbdb-ff44-4b7a-bdfe-f22fea0c7b47",
+      "merchant_id": "5705b701-3227-4b96-9a43-d16dfeda5ccf",
+      "fraud_score": "0.0134",
+      "fraud_decision": "REVIEW",
+      "rules_triggered": [
+        "amount_ceiling"
+      ]
+    },
+    {
+      "id": "89736706-cb31-4cef-bbc9-83e89b1236b4",
+      "created_at": "2026-05-27T14:13:37.579978Z",
+      "age_seconds": 85599,
+      "amount": "6843.5700",
+      "currency": "USD",
+      "country": "US",
+      "customer_id": "d30fae6b-fb80-46ba-bbb6-55a7c7d41231",
+      "merchant_id": "26317fbe-b315-4c78-9bf9-9846b62a5e03",
+      "fraud_score": "0.0131",
+      "fraud_decision": "REVIEW",
+      "rules_triggered": [
+        "amount_ceiling"
+      ]
+    },
+    {
+      "id": "977c0c41-d42c-4625-8a0a-9e6b3e26ebe3",
+      "created_at": "2026-05-27T14:29:13.312715Z",
+      "age_seconds": 84663,
+      "amount": "7318.7000",
+      "currency": "USD",
+      "country": "US",
+      "customer_id": "42c8a1f4-ca4f-478b-b2cc-e9549017d25e",
+      "merchant_id": "49481f46-3e45-4aec-a1ad-d7ad253f6215",
+      "fraud_score": "0.0131",
+      "fraud_decision": "REVIEW",
+      "rules_triggered": [
+        "amount_ceiling"
+      ]
+    },
+    {
+      "id": "391d2faf-7d1e-412e-ae3e-a7b692d3167a",
+      "created_at": "2026-05-27T15:55:29.192832Z",
+      "age_seconds": 79487,
+      "amount": "5780.6200",
+      "currency": "USD",
+      "country": "US",
+      "customer_id": "e0b2b0b3-20d1-4bb3-a705-09fc808c86b4",
+      "merchant_id": "dd0241d7-0c5e-46fb-8d80-444451c01904",
+      "fraud_score": "0.0131",
+      "fraud_decision": "REVIEW",
+      "rules_triggered": [
+        "amount_ceiling"
+      ]
+    },
+    {
+      "id": "b772598f-9cfe-44cf-89fa-77091a7595c1",
+      "created_at": "2026-05-27T15:02:41.603090Z",
+      "age_seconds": 82655,
+      "amount": "5957.0900",
+      "currency": "USD",
+      "country": "US",
+      "customer_id": "1982fd58-4ada-4524-9948-2a207327899c",
+      "merchant_id": "b8c9df23-1a90-4771-81c1-0d8f31bf8e5e",
+      "fraud_score": "0.0127",
+      "fraud_decision": "REVIEW",
+      "rules_triggered": [
+        "amount_ceiling"
+      ]
+    },
+    {
+      "id": "3915d865-7e49-4b75-9541-b437d960a3ac",
+      "created_at": "2026-05-27T15:46:37.920742Z",
+      "age_seconds": 80018,
+      "amount": "5577.4500",
+      "currency": "USD",
+      "country": "US",
+      "customer_id": "df4ee880-b51d-4beb-ab78-b5a54b4e8504",
+      "merchant_id": "7882f825-8260-4dd1-b4d9-f40cb8fd5082",
+      "fraud_score": "0.0127",
+      "fraud_decision": "REVIEW",
+      "rules_triggered": [
+        "amount_ceiling"
+      ]
+    },
+    {
+      "id": "6355dd5e-ff6f-4667-b80e-678daf52e07d",
+      "created_at": "2026-05-27T15:25:19.387683Z",
+      "age_seconds": 81297,
+      "amount": "5794.7400",
+      "currency": "USD",
+      "country": "US",
+      "customer_id": "f1b9839a-2115-4c25-8470-b71cae210839",
+      "merchant_id": "3bbeb575-d7e8-49b6-918e-5cea9e2a440d",
+      "fraud_score": "0.0126",
+      "fraud_decision": "REVIEW",
+      "rules_triggered": [
+        "amount_ceiling"
+      ]
+    },
+    {
+      "id": "891f6d4c-0eef-4952-9dc2-42323886ad42",
+      "created_at": "2026-05-27T15:00:41.470402Z",
+      "age_seconds": 82775,
+      "amount": "5824.9300",
+      "currency": "USD",
+      "country": "US",
+      "customer_id": "1fd952dc-d04a-4ce3-bb3c-7aa0bd696389",
+      "merchant_id": "b598b83a-dd62-469e-9adc-ed7a6f5dbdc5",
+      "fraud_score": "0.0126",
+      "fraud_decision": "REVIEW",
+      "rules_triggered": [
+        "amount_ceiling"
+      ]
+    },
+    {
+      "id": "d9461d56-a90a-45ad-a692-4be776e86f9f",
+      "created_at": "2026-05-27T15:35:09.254723Z",
+      "age_seconds": 80707,
+      "amount": "6411.9100",
+      "currency": "USD",
+      "country": "US",
+      "customer_id": "a89bd59d-6790-4d41-a7b8-fc036a3c2af7",
+      "merchant_id": "0a7d98da-166a-424e-a50f-d205fefc8a59",
+      "fraud_score": "0.0125",
+      "fraud_decision": "REVIEW",
+      "rules_triggered": [
+        "amount_ceiling"
+      ]
+    },
+    {
+      "id": "89c38fc9-71f3-4a38-adf0-2b95099794bb",
+      "created_at": "2026-05-27T15:30:53.224249Z",
+      "age_seconds": 80963,
+      "amount": "6703.0600",
+      "currency": "USD",
+      "country": "US",
+      "customer_id": "a06f8700-ae8c-4dea-97aa-1c6abece4d28",
+      "merchant_id": "24300637-b347-4272-8ad6-b410bfceb89a",
+      "fraud_score": "0.0125",
+      "fraud_decision": "REVIEW",
+      "rules_triggered": [
+        "amount_ceiling"
+      ]
+    },
+    {
+      "id": "89c2f55e-8de1-4b6c-8220-929fa8261b55",
+      "created_at": "2026-05-27T15:46:04.174482Z",
+      "age_seconds": 80052,
+      "amount": "7274.5500",
+      "currency": "USD",
+      "country": "US",
+      "customer_id": "a06f8700-ae8c-4dea-97aa-1c6abece4d28",
+      "merchant_id": "6b976e91-9c41-482a-9193-6f0c9cc13ecf",
+      "fraud_score": "0.0125",
+      "fraud_decision": "REVIEW",
+      "rules_triggered": [
+        "amount_ceiling"
+      ]
+    }
+  ],
+  "next_cursor": null,
+  "has_more": true
+}

@@ -1,0 +1,65 @@
+{
+  "dimension": "country",
+  "items": [
+    {
+      "category": "US",
+      "transaction_count": 7054,
+      "declined_count": 2722,
+      "total_amount": "3472096.25"
+    },
+    {
+      "category": "ID",
+      "transaction_count": 52,
+      "declined_count": 52,
+      "total_amount": "137373.54"
+    },
+    {
+      "category": "CA",
+      "transaction_count": 49,
+      "declined_count": 49,
+      "total_amount": "5431.44"
+    },
+    {
+      "category": "GB",
+      "transaction_count": 47,
+      "declined_count": 47,
+      "total_amount": "5793.36"
+    },
+    {
+      "category": "RO",
+      "transaction_count": 46,
+      "declined_count": 46,
+      "total_amount": "107890.22"
+    },
+    {
+      "category": "FR",
+      "transaction_count": 46,
+      "declined_count": 46,
+      "total_amount": "5423.95"
+    },
+    {
+      "category": "AU",
+      "transaction_count": 46,
+      "declined_count": 46,
+      "total_amount": "5977.54"
+    },
+    {
+      "category": "NG",
+      "transaction_count": 44,
+      "declined_count": 44,
+      "total_amount": "117056.56"
+    },
+    {
+      "category": "VE",
+      "transaction_count": 43,
+      "declined_count": 43,
+      "total_amount": "109662.84"
+    },
+    {
+      "category": "JP",
+      "transaction_count": 41,
+      "declined_count": 41,
+      "total_amount": "5184.51"
+    }
+  ]
+}
