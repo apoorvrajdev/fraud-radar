@@ -1,11 +1,12 @@
 import { useQuery } from "@tanstack/react-query";
 import { api } from "../lib/api";
+import { demoRefetchInterval } from "../lib/demoMode";
 import type { StatsTimeseries } from "../types/api";
 
 /**
  * 24-hour fraud-rate + volume timeseries, polled every 60s. Slower
  * cadence than the KPI tiles because hour buckets only roll over
- * once per hour anyway.
+ * once per hour anyway. Polling is disabled in demo mode.
  */
 export function useStatsTimeseries() {
   return useQuery<StatsTimeseries>({
@@ -16,6 +17,6 @@ export function useStatsTimeseries() {
       });
       return data;
     },
-    refetchInterval: 60_000,
+    refetchInterval: demoRefetchInterval(60_000),
   });
 }

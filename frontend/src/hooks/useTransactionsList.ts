@@ -5,8 +5,16 @@
  * reads `next_cursor` off the last page to drive the load-more
  * action wired in Slice 3F-3.
  */
+/**
+ * useInfiniteQuery wrapper around the transactions list endpoint.
+ *
+ * Each "page" is a `TransactionList` envelope; `getNextPageParam`
+ * reads `next_cursor` off the last page to drive the load-more
+ * action wired in Slice 3F-3.
+ */
 import { useInfiniteQuery } from "@tanstack/react-query";
 import { fetchTransactions } from "../lib/transactions";
+import { demoRefetchInterval } from "../lib/demoMode";
 import type { TransactionList, TransactionListFilters } from "../types/api";
 
 export function useTransactionsList(filters: TransactionListFilters) {
@@ -18,7 +26,7 @@ export function useTransactionsList(filters: TransactionListFilters) {
     getNextPageParam: (lastPage) => lastPage.next_cursor,
     // 15s feels right for a "what just hit the system" log view —
     // faster than the dashboard's 30s overview because the analyst
-    // is staring at the rows.
-    refetchInterval: 15_000,
+    // is staring at the rows. Polling is disabled in demo mode.
+    refetchInterval: demoRefetchInterval(15_000),
   });
 }

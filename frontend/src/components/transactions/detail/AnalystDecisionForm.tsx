@@ -14,9 +14,10 @@
  */
 import { useId, useMemo, useState } from "react";
 import axios from "axios";
-import { AlertCircle, CheckCircle2, ShieldX, UserCog } from "lucide-react";
+import { AlertCircle, CheckCircle2, Lock, ShieldX, UserCog } from "lucide-react";
 import { Card } from "../../ui/Card";
 import { cn } from "../../../lib/cn";
+import { isDemoMode } from "../../../lib/demoMode";
 import { useAnalystId } from "../../../hooks/useAnalystId";
 import { useSubmitAnalystDecision } from "../../../hooks/useSubmitAnalystDecision";
 import { AnalystIdModal } from "./AnalystIdModal";
@@ -36,6 +37,7 @@ export function AnalystDecisionForm({ detail }: Props) {
 }
 
 function AnalystDecisionFormInner({ detail }: Props) {
+  const demo = isDemoMode();
   const { analystId, setAnalystId } = useAnalystId();
   const mutation = useSubmitAnalystDecision();
   const headingId = useId();
@@ -64,7 +66,10 @@ function AnalystDecisionFormInner({ detail }: Props) {
     label === detail.analyst_label &&
     (notes.trim() || null) === (detail.analyst_notes ?? null);
   const canSubmit =
-    label !== null && notes.length <= NOTES_MAX && !mutation.isPending;
+    !demo &&
+    label !== null &&
+    notes.length <= NOTES_MAX &&
+    !mutation.isPending;
 
   const errorMessage = useMemo(
     () => extractErrorMessage(mutation.error),
@@ -73,6 +78,7 @@ function AnalystDecisionFormInner({ detail }: Props) {
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    if (demo) return; // belt-and-braces; the button is also disabled
     if (!canSubmit || label === null) return;
     if (!analystId) {
       setModalOpen(true);
@@ -175,6 +181,20 @@ function AnalystDecisionFormInner({ detail }: Props) {
             </div>
           )}
 
+          {demo && (
+            <div
+              role="note"
+              className="flex items-start gap-2 rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-200"
+            >
+              <Lock size={14} aria-hidden className="mt-0.5 shrink-0" />
+              <span>
+                Analyst actions are disabled in the public demo. Clone the
+                repo and run locally to record decisions, write audit
+                rows, and watch the alerts queue update in real time.
+              </span>
+            </div>
+          )}
+
           <div className="flex items-center justify-end gap-3">
             {isRevision && noChange && !mutation.isPending && (
               <span className="text-[11px] text-neutral-500">
@@ -184,6 +204,11 @@ function AnalystDecisionFormInner({ detail }: Props) {
             <button
               type="submit"
               disabled={!canSubmit || (isRevision && noChange)}
+              title={
+                demo
+                  ? "Disabled in the public demo — run locally to record decisions."
+                  : undefined
+              }
               className={cn(
                 "rounded-md px-4 py-1.5 text-xs font-medium",
                 "border border-emerald-500/30 bg-emerald-500/10 text-emerald-200",
@@ -191,11 +216,13 @@ function AnalystDecisionFormInner({ detail }: Props) {
                 "disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-emerald-500/10",
               )}
             >
-              {mutation.isPending
-                ? "Submitting…"
-                : isRevision
-                  ? "Update decision"
-                  : "Record decision"}
+              {demo
+                ? "Disabled in demo"
+                : mutation.isPending
+                  ? "Submitting…"
+                  : isRevision
+                    ? "Update decision"
+                    : "Record decision"}
             </button>
           </div>
         </form>

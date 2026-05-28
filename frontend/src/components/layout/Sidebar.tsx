@@ -5,6 +5,7 @@ import {
   ShieldAlert,
 } from "lucide-react";
 import { cn } from "../../lib/cn";
+import { demoSnapshotDate, isDemoMode } from "../../lib/demoMode";
 
 interface NavItem {
   to: string;
@@ -82,7 +83,9 @@ export function Sidebar() {
       </nav>
 
       <div className="px-5 py-3 border-t border-neutral-800 text-[10px] text-neutral-600">
-        Phase 3H · live
+        {isDemoMode()
+          ? `Demo · snapshot from ${demoSnapshotDate()}`
+          : "Phase 3H · live"}
       </div>
     </aside>
   );
