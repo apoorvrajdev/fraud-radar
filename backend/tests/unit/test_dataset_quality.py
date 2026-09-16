@@ -297,6 +297,29 @@ def test_sparkov_report_carries_the_adapter_specific_checks(tmp_path: Path) -> N
     assert report.extra["multi_category_merchant_names"] == 0
 
 
+def test_sparkov_report_writes_the_complete_unix_time_offset_distribution(
+    tmp_path: Path,
+) -> None:
+    """The distribution sits beside the modal-offset fields, which stay as they were."""
+    from tests.unit.test_dataset_sparkov import build_fixture_corpus, fixture_adapter
+
+    root = build_fixture_corpus(tmp_path)
+    report = sparkov_report(fixture_adapter(tmp_path).load_detailed(root))
+    extra = json.loads(report.write(tmp_path / "run").read_text(encoding="utf-8"))["extra"]
+
+    assert extra["unix_time_modal_offset_seconds"] == 0
+    assert extra["unix_time_rows_at_modal_offset"] == report.kept_row_count
+    assert extra["unix_time_offset_is_uniform"] is True
+
+    distribution = extra["unix_time_offset_distribution"]
+    assert distribution["offsets"] == [{"offset_seconds": 0, "rows": report.kept_row_count}]
+    assert type(distribution["offsets"][0]["offset_seconds"]) is int
+    assert distribution["rows_compared"] + distribution["rows_without_unix_time"] == (
+        report.kept_row_count
+    )
+    assert distribution["truncated"] is False
+
+
 def test_sparkov_report_names_the_fields_that_are_inert(tmp_path: Path) -> None:
     """On Sparkov both country features and the risk tier cannot contribute."""
     from tests.unit.test_dataset_sparkov import build_fixture_corpus, fixture_adapter

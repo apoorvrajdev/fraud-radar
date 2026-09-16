@@ -14,6 +14,7 @@ from datetime import UTC, datetime
 from decimal import Decimal
 from pathlib import Path
 
+import pandas as pd
 import pytest
 
 from ml.datasets import registry, sparkov
@@ -23,6 +24,8 @@ from ml.datasets.quality import FieldStatus
 from ml.datasets.sparkov import (
     CATEGORY_MAP,
     SPARKOV_COLUMNS,
+    UNIX_TIME_OFFSET_DEFINITION,
+    UNIX_TIME_OFFSET_LISTING_LIMIT,
     SparkovAdapter,
     SparkovSchemaError,
     clean_merchant_name,
@@ -449,6 +452,146 @@ def test_scattered_unix_time_errors_are_not_a_uniform_offset(
     check = adapter.load_detailed(root).unix_time
     assert check.mismatches == 2
     assert check.is_uniform_offset is False
+
+
+def _epoch(timestamp: str) -> int:
+    return int(datetime.fromisoformat(timestamp).replace(tzinfo=UTC).timestamp())
+
+
+def _corpus_with_offsets(tmp_path: Path, name: str, offsets: Sequence[int | None]) -> Path:
+    """One row per day, each `offset` seconds behind its wall clock.
+
+    `None` writes a non-numeric `unix_time`, which cannot yield an offset.
+    """
+    root = tmp_path / "raw" / name
+    root.mkdir(parents=True)
+    rows = []
+    for index, offset in enumerate(offsets):
+        timestamp = f"2019-01-{index + 1:02d} 10:15:00"
+        unix_time = "not-a-number" if offset is None else str(_epoch(timestamp) - offset)
+        rows.append(_row(index, trans_num=f"t{index}", timestamp=timestamp, unix_time=unix_time))
+    _write_csv(root / "fraudTrain.csv", rows)
+    return root
+
+
+def test_a_uniform_offset_is_one_listed_entry_covering_every_row(
+    tmp_path: Path, adapter: SparkovAdapter
+) -> None:
+    root = _corpus_with_offsets(tmp_path, "uniform", [3600, 3600, 3600, 3600])
+
+    distribution = adapter.load_detailed(root).unix_time.offset_distribution
+
+    assert distribution.to_dict() == {
+        "offset_definition": UNIX_TIME_OFFSET_DEFINITION,
+        "rows_compared": 4,
+        "rows_without_unix_time": 0,
+        "distinct_offsets": 1,
+        "min_offset_seconds": 3600,
+        "max_offset_seconds": 3600,
+        "listing_limit": UNIX_TIME_OFFSET_LISTING_LIMIT,
+        "offsets": [{"offset_seconds": 3600, "rows": 4}],
+        "truncated": False,
+        "unlisted_offsets": 0,
+        "unlisted_rows": 0,
+    }
+
+
+def test_every_observed_offset_is_counted_and_rows_without_one_are_counted_apart(
+    tmp_path: Path, adapter: SparkovAdapter
+) -> None:
+    root = _corpus_with_offsets(
+        tmp_path, "several", [18000, 14400, 18000, 0, 18000, 14400, None]
+    )
+
+    distribution = adapter.load_detailed(root).unix_time.offset_distribution
+
+    assert [(entry.offset_seconds, entry.rows) for entry in distribution.offsets] == [
+        (18000, 3),
+        (14400, 2),
+        (0, 1),
+    ]
+    assert distribution.rows_compared == 6
+    assert distribution.rows_without_unix_time == 1
+    assert distribution.distinct_offsets == 3
+    assert (distribution.min_offset_seconds, distribution.max_offset_seconds) == (0, 18000)
+    assert distribution.truncated is False
+    # The non-numeric row forces a float column; offsets still come out exact ints.
+    assert all(type(entry.offset_seconds) is int for entry in distribution.offsets)
+
+
+def test_the_modal_offset_fields_are_unchanged_and_agree_with_the_distribution(
+    tmp_path: Path, adapter: SparkovAdapter
+) -> None:
+    """A tie for the mode resolves to the smaller offset, as it always has."""
+    root = _corpus_with_offsets(tmp_path, "tied", [3600, -3600, 3600, -3600, 0])
+
+    check = adapter.load_detailed(root).unix_time
+
+    assert check.mismatches == 4
+    assert check.modal_offset_seconds == -3600
+    assert check.rows_at_modal_offset == 2
+    assert check.is_uniform_offset is False
+    first = check.offset_distribution.offsets[0]
+    assert (first.offset_seconds, first.rows) == (-3600, 2)
+
+
+def test_the_distribution_order_is_deterministic_and_independent_of_row_order(
+    tmp_path: Path, adapter: SparkovAdapter
+) -> None:
+    """Most frequent first; equal counts ordered by the smaller offset."""
+    offsets = [7200, -60, 7200, 30, -60, 30, 30]
+    forward = adapter.load_detailed(_corpus_with_offsets(tmp_path, "forward", offsets))
+    backward = adapter.load_detailed(
+        _corpus_with_offsets(tmp_path, "backward", list(reversed(offsets)))
+    )
+
+    listed = forward.unix_time.offset_distribution.to_dict()["offsets"]
+    assert listed == [
+        {"offset_seconds": 30, "rows": 3},
+        {"offset_seconds": -60, "rows": 2},
+        {"offset_seconds": 7200, "rows": 2},
+    ]
+    assert (
+        forward.unix_time.offset_distribution.to_dict()
+        == backward.unix_time.offset_distribution.to_dict()
+    )
+
+
+def test_the_listing_is_bounded_and_states_what_it_left_out() -> None:
+    offsets = [100, 100, 100, 200, 200, 300, 400]
+    timestamps = [f"2019-01-{index + 1:02d} 00:00:00" for index in range(len(offsets))]
+    frame = sparkov.parse_timestamps(
+        pd.DataFrame(
+            {
+                "trans_date_trans_time": timestamps,
+                "unix_time": [
+                    _epoch(timestamp) - offset
+                    for timestamp, offset in zip(timestamps, offsets, strict=True)
+                ],
+            }
+        )
+    )
+
+    distribution = sparkov.check_unix_time(frame, listing_limit=2).offset_distribution
+
+    assert [(entry.offset_seconds, entry.rows) for entry in distribution.offsets] == [
+        (100, 3),
+        (200, 2),
+    ]
+    assert distribution.distinct_offsets == 4
+    assert distribution.truncated is True
+    assert distribution.unlisted_offsets == 2
+    assert distribution.unlisted_rows == 2
+    assert distribution.rows_compared == 7
+    assert (distribution.min_offset_seconds, distribution.max_offset_seconds) == (100, 400)
+
+
+def test_a_listing_limit_below_one_is_refused() -> None:
+    frame = sparkov.parse_timestamps(
+        pd.DataFrame({"trans_date_trans_time": ["2019-01-01 00:00:00"], "unix_time": [0]})
+    )
+    with pytest.raises(ValueError, match="listing_limit"):
+        sparkov.check_unix_time(frame, listing_limit=0)
 
 
 def test_the_wall_clock_drives_the_transaction_timestamp(

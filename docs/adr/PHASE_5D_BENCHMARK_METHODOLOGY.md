@@ -196,7 +196,14 @@ No interpretation of how `unix_time` relates to `trans_date_trans_time` is assum
 
 The account in [`DATA_LICENSES.md`](../DATA_LICENSES.md), that the epoch carries the generating machine's timezone, is derived from the generator's source code and has not been checked against the published files. `trans_date_trans_time` remains the authoritative clock; if the observed distribution calls that into question, it is reported before any feature matrix is built from the real corpus.
 
-The quality report currently records only the modal offset, the number of rows at it, and the mismatch count — not the complete distribution. Capturing the complete distribution for the first acquisition is an open 5D tooling item; how it is captured is not yet decided.
+The quality report records the distribution under `extra.unix_time_offset_distribution`. A row's offset is its parsed `trans_date_trans_time`, in UTC epoch seconds, minus its `unix_time`; the field states that definition as `offset_definition`. It carries:
+
+- `offsets` — each distinct offset with its row count, most frequent first, ties ordered by the smaller offset, so the same rows always serialise identically;
+- `rows_compared` and `rows_without_unix_time` — rows that yield an offset, and rows whose `unix_time` is missing or non-numeric;
+- `distinct_offsets`, `min_offset_seconds` and `max_offset_seconds`, which always cover every compared row;
+- `listing_limit` (50), `truncated`, `unlisted_offsets` and `unlisted_rows` — at most 50 offsets are listed, so the report stays bounded, and a truncated listing states exactly what it left out.
+
+The field records observations and makes no judgement. The existing `unix_time_mismatches`, `unix_time_modal_offset_seconds`, `unix_time_rows_at_modal_offset` and `unix_time_offset_is_uniform` fields are kept unchanged for compatibility. The first acquisition is inspected from the distribution rather than from `unix_time_offset_is_uniform`, which can read true when more than one offset was observed (for example, a nonzero modal offset alongside rows that match the wall clock exactly). If the listing is truncated on the real corpus, that is reported before any offset is interpreted.
 
 ---
 

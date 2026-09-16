@@ -173,6 +173,16 @@ _DEFAULT_STATUS = "APPROVED"
 
 _UNIX_TIME_TOLERANCE_SECONDS = 1.0
 
+# The offset distribution lists at most this many distinct offsets, so the
+# report stays a few kilobytes however scattered `unix_time` turns out to be.
+# Totals and the observed range always cover every row; a truncated listing
+# says exactly how many offsets and rows it left out.
+UNIX_TIME_OFFSET_LISTING_LIMIT = 50
+
+UNIX_TIME_OFFSET_DEFINITION = (
+    "trans_date_trans_time parsed as UTC, in epoch seconds, minus unix_time"
+)
+
 # Measured, not guessed: building canonical Transaction objects plus their
 # label entries costs ~1,983 bytes per row (tracemalloc over 20k rows), so the
 # published 1.85M-row corpus needs roughly 3.7 GB for those objects alone,
@@ -196,12 +206,74 @@ class CorpusTooLargeError(DatasetContractError):
 
 
 @dataclass(frozen=True)
+class UnixTimeOffsetCount:
+    """One distinct offset and the number of rows observed at it."""
+
+    offset_seconds: int | float
+    rows: int
+
+
+@dataclass(frozen=True)
+class UnixTimeOffsetDistribution:
+    """Every distinct offset between the wall clock and `unix_time`, with counts.
+
+    Offsets are listed most frequent first, ties broken by the smaller offset,
+    so the same rows serialise identically whatever order the files hold them
+    in. At most `listing_limit` offsets are listed; `rows_compared`,
+    `distinct_offsets` and the minimum and maximum always describe every row
+    that has a numeric `unix_time`.
+
+    This is an observation, not a verdict. What a given distribution means is
+    decided by inspecting it, never here.
+    """
+
+    rows_compared: int
+    rows_without_unix_time: int
+    distinct_offsets: int
+    min_offset_seconds: int | float | None
+    max_offset_seconds: int | float | None
+    offsets: tuple[UnixTimeOffsetCount, ...]
+    listing_limit: int
+
+    @property
+    def unlisted_offsets(self) -> int:
+        return self.distinct_offsets - len(self.offsets)
+
+    @property
+    def unlisted_rows(self) -> int:
+        return self.rows_compared - sum(entry.rows for entry in self.offsets)
+
+    @property
+    def truncated(self) -> bool:
+        return self.unlisted_offsets > 0
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "offset_definition": UNIX_TIME_OFFSET_DEFINITION,
+            "rows_compared": self.rows_compared,
+            "rows_without_unix_time": self.rows_without_unix_time,
+            "distinct_offsets": self.distinct_offsets,
+            "min_offset_seconds": self.min_offset_seconds,
+            "max_offset_seconds": self.max_offset_seconds,
+            "listing_limit": self.listing_limit,
+            "offsets": [
+                {"offset_seconds": entry.offset_seconds, "rows": entry.rows}
+                for entry in self.offsets
+            ],
+            "truncated": self.truncated,
+            "unlisted_offsets": self.unlisted_offsets,
+            "unlisted_rows": self.unlisted_rows,
+        }
+
+
+@dataclass(frozen=True)
 class UnixTimeCheck:
     """How `unix_time` relates to the parsed wall clock across a corpus."""
 
     mismatches: int
     modal_offset_seconds: int | None
     rows_at_modal_offset: int
+    offset_distribution: UnixTimeOffsetDistribution
 
     @property
     def is_uniform_offset(self) -> bool:
@@ -672,20 +744,31 @@ def _to_utc(value: Any) -> datetime:
     return timestamp if timestamp.tzinfo else timestamp.replace(tzinfo=UTC)
 
 
-def check_unix_time(frame: pd.DataFrame) -> UnixTimeCheck:
-    """Compare `unix_time` against the parsed wall clock.
+def check_unix_time(
+    frame: pd.DataFrame, *, listing_limit: int = UNIX_TIME_OFFSET_LISTING_LIMIT
+) -> UnixTimeCheck:
+    """Compare `unix_time` against the parsed wall clock and record what is seen.
 
-    A uniform offset is expected, not a defect. The generator builds a naive
-    datetime and calls `.timestamp()` on it, which resolves against the local
-    timezone of whatever machine produced the corpus — so `unix_time` encodes
-    that machine's offset and carries no information the wall clock lacks.
+    A row's offset is its parsed wall clock, in UTC epoch seconds, minus its
+    `unix_time`. Two views of those offsets come back: the modal offset with
+    its row count and the rows more than a second out, as before, and the
+    complete distribution of distinct offsets.
 
-    Reporting the modal offset and how many rows sit at it turns an alarming
-    "100% mismatch" into a legible "every row is off by one fixed offset",
-    which is the difference between a data problem and a provenance fact.
+    Nothing here judges the result. One shared offset, several offsets and
+    scattered values are all reported the same way; what they mean is decided
+    by inspecting the distribution observed on the real corpus.
     """
+    if listing_limit < 1:
+        raise ValueError(f"listing_limit must be at least 1, got {listing_limit}.")
     if frame.empty:
-        return UnixTimeCheck(mismatches=0, modal_offset_seconds=None, rows_at_modal_offset=0)
+        return UnixTimeCheck(
+            mismatches=0,
+            modal_offset_seconds=None,
+            rows_at_modal_offset=0,
+            offset_distribution=_offset_distribution(
+                pd.Series(dtype="float64"), listing_limit=listing_limit
+            ),
+        )
 
     # Cast to second resolution before taking the integer view: the underlying
     # unit of a datetime64 column is version-dependent (ns or us), and dividing
@@ -693,18 +776,53 @@ def check_unix_time(frame: pd.DataFrame) -> UnixTimeCheck:
     epoch_seconds = frame[_PARSED_AT_COLUMN].astype("datetime64[s]").astype("int64")
     deltas = epoch_seconds - pd.to_numeric(frame["unix_time"], errors="coerce")
     mismatches = int((deltas.abs() > _UNIX_TIME_TOLERANCE_SECONDS).sum())
+    distribution = _offset_distribution(deltas, listing_limit=listing_limit)
 
     modes = deltas.mode(dropna=True)
     if modes.empty:
         return UnixTimeCheck(
-            mismatches=mismatches, modal_offset_seconds=None, rows_at_modal_offset=0
+            mismatches=mismatches,
+            modal_offset_seconds=None,
+            rows_at_modal_offset=0,
+            offset_distribution=distribution,
         )
     modal_offset = int(modes.iloc[0])
     return UnixTimeCheck(
         mismatches=mismatches,
         modal_offset_seconds=modal_offset,
         rows_at_modal_offset=int((deltas == modal_offset).sum()),
+        offset_distribution=distribution,
     )
+
+
+def _offset_distribution(
+    deltas: pd.Series[float], *, listing_limit: int
+) -> UnixTimeOffsetDistribution:
+    """Count every distinct offset; rows without a numeric `unix_time` are counted apart."""
+    observed = deltas.dropna()
+    counts = sorted(
+        (
+            UnixTimeOffsetCount(offset_seconds=_as_seconds(offset), rows=int(rows))
+            for offset, rows in observed.value_counts().items()
+        ),
+        key=lambda entry: (-entry.rows, entry.offset_seconds),
+    )
+    has_values = not observed.empty
+    return UnixTimeOffsetDistribution(
+        rows_compared=len(observed),
+        rows_without_unix_time=len(deltas) - len(observed),
+        distinct_offsets=len(counts),
+        min_offset_seconds=_as_seconds(observed.min()) if has_values else None,
+        max_offset_seconds=_as_seconds(observed.max()) if has_values else None,
+        offsets=tuple(counts[:listing_limit]),
+        listing_limit=listing_limit,
+    )
+
+
+def _as_seconds(value: Any) -> int | float:
+    """An offset as an exact JSON number: integral values as int, others unrounded."""
+    number = float(value)
+    return int(number) if number.is_integer() else number
 
 
 def _build_provenance(
@@ -781,6 +899,7 @@ def build_report(result: SparkovLoadResult) -> QualityReport:
             "unix_time_modal_offset_seconds": result.unix_time.modal_offset_seconds,
             "unix_time_rows_at_modal_offset": result.unix_time.rows_at_modal_offset,
             "unix_time_offset_is_uniform": result.unix_time.is_uniform_offset,
+            "unix_time_offset_distribution": result.unix_time.offset_distribution.to_dict(),
             "authoritative_clock": "trans_date_trans_time",
             "multi_category_merchant_names": result.multi_category_merchants,
         },
