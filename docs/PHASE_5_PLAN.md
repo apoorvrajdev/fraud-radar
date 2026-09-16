@@ -3,6 +3,7 @@
 **Status:** Blueprint for approval. No code has been changed.
 **Basis:** Full inspection of the repository at commit `128ffc9` (2026-05-28, "docs: add architecture diagrams and screenshot conventions (4D)"), the README, and the previous Phase 5 report. Every claim about the codebase below was verified by reading the source, not inferred from the README.
 **Timebox:** MUST-HAVE scope sized for ~3 focused weeks; NICE-TO-HAVE fills week 4 only if MUST is done.
+**Phase 5D / M4 methodology:** locked in [`adr/PHASE_5D_BENCHMARK_METHODOLOGY.md`](adr/PHASE_5D_BENCHMARK_METHODOLOGY.md), which governs wherever it differs from §4.3, §12, §14–§16, M4 and §29.
 
 ---
 
@@ -526,6 +527,8 @@ backend/tests/unit/test_simulator_profile.py
 - **DoD:** parity suite green; feature matrix for 200 cards builds and caches; `feature_list.json` carries version.
 
 ### M4 — 5D: train, evaluate, drift, rules audit, model card (3–4 days)
+> **Methodology locked before implementation** in [`adr/PHASE_5D_BENCHMARK_METHODOLOGY.md`](adr/PHASE_5D_BENCHMARK_METHODOLOGY.md). Where it differs from this plan, the decision record governs: live features are counted from the matrix rather than stated as 13/17 (§4.3); dataset provenance goes in `run.json` and Sparkov `metrics.json` carries no synthetic-era targets (§14); the M4 comparison is synthetic baseline, Sparkov in-domain and synthetic→Sparkov transfer, with ULB left to M5; drift hyperparameters are tuned on 2019-01 → 2019-10 only (§12, §15); the dormant-account rule is reported as not evaluable on Sparkov (§16); `ml.promote` is built but a Sparkov run is promoted only on separate approval after benchmark review, so the promotion step in the DoD below is not performed as part of M4.
+
 - **Objective:** honest external numbers with provenance.
 - **Files:** `ml/train.py`, `ml/analyze.py`, `ml/promote.py`, `ml/experiments/*`; `MODEL_CARD.md` regeneration; README metrics table.
 - **Details:** §14–§16; runs `synthetic_v1` (re-run today's pipeline into `runs/` for a like-for-like baseline), `sparkov_v1_200cards` (dev), `sparkov_v1_full` (once, overnight if needed); cross-generator transfer number; drift PNG; rules audit JSON.
