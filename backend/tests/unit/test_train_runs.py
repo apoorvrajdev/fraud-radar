@@ -20,10 +20,11 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
+import numpy as np
 import pytest
 
 from app.fraud.feature_spec import FEATURESETS
-from ml import train
+from ml import loading, train
 from ml.data import LabelledDataset
 from ml.features.cache import load_feature_cache
 from ml.reporting import LABEL_DELAY_NOTE
@@ -110,7 +111,7 @@ def workspace(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
 def sparkov_root(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     root = _benchmark_corpus(tmp_path)
     adapter = fixture_adapter(tmp_path)
-    monkeypatch.setattr(train, "get_adapter", lambda name: adapter)
+    monkeypatch.setattr(loading, "get_adapter", lambda name: adapter)
     return root
 
 
@@ -264,6 +265,48 @@ def test_a_benchmark_run_records_the_facts_of_its_fit(
     assert metadata["best_iteration"] >= 0
 
 
+def test_a_benchmark_run_reloads_exactly_from_its_run_record(
+    workspace: Path, sparkov_root: Path, tuner_calls: list[dict[str, Any]]
+) -> None:
+    """The request built from run.json reads back the matrix training used.
+
+    Only where the files are is supplied; the subsample and featureset come
+    from the record.
+    """
+    _train_sparkov(workspace, sparkov_root, "--max-cards", "3", "--seed", "11")
+    record = load_run_metadata("sparkov-fixture", runs_root=workspace / "runs")
+    (cache_file,) = (workspace / "cache").glob("sparkov_v1_*.npz")
+    trained_on, _ = load_feature_cache(cache_file)
+
+    request = loading.DataRequest.from_run_record(
+        record, root=sparkov_root, cache_root=workspace / "cache"
+    )
+    data = loading.load_run_data(request)
+
+    assert (request.dataset, request.featureset, request.max_entities, request.seed) == (
+        "sparkov",
+        "v1",
+        3,
+        11,
+    )
+    assert data.cache_hit is True
+    assert data.cache_fingerprint is not None
+    assert data.cache_fingerprint in record.notes
+    np.testing.assert_array_equal(data.ds.X, trained_on.X)
+    np.testing.assert_array_equal(data.ds.y, trained_on.y)
+    assert data.ds.transaction_ids == trained_on.transaction_ids
+    assert list(data.ds.timestamps) == list(trained_on.timestamps)
+    assert data.provenance is not None
+    loaded, recorded = data.provenance.to_dict(), record.dataset.to_dict()
+    # retrieved_at is when the files were read, not which bytes they hold.
+    loaded.pop("retrieved_at")
+    recorded.pop("retrieved_at")
+    assert loaded == recorded
+    assert record.splits == split_periods(
+        data.ds.timestamps, chronological_split(data.ds.timestamps)
+    )
+
+
 def test_a_benchmark_run_counts_its_live_features_from_its_own_matrix(
     workspace: Path, sparkov_root: Path, tuner_calls: list[dict[str, Any]]
 ) -> None:
@@ -335,8 +378,8 @@ def synthetic_loader(monkeypatch: pytest.MonkeyPatch) -> LabelledDataset:
     def stub_session() -> Iterator[object]:
         yield object()
 
-    monkeypatch.setattr(train, "SessionLocal", stub_session)
-    monkeypatch.setattr(train, "load_dataset_with_csv_labels", lambda *args, **kwargs: ds)
+    monkeypatch.setattr(loading, "SessionLocal", stub_session)
+    monkeypatch.setattr(loading, "load_dataset_with_csv_labels", lambda *args, **kwargs: ds)
     return ds
 
 
@@ -421,8 +464,9 @@ def test_misleading_combinations_are_refused_before_any_work(
     tuner_calls: list[dict[str, Any]],
 ) -> None:
     loads: list[str] = []
-    monkeypatch.setattr(train, "_load_synthetic", lambda args: loads.append("synthetic"))
-    monkeypatch.setattr(train, "_load_registered", lambda args: loads.append("registered"))
+    monkeypatch.setattr(
+        train, "load_run_data", lambda request, **_: loads.append(request.dataset)
+    )
 
     with pytest.raises(SystemExit) as refused:
         train.main(argv)

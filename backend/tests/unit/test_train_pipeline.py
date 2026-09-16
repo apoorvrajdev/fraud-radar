@@ -23,7 +23,7 @@ from typing import Any
 import numpy as np
 import pytest
 
-from ml import train
+from ml import loading, train
 from ml.data import LabelledDataset
 from ml.evaluation import (
     confusion_at_threshold,
@@ -507,8 +507,8 @@ def test_the_synthetic_cli_writes_its_artifacts_with_the_synthetic_targets(
         loads.append((csv_path, limit))
         return ds
 
-    monkeypatch.setattr(train, "SessionLocal", stub_session)
-    monkeypatch.setattr(train, "load_dataset_with_csv_labels", stub_load)
+    monkeypatch.setattr(loading, "SessionLocal", stub_session)
+    monkeypatch.setattr(loading, "load_dataset_with_csv_labels", stub_load)
 
     train.main(
         [

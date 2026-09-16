@@ -17,6 +17,8 @@ Steps:
 Steps 2–6 are `train_and_evaluate`, which takes a `LabelledDataset` and knows
 nothing about where it came from. Loading and writing stay in `main`, so any
 dataset that can produce the matrix goes through exactly the same procedure.
+Loading itself is `ml.loading.load_run_data`, which analysis also uses to
+reconstruct a run from its `run.json`.
 
 A registered benchmark dataset is loaded through its adapter and the feature
 cache instead, and always trains into its own run directory:
@@ -41,7 +43,6 @@ import numpy as np
 import xgboost as xgb
 
 import ml.datasets.sparkov  # noqa: F401  (registers the adapter)
-from app.db import SessionLocal
 from app.fraud.feature_spec import DEFAULT_FEATURESET, FEATURESETS
 from ml.artifacts import (
     ThresholdRecord,
@@ -50,14 +51,9 @@ from ml.artifacts import (
     save_artifacts,
     utc_now_iso,
 )
-from ml.data import (
-    SYNTHETIC_DATASET_NAME,
-    LabelledDataset,
-    load_dataset_with_csv_labels,
-    synthetic_provenance,
-)
+from ml.data import SYNTHETIC_DATASET_NAME, LabelledDataset
 from ml.datasets.base import DatasetProvenance
-from ml.datasets.registry import available_datasets, get_adapter
+from ml.datasets.registry import available_datasets
 from ml.evaluation import (
     confusion_at_threshold,
     find_threshold_at_fpr,
@@ -66,10 +62,15 @@ from ml.evaluation import (
     roc_auc,
     save_pr_curve_png,
 )
-from ml.features.cache import build_or_load
+from ml.loading import (
+    DEFAULT_SUBSAMPLE_SEED,
+    DEFAULT_SYNTHETIC_CSV,
+    DataRequest,
+    RunData,
+    load_run_data,
+)
 from ml.paths import (
     FEATURE_CACHE_DIR,
-    RAW_DATA_DIR,
     RUNS_ROOT,
     InvalidRunNameError,
     run_dir,
@@ -96,8 +97,6 @@ EARLY_STOPPING_ROUNDS = 50
 # The operating threshold when no val-fold threshold meets the target FPR. A
 # threshold that falls back is recorded as one in threshold.json.
 FALLBACK_THRESHOLD = 0.5
-
-DEFAULT_SUBSAMPLE_SEED = 42
 
 # Goals set against the in-house generator. They are written into the
 # synthetic model's metrics.json only; the shared pipeline reports what it
@@ -144,20 +143,6 @@ class TrainingOutcome:
     metrics: dict[str, object]
 
 
-@dataclass(frozen=True)
-class _TrainingData:
-    """A loaded dataset, plus what its run record and metrics.json need.
-
-    `provenance` is None only for an unnamed synthetic run, which writes no
-    run record.
-    """
-
-    ds: LabelledDataset
-    provenance: DatasetProvenance | None
-    notes: str
-    targets: dict[str, float]
-
-
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Train the Fraud Radar XGBoost model")
     parser.add_argument(
@@ -169,7 +154,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument(
         "--csv-path",
         type=Path,
-        default=Path("ml/data/synthetic_transactions.csv"),
+        default=DEFAULT_SYNTHETIC_CSV,
         help="Path to the synthetic CSV with ground-truth labels",
     )
     output = parser.add_mutually_exclusive_group()
@@ -584,58 +569,32 @@ def _write_artifacts(
     )
 
 
-def _load_synthetic(args: argparse.Namespace) -> _TrainingData:
-    with SessionLocal() as db:
-        ds = load_dataset_with_csv_labels(
-            db,
-            csv_path=str(args.csv_path),
-            limit=args.limit,
-        )
-    provenance = (
-        synthetic_provenance(ds, csv_path=args.csv_path, limit=args.limit)
-        if args.run_name is not None
-        else None
-    )
-    return _TrainingData(
-        ds=ds,
-        provenance=provenance,
-        notes=(
-            "No subsampling applies to the synthetic dataset, so seed is null. The model "
-            "random_state is recorded with the fit, in training_metadata.json."
-        ),
-        targets=SYNTHETIC_TARGETS,
-    )
-
-
-def _load_registered(args: argparse.Namespace) -> _TrainingData:
-    adapter = get_adapter(args.dataset)
-    # Adapters that guard against an accidental full-corpus load expose the
-    # opt-in as an attribute. Set it only where it exists, as the feature-build
-    # CLI does, so this entry point stays dataset-agnostic.
-    if args.full_corpus and hasattr(adapter, "allow_full_corpus"):
-        adapter.allow_full_corpus = True
-
-    dataset = adapter.load(
-        args.root or RAW_DATA_DIR / args.dataset,
+def data_request(args: argparse.Namespace) -> DataRequest:
+    """The load the command-line options describe."""
+    return DataRequest(
+        dataset=args.dataset,
+        featureset=args.featureset,
+        csv_path=args.csv_path,
+        limit=args.limit,
+        root=args.root,
         max_entities=args.max_cards,
         seed=args.seed,
-    )
-    ds, cache, cache_hit = build_or_load(
-        dataset,
-        featureset=args.featureset,
         cache_root=args.cache_root,
         refresh=args.refresh,
+        full_corpus=args.full_corpus,
     )
-    return _TrainingData(
-        ds=ds,
-        provenance=dataset.provenance,
-        notes=(
-            f"Feature matrix {'read from' if cache_hit else 'written to'} cache "
-            f"{cache.fingerprint}. seed is the entity-subsampling seed; the model "
+
+
+def _run_notes(data: RunData) -> str:
+    if data.cache_fingerprint is None:
+        return (
+            "No subsampling applies to the synthetic dataset, so seed is null. The model "
             "random_state is recorded with the fit, in training_metadata.json."
-        ),
-        # A benchmark records what it measured, never the synthetic-era targets.
-        targets={},
+        )
+    return (
+        f"Feature matrix {'read from' if data.cache_hit else 'written to'} cache "
+        f"{data.cache_fingerprint}. seed is the entity-subsampling seed; the model "
+        "random_state is recorded with the fit, in training_metadata.json."
     )
 
 
@@ -648,11 +607,11 @@ def main(argv: list[str] | None = None) -> None:
     log.info("Fraud Radar training run started — random_state=%d", RANDOM_STATE)
 
     # ---- Load -----------------------------------------------------------
-    data = (
-        _load_synthetic(args)
-        if args.dataset == SYNTHETIC_DATASET_NAME
-        else _load_registered(args)
-    )
+    request = data_request(args)
+    # Only a named run writes a run record, so only it needs the provenance.
+    data = load_run_data(request, with_provenance=args.run_name is not None)
+    # A benchmark records what it measured, never the synthetic-era targets.
+    targets = SYNTHETIC_TARGETS if request.is_synthetic else {}
     ds = data.ds
     log.info(
         "Dataset %s loaded: %d rows, %d features, overall fraud rate %.3f%%",
@@ -668,7 +627,7 @@ def main(argv: list[str] | None = None) -> None:
         cv_splits=args.cv_splits,
         target_fpr=args.target_fpr,
     )
-    metrics = {**outcome.metrics, **data.targets}
+    metrics = {**outcome.metrics, **targets}
 
     # ---- Save -----------------------------------------------------------
     if args.run_name is None:
@@ -684,7 +643,7 @@ def main(argv: list[str] | None = None) -> None:
             dataset=data.provenance,
             featureset=args.featureset,
             metrics=metrics,
-            notes=data.notes,
+            notes=_run_notes(data),
             runs_root=RUNS_ROOT,
         )
         log.info("Run %s written to %s", args.run_name, directory.resolve())
