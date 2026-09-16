@@ -75,7 +75,7 @@ from ml.paths import (
     run_dir,
     validate_run_name,
 )
-from ml.reporting import result_context
+from ml.reporting import OPERATING_THRESHOLD_SOURCE, TEST_ROC_CURVE_SOURCE, result_context
 from ml.runs import RunMetadata, current_git_commit, save_run_metadata, split_periods
 from ml.splits import SplitIndices, assert_no_temporal_leakage, chronological_split
 from ml.tuning import TuningResult, compute_scale_pos_weight, tune_hyperparameters
@@ -424,13 +424,18 @@ def train_and_evaluate(
         "recall_at_5pct_fpr": recall_at_5pct,
         "at_operating_threshold": confusion.as_dict(),
         "best_cv_pr_auc": tuning.best_score,
+        "threshold_source": {
+            "at_operating_threshold": OPERATING_THRESHOLD_SOURCE,
+            "recall_at_1pct_fpr": TEST_ROC_CURVE_SOURCE,
+            "recall_at_5pct_fpr": TEST_ROC_CURVE_SOURCE,
+        },
         "context": context.to_dict(),
     }
     log.info("=== Test-set evaluation ===")
     log.info("  PR-AUC              : %.4f", test_pr_auc)
     log.info("  ROC-AUC             : %.4f", test_roc_auc)
-    log.info("  Recall @ 1%% FPR     : %.4f", recall_at_1pct)
-    log.info("  Recall @ 5%% FPR     : %.4f", recall_at_5pct)
+    log.info("  Recall @ 1%% FPR     : %.4f  (point on the test ROC curve)", recall_at_1pct)
+    log.info("  Recall @ 5%% FPR     : %.4f  (point on the test ROC curve)", recall_at_5pct)
     log.info(
         "  @ threshold %.4f  : precision=%.4f  recall=%.4f  f1=%.4f",
         threshold_value,

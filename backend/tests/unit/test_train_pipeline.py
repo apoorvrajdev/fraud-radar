@@ -32,6 +32,7 @@ from ml.evaluation import (
     recall_at_fpr,
     roc_auc,
 )
+from ml.reporting import OPERATING_THRESHOLD_SOURCE, TEST_ROC_CURVE_SOURCE
 from ml.splits import chronological_split
 from ml.tuning import TuningResult
 
@@ -49,6 +50,7 @@ OBSERVED_METRICS = {
     "recall_at_5pct_fpr",
     "at_operating_threshold",
     "best_cv_pr_auc",
+    "threshold_source",
     "context",
 }
 
@@ -221,6 +223,45 @@ def test_the_pipeline_reports_observed_results_without_synthetic_targets(
     tuner_calls: list[Any],
 ) -> None:
     assert set(_run(_dataset()).metrics) == OBSERVED_METRICS
+
+
+def test_recall_at_fixed_fpr_is_labelled_as_a_point_on_the_test_roc_curve(
+    tuner_calls: list[Any],
+) -> None:
+    """Each recall is read at a threshold found on the test fold, and says so."""
+    ds = _dataset()
+    outcome = _run(ds, target_fpr=0.05)
+    y_test = ds.y[outcome.splits.test]
+    scores = outcome.test_scores
+    negatives = y_test == 0
+
+    sources = outcome.metrics["threshold_source"]
+
+    for key, ceiling in (("recall_at_1pct_fpr", 0.01), ("recall_at_5pct_fpr", 0.05)):
+        assert sources[key] == TEST_ROC_CURVE_SOURCE == "test_roc_curve"
+        test_threshold = find_threshold_at_fpr(y_test, scores, ceiling)
+        flagged = scores >= test_threshold
+        assert (flagged & negatives).sum() / negatives.sum() <= ceiling
+        assert outcome.metrics[key] == pytest.approx(
+            (flagged & ~negatives).sum() / (~negatives).sum()
+        )
+
+
+def test_the_operating_threshold_result_is_labelled_with_the_val_threshold_record(
+    tuner_calls: list[Any],
+) -> None:
+    outcome = _run(_dataset())
+    metrics = outcome.metrics
+
+    assert metrics["threshold_source"]["at_operating_threshold"] == OPERATING_THRESHOLD_SOURCE
+    assert OPERATING_THRESHOLD_SOURCE == "threshold.json"
+    assert metrics["at_operating_threshold"]["threshold"] == outcome.threshold.value
+    # Every thresholded result is labelled, and nothing else is.
+    assert set(metrics["threshold_source"]) == {
+        "at_operating_threshold",
+        "recall_at_1pct_fpr",
+        "recall_at_5pct_fpr",
+    }
 
 
 def test_the_context_counts_the_frauds_of_each_fold_it_names(tuner_calls: list[Any]) -> None:

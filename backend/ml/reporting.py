@@ -2,8 +2,10 @@
 
 A PR-AUC cannot be read without the positive rate it was measured at, and a
 test fold with three frauds supports a different claim than one with three
-thousand. The Phase 5D methodology therefore reports every result with the
-conditions it was measured under.
+thousand. A recall read at a threshold chosen on the test fold is not what a
+model reaches at a threshold fixed in advance. The Phase 5D methodology
+therefore reports every result with the conditions it was measured under, and
+with where each threshold came from.
 
 Nothing here is a performance metric, and nothing here selects, tunes or fits
 anything. Every function reads labels or a confusion matrix that has already
@@ -25,6 +27,18 @@ LABEL_DELAY_NOTE = (
     "whereas real fraud labels arrive days to months later through chargebacks and "
     "investigations, so the results are optimistic in a way this benchmark does not measure."
 )
+
+# Where the threshold behind a thresholded result came from.
+#
+# OPERATING_THRESHOLD_SOURCE: the operating threshold recorded in threshold.json,
+# selected on the val fold (or the fallback, when threshold.json records one)
+# before the test fold was scored.
+#
+# TEST_ROC_CURVE_SOURCE: the highest threshold whose FPR on the test fold stays
+# within a ceiling. It is read off the test fold itself, so the result is a
+# point on the test ROC curve, not a result at a threshold fixed in advance.
+OPERATING_THRESHOLD_SOURCE = "threshold.json"
+TEST_ROC_CURVE_SOURCE = "test_roc_curve"
 
 
 @dataclass(frozen=True)
