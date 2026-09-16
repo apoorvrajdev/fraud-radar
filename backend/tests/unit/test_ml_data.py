@@ -1,4 +1,4 @@
-"""The synthetic training loader.
+"""The synthetic training loader, and the provenance record for its data.
 
 Runs against an in-memory SQLite database and a label CSV in a temporary
 directory — the same two sources the real synthetic path joins. SQLite is the
@@ -8,11 +8,13 @@ exactly the case the loader has to normalise.
 from __future__ import annotations
 
 import csv
+import hashlib
 from collections.abc import Iterator
 from datetime import UTC, datetime, timedelta, timezone
 from decimal import Decimal
 from pathlib import Path
 
+import numpy as np
 import pytest
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session, sessionmaker
@@ -22,7 +24,14 @@ from app.models.base import Base
 from app.models.customer import Customer
 from app.models.merchant import Merchant
 from app.models.transaction import Transaction
-from ml.data import _as_utc, load_dataset_with_csv_labels
+from ml.data import (
+    SYNTHETIC_DATASET_NAME,
+    LabelledDataset,
+    _as_utc,
+    load_dataset_with_csv_labels,
+    synthetic_provenance,
+)
+from ml.datasets.base import DataOrigin, DatasetContractError, DatasetProvenance
 
 # Naive, as the generator writes it.
 START = datetime(2026, 4, 20, 4, 28, 46, 812521)
@@ -133,3 +142,85 @@ def test_an_aware_timestamp_is_converted_to_utc_not_relabelled() -> None:
     assert converted == local
     assert converted.hour == 4
     assert converted.minute == 30
+
+
+# ---------------------------------------------------------------------------
+# Provenance
+# ---------------------------------------------------------------------------
+
+
+def test_provenance_records_the_label_csv_digest_and_nothing_else(
+    db_session: Session, labels_csv: Path
+) -> None:
+    ds = load_dataset_with_csv_labels(db_session, csv_path=str(labels_csv))
+
+    provenance = synthetic_provenance(ds, csv_path=labels_csv)
+
+    assert dict(provenance.files) == {
+        "synthetic_transactions.csv": hashlib.sha256(labels_csv.read_bytes()).hexdigest()
+    }
+
+
+def test_provenance_says_the_database_has_no_digest(
+    db_session: Session, labels_csv: Path
+) -> None:
+    ds = load_dataset_with_csv_labels(db_session, csv_path=str(labels_csv))
+
+    provenance = synthetic_provenance(ds, csv_path=labels_csv)
+
+    assert "label CSV only" in provenance.notes
+    assert "no digest" in provenance.notes
+    assert any("operational database" in step for step in provenance.preprocessing)
+    assert "naive database timestamps interpreted as UTC" in provenance.preprocessing
+
+
+def test_provenance_describes_the_rows_that_were_used(
+    db_session: Session, labels_csv: Path
+) -> None:
+    ds = load_dataset_with_csv_labels(db_session, csv_path=str(labels_csv))
+
+    provenance = synthetic_provenance(ds, csv_path=labels_csv)
+
+    assert provenance.name == SYNTHETIC_DATASET_NAME
+    assert provenance.origin is DataOrigin.SYNTHETIC
+    assert provenance.label_field == "is_fraud"
+    assert (provenance.row_count, provenance.fraud_count) == (4, 2)
+    assert provenance.period_start == START.replace(tzinfo=UTC)
+    assert provenance.period_end == (START + timedelta(hours=9)).replace(tzinfo=UTC)
+    assert provenance.subsample is None
+    assert provenance.retrieved_at is None
+
+
+def test_a_row_limit_is_recorded_as_preprocessing(
+    db_session: Session, labels_csv: Path
+) -> None:
+    limited = load_dataset_with_csv_labels(db_session, csv_path=str(labels_csv), limit=2)
+    full = load_dataset_with_csv_labels(db_session, csv_path=str(labels_csv))
+
+    limited_steps = synthetic_provenance(limited, csv_path=labels_csv, limit=2).preprocessing
+    full_steps = synthetic_provenance(full, csv_path=labels_csv).preprocessing
+
+    assert "limited to the first 2 database transactions by created_at" in limited_steps
+    assert not any(step.startswith("limited to") for step in full_steps)
+    assert synthetic_provenance(limited, csv_path=labels_csv, limit=2).row_count == 2
+
+
+def test_provenance_survives_a_round_trip(db_session: Session, labels_csv: Path) -> None:
+    ds = load_dataset_with_csv_labels(db_session, csv_path=str(labels_csv))
+    provenance = synthetic_provenance(ds, csv_path=labels_csv)
+
+    assert DatasetProvenance.from_dict(provenance.to_dict()) == provenance
+
+
+def test_naive_timestamps_cannot_reach_the_provenance(labels_csv: Path) -> None:
+    """What the loader's normalisation prevents, refused if it ever regresses."""
+    ds = LabelledDataset(
+        X=np.zeros((2, 17)),
+        y=np.array([0, 1]),
+        timestamps=np.asarray([START, START + timedelta(hours=1)], dtype=object),
+        transaction_ids=["a", "b"],
+        feature_names=[f"f{index}" for index in range(17)],
+    )
+
+    with pytest.raises(DatasetContractError, match="timezone-aware"):
+        synthetic_provenance(ds, csv_path=labels_csv)

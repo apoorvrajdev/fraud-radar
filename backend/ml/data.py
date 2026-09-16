@@ -14,6 +14,7 @@ from __future__ import annotations
 import logging
 from dataclasses import dataclass
 from datetime import UTC, datetime
+from pathlib import Path
 
 import numpy as np
 from sqlalchemy import select
@@ -23,8 +24,15 @@ from app.fraud import FEATURE_NAMES, FeatureExtractor
 from app.models.customer import Customer
 from app.models.merchant import Merchant
 from app.models.transaction import Transaction
+from ml.datasets.base import DataOrigin, DatasetProvenance
+from ml.datasets.manifest import sha256_file
 
 log = logging.getLogger(__name__)
+
+SYNTHETIC_DATASET_NAME = "synthetic"
+
+# The Phase 5 plan freezes the in-house generator as the synthetic "v1 baseline".
+SYNTHETIC_DATASET_VERSION = "v1"
 
 
 @dataclass(frozen=True)
@@ -160,4 +168,56 @@ def load_dataset_with_csv_labels(
         timestamps=np.asarray(rows_ts),
         transaction_ids=rows_ids,
         feature_names=list(FEATURE_NAMES),
+    )
+
+
+def synthetic_provenance(
+    ds: LabelledDataset,
+    *,
+    csv_path: Path,
+    limit: int | None = None,
+) -> DatasetProvenance:
+    """The provenance record for a run trained on the in-house synthetic data.
+
+    Two sources feed that data, and only one has stable bytes. The label CSV
+    is the generator's own output — every generated row with its `is_fraud`
+    label — so its SHA-256 identifies the dataset and is recorded. The
+    features, however, are extracted from the operational database, which is
+    mutable, untracked state that the live simulator also writes to. No digest
+    of it would mean anything, so none is recorded, and the notes say so
+    rather than letting the CSV digest appear to cover the database.
+    """
+    timestamps = list(ds.timestamps)
+    preprocessing = [
+        "features extracted from the operational database by the production "
+        "extractor, over each customer's unbounded history",
+        "labels joined from the label CSV by transaction id; database rows without "
+        "a label, customer or merchant are skipped",
+        "naive database timestamps interpreted as UTC",
+    ]
+    if limit is not None:
+        preprocessing.append(f"limited to the first {limit} database transactions by created_at")
+
+    return DatasetProvenance(
+        name=SYNTHETIC_DATASET_NAME,
+        version=SYNTHETIC_DATASET_VERSION,
+        origin=DataOrigin.SYNTHETIC,
+        source_url="",
+        citation="Fraud Radar synthetic generator, backend/ml/synthesis/ in this repository",
+        license="MIT, with this repository",
+        label_field="is_fraud",
+        label_definition=(
+            "1 = transaction produced by one of the generator's fraud-injection patterns"
+        ),
+        files={csv_path.name: sha256_file(csv_path)},
+        row_count=ds.n_rows,
+        fraud_count=int(ds.y.sum()),
+        period_start=min(timestamps) if timestamps else None,
+        period_end=max(timestamps) if timestamps else None,
+        preprocessing=tuple(preprocessing),
+        notes=(
+            "files records the label CSV only. The operational database the features "
+            "were read from is mutable and untracked, so it has no digest: the same CSV "
+            "with a different database can yield different features."
+        ),
     )
