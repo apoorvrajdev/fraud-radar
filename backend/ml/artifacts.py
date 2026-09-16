@@ -7,7 +7,7 @@ The artifact directory layout is:
     artifacts/
         model.json                XGBoost native (gitignored)
         feature_list.json         Canonical feature order (committed)
-        threshold.json            Decision threshold + the FPR target it serves
+        threshold.json            Decision threshold, its FPR target, whether it fell back
         metrics.json              Test-set evaluation results (committed)
         training_metadata.json    The fit: folds, hyperparameters, fit settings (committed)
         pr_curve.png              Plot of test-set PR curve (gitignored)
@@ -28,11 +28,18 @@ import xgboost as xgb
 
 @dataclass(frozen=True)
 class ThresholdRecord:
-    """The operating threshold chosen at training time."""
+    """The operating threshold chosen at training time.
+
+    `fallback_used` is True when no val-fold threshold met `target_fpr`, so
+    `value` is the fixed fallback rather than a threshold selected for that
+    target, and `realised_fpr_on_val` may exceed it. None means the record was
+    written before the flag existed: whether it fell back was not recorded.
+    """
 
     value: float
     target_fpr: float
     realised_fpr_on_val: float
+    fallback_used: bool | None
 
 
 @dataclass(frozen=True)
@@ -109,10 +116,13 @@ def load_threshold(artifact_dir: Path) -> ThresholdRecord:
     """Reload the operating threshold."""
     with (artifact_dir / "threshold.json").open(encoding="utf-8") as f:
         payload = json.load(f)
+    # Absent from records that predate the flag: unknown, never assumed False.
+    fallback_used = payload.get("fallback_used")
     return ThresholdRecord(
         value=float(payload["value"]),
         target_fpr=float(payload["target_fpr"]),
         realised_fpr_on_val=float(payload["realised_fpr_on_val"]),
+        fallback_used=None if fallback_used is None else bool(fallback_used),
     )
 
 

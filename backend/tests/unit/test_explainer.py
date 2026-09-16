@@ -82,6 +82,20 @@ def test_explainer_loads_artifacts(tmp_path: Path) -> None:
     assert explainer.feature_names == FEATURE_NAMES
 
 
+def test_explainer_loads_a_threshold_that_records_the_fallback_flag(tmp_path: Path) -> None:
+    """Training now writes a fallback flag; serving reads the value and ignores it."""
+    artifacts_dir = _write_artifacts(tmp_path)
+    (artifacts_dir / "threshold.json").write_text(
+        json.dumps(
+            {"value": 0.62, "target_fpr": 0.01, "realised_fpr_on_val": 0.008, "fallback_used": False}
+        )
+    )
+
+    explainer = initialize_explainer(artifacts_dir)
+
+    assert explainer.threshold == pytest.approx(0.62)
+
+
 def test_missing_artifacts_raises_clear_error(tmp_path: Path) -> None:
     with pytest.raises(FileNotFoundError, match=r"Run .* ml\.train"):
         initialize_explainer(tmp_path)

@@ -206,6 +206,22 @@ def test_a_benchmark_run_records_the_facts_of_its_fit(
     assert metadata["best_iteration"] >= 0
 
 
+def test_a_benchmark_run_records_that_its_threshold_fell_back(
+    workspace: Path, sparkov_root: Path, tuner_calls: list[dict[str, Any]]
+) -> None:
+    """A val fold too small for its FPR ceiling falls back, and says so.
+
+    The fixture's val fold holds 12 legitimate rows, so a 5% ceiling allows
+    none of them at or above the threshold. The fixture model scores some above
+    every fraud, no threshold qualifies, and the existing fallback applies.
+    """
+    threshold = _read(_train_sparkov(workspace, sparkov_root), "threshold.json")
+
+    assert threshold["fallback_used"] is True
+    assert threshold["value"] == train.FALLBACK_THRESHOLD
+    assert threshold["realised_fpr_on_val"] > threshold["target_fpr"] == 0.05
+
+
 # ---------------------------------------------------------------------------
 # The synthetic dataset
 # ---------------------------------------------------------------------------

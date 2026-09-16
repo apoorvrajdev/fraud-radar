@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+from dataclasses import asdict
 from pathlib import Path
 
 import numpy as np
@@ -46,6 +47,7 @@ def trained_pair(tmp_path: Path) -> tuple[xgb.XGBClassifier, np.ndarray, Path]:
             value=0.5,
             target_fpr=0.01,
             realised_fpr_on_val=0.008,
+            fallback_used=False,
         ),
         metrics={"pr_auc": 0.9, "roc_auc": 0.95},
         metadata=TrainingMetadata(
@@ -105,6 +107,33 @@ def test_threshold_round_trip(trained_pair: tuple) -> None:
     assert threshold.value == 0.5
     assert threshold.target_fpr == 0.01
     assert threshold.realised_fpr_on_val == pytest.approx(0.008)
+    assert threshold.fallback_used is False
+
+
+def test_a_fallback_threshold_reads_back_as_a_fallback(tmp_path: Path) -> None:
+    record = ThresholdRecord(
+        value=0.5, target_fpr=0.01, realised_fpr_on_val=0.2, fallback_used=True
+    )
+    (tmp_path / "threshold.json").write_text(json.dumps(asdict(record)), encoding="utf-8")
+
+    assert load_threshold(tmp_path) == record
+
+
+def test_a_threshold_written_before_the_fallback_flag_reads_as_unrecorded(
+    tmp_path: Path,
+) -> None:
+    """The committed threshold.json predates the flag; it must still load."""
+    legacy = {"realised_fpr_on_val": 0.0074, "target_fpr": 0.01, "value": 0.7431}
+    (tmp_path / "threshold.json").write_text(json.dumps(legacy), encoding="utf-8")
+
+    threshold = load_threshold(tmp_path)
+
+    assert threshold.fallback_used is None
+    assert (threshold.value, threshold.target_fpr, threshold.realised_fpr_on_val) == (
+        0.7431,
+        0.01,
+        0.0074,
+    )
 
 
 def test_training_metadata_adds_the_fit_settings_to_the_existing_fields(

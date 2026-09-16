@@ -86,6 +86,10 @@ RANDOM_STATE = 42
 # Boosting stops once this many rounds pass without improving the val fold's PR-AUC.
 EARLY_STOPPING_ROUNDS = 50
 
+# The operating threshold when no val-fold threshold meets the target FPR. A
+# threshold that falls back is recorded as one in threshold.json.
+FALLBACK_THRESHOLD = 0.5
+
 DEFAULT_SUBSAMPLE_SEED = 42
 
 # Goals set against the in-house generator. They are written into the
@@ -380,9 +384,14 @@ def train_and_evaluate(
     # ---- Threshold selection on val -------------------------------------
     val_scores = model.predict_proba(X_val)[:, 1]
     threshold_value = find_threshold_at_fpr(y_val, val_scores, target_fpr)
-    if not np.isfinite(threshold_value):
-        log.warning("No threshold satisfies target FPR ≤ %.4f on val", target_fpr)
-        threshold_value = 0.5
+    fallback_used = not np.isfinite(threshold_value)
+    if fallback_used:
+        log.warning(
+            "No threshold satisfies target FPR ≤ %.4f on val; falling back to %.2f",
+            target_fpr,
+            FALLBACK_THRESHOLD,
+        )
+        threshold_value = FALLBACK_THRESHOLD
     realised_val_fpr = float(
         ((val_scores >= threshold_value) & (y_val == 0)).sum() / max((y_val == 0).sum(), 1)
     )
@@ -431,6 +440,7 @@ def train_and_evaluate(
             value=float(threshold_value),
             target_fpr=float(target_fpr),
             realised_fpr_on_val=realised_val_fpr,
+            fallback_used=fallback_used,
         ),
         test_scores=test_scores,
         metrics=metrics,

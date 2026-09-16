@@ -25,7 +25,13 @@ import pytest
 
 from ml import train
 from ml.data import LabelledDataset
-from ml.evaluation import confusion_at_threshold, pr_auc, recall_at_fpr, roc_auc
+from ml.evaluation import (
+    confusion_at_threshold,
+    find_threshold_at_fpr,
+    pr_auc,
+    recall_at_fpr,
+    roc_auc,
+)
 from ml.splits import chronological_split
 from ml.tuning import TuningResult
 
@@ -224,6 +230,51 @@ def test_without_a_threshold_under_the_fpr_ceiling_the_existing_fallback_applies
     assert _run(_dataset()).threshold.value == 0.5
 
 
+def test_a_fallback_threshold_is_recorded_as_a_fallback(
+    monkeypatch: pytest.MonkeyPatch, tuner_calls: list[Any]
+) -> None:
+    monkeypatch.setattr(train, "find_threshold_at_fpr", lambda *_: float("inf"))
+
+    threshold = _run(_dataset()).threshold
+
+    assert threshold.fallback_used is True
+    assert threshold.value == train.FALLBACK_THRESHOLD == 0.5
+
+
+def test_a_val_fold_where_no_threshold_meets_the_target_records_the_fallback(
+    tuner_calls: list[Any],
+) -> None:
+    """The val fold's negatives carry the training fold's fraud signal.
+
+    Its highest scores then all belong to legitimate rows, so even the
+    strictest threshold exceeds a 1% FPR and selection has nothing to return.
+    """
+    ds = _dataset()
+    val = chronological_split(ds.timestamps).val
+    ds.X[val, 1] = np.where(ds.y[val] == 1, -6.0, 6.0)
+
+    outcome = _run(ds, target_fpr=0.01)
+
+    val_scores = outcome.model.predict_proba(ds.X[val])[:, 1]
+    assert not np.isfinite(find_threshold_at_fpr(ds.y[val], val_scores, 0.01))
+    threshold = outcome.threshold
+    assert threshold.fallback_used is True
+    assert threshold.value == 0.5
+    negatives = ds.y[val] == 0
+    realised = ((val_scores >= 0.5) & negatives).sum() / negatives.sum()
+    assert threshold.realised_fpr_on_val == pytest.approx(realised)
+    assert threshold.realised_fpr_on_val > threshold.target_fpr
+
+
+def test_a_threshold_selected_under_the_fpr_ceiling_is_not_a_fallback(
+    tuner_calls: list[Any],
+) -> None:
+    threshold = _run(_dataset(), target_fpr=0.05).threshold
+
+    assert threshold.fallback_used is False
+    assert threshold.realised_fpr_on_val <= threshold.target_fpr
+
+
 def test_training_metadata_describes_the_folds_that_were_used(tuner_calls: list[Any]) -> None:
     ds = _dataset()
     outcome = _run(ds)
@@ -354,4 +405,5 @@ def test_the_synthetic_cli_writes_its_artifacts_with_the_synthetic_targets(
     assert metrics["target_recall_at_1pct_fpr"] == 0.60
     assert read("feature_list.json") == {"features": ds.feature_names}
     assert read("threshold.json")["target_fpr"] == 0.05
+    assert read("threshold.json")["fallback_used"] is False
     assert read("training_metadata.json")["dataset_size"] == N_ROWS
