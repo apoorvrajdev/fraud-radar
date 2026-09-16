@@ -12,6 +12,8 @@ feature cache.
 """
 from __future__ import annotations
 
+import csv
+from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -108,27 +110,59 @@ class RunData:
 
     `provenance` is None only for a synthetic load that did not ask for it.
     `cache_fingerprint` and `cache_hit` describe the feature cache, which only
-    registered datasets use.
+    registered datasets use. `countries` holds each row's transaction country,
+    in row order, when the load asked for it.
     """
 
     ds: LabelledDataset
     provenance: DatasetProvenance | None
     cache_fingerprint: str | None = None
     cache_hit: bool | None = None
+    countries: tuple[str, ...] | None = None
 
 
-def load_run_data(request: DataRequest, *, with_provenance: bool = True) -> RunData:
+def load_run_data(
+    request: DataRequest,
+    *,
+    with_provenance: bool = True,
+    with_countries: bool = False,
+) -> RunData:
     """Load the matrix `request` describes.
 
     `with_provenance=False` skips the synthetic provenance record, which
     hashes the label CSV; a registered dataset's adapter always supplies one.
+    `with_countries=True` also returns each row's transaction country, which
+    training never needs.
     """
     if request.is_synthetic:
-        return _load_synthetic(request, with_provenance=with_provenance)
-    return _load_registered(request)
+        return _load_synthetic(
+            request, with_provenance=with_provenance, with_countries=with_countries
+        )
+    return _load_registered(request, with_countries=with_countries)
 
 
-def _load_synthetic(request: DataRequest, *, with_provenance: bool) -> RunData:
+def synthetic_countries(csv_path: Path) -> dict[str, str]:
+    """Each synthetic transaction's country, by id, from the label CSV.
+
+    The feature matrix does not carry the raw country string, so it is read
+    from the CSV the labels come from.
+    """
+    with csv_path.open(encoding="utf-8") as handle:
+        return {row["id"]: row["country"] for row in csv.DictReader(handle)}
+
+
+def _in_row_order(ds: LabelledDataset, by_id: Mapping[str, str]) -> tuple[str, ...]:
+    missing = [tx_id for tx_id in ds.transaction_ids if tx_id not in by_id]
+    if missing:
+        raise ValueError(
+            f"No country recorded for {len(missing)} transaction(s), e.g. {missing[0]!r}."
+        )
+    return tuple(by_id[tx_id] for tx_id in ds.transaction_ids)
+
+
+def _load_synthetic(
+    request: DataRequest, *, with_provenance: bool, with_countries: bool
+) -> RunData:
     if request.featureset != DEFAULT_FEATURESET:
         raise ValueError(
             f"The synthetic dataset is extracted with featureset {DEFAULT_FEATURESET!r} "
@@ -145,10 +179,13 @@ def _load_synthetic(request: DataRequest, *, with_provenance: bool) -> RunData:
         if with_provenance
         else None
     )
-    return RunData(ds=ds, provenance=provenance)
+    countries = (
+        _in_row_order(ds, synthetic_countries(request.csv_path)) if with_countries else None
+    )
+    return RunData(ds=ds, provenance=provenance, countries=countries)
 
 
-def _load_registered(request: DataRequest) -> RunData:
+def _load_registered(request: DataRequest, *, with_countries: bool) -> RunData:
     adapter = get_adapter(request.dataset)
     # Adapters that guard against an accidental full-corpus load expose the
     # opt-in as an attribute. Set it only where it exists, as the feature-build
@@ -167,9 +204,15 @@ def _load_registered(request: DataRequest) -> RunData:
         cache_root=request.cache_root,
         refresh=request.refresh,
     )
+    countries = (
+        _in_row_order(ds, {tx.id: tx.country for tx in dataset.transactions})
+        if with_countries
+        else None
+    )
     return RunData(
         ds=ds,
         provenance=dataset.provenance,
         cache_fingerprint=cache.fingerprint,
         cache_hit=cache_hit,
+        countries=countries,
     )

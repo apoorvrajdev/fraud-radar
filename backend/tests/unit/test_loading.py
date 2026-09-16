@@ -156,6 +156,47 @@ def test_a_synthetic_load_with_provenance_records_the_label_csv(
     assert any("first 4" in step for step in data.provenance.preprocessing)
 
 
+def test_synthetic_countries_come_from_the_label_csv_in_row_order(
+    synthetic_loads: list[tuple[str | None, int | None]], tmp_path: Path
+) -> None:
+    labels = tmp_path / "labels.csv"
+    countries = ["US", "GB", "BR", "US", "GB", "BR"]
+    rows = [f"tx{index},False,{country}" for index, country in enumerate(countries)]
+    # Written out of row order: countries are matched by id, not by position.
+    labels.write_text(
+        "\n".join(["id,is_fraud,country", *reversed(rows)]) + "\n", encoding="utf-8"
+    )
+
+    data = loading.load_run_data(
+        loading.DataRequest(csv_path=labels), with_provenance=False, with_countries=True
+    )
+
+    assert data.countries == tuple(countries)
+    assert loading.synthetic_countries(labels)["tx4"] == "GB"
+
+
+def test_a_row_without_a_recorded_country_is_refused(
+    synthetic_loads: list[tuple[str | None, int | None]], tmp_path: Path
+) -> None:
+    labels = tmp_path / "labels.csv"
+    labels.write_text("id,is_fraud,country\ntx0,False,US\n", encoding="utf-8")
+
+    with pytest.raises(ValueError, match="No country recorded for 5 transaction"):
+        loading.load_run_data(
+            loading.DataRequest(csv_path=labels), with_provenance=False, with_countries=True
+        )
+
+
+def test_countries_are_not_read_unless_asked_for(
+    synthetic_loads: list[tuple[str | None, int | None]],
+) -> None:
+    data = loading.load_run_data(
+        loading.DataRequest(csv_path=Path("missing.csv")), with_provenance=False
+    )
+
+    assert data.countries is None
+
+
 def test_the_synthetic_dataset_refuses_another_featureset(
     synthetic_loads: list[tuple[str | None, int | None]],
 ) -> None:
@@ -178,7 +219,12 @@ class _Adapter:
 
     def load(self, root: Path, *, max_entities: int | None = None, seed: int = 42) -> Any:
         self.loads.append((root, max_entities, seed))
-        return SimpleNamespace(provenance="the adapter's provenance")
+        # Out of row order: countries are matched to matrix rows by id.
+        transactions = [
+            SimpleNamespace(id=f"tx{index}", country="US" if index % 2 else "CA")
+            for index in reversed(range(6))
+        ]
+        return SimpleNamespace(provenance="the adapter's provenance", transactions=transactions)
 
 
 @pytest.fixture
@@ -210,6 +256,14 @@ def test_a_registered_dataset_is_read_through_its_adapter_and_the_feature_cache(
     assert data.provenance == "the adapter's provenance"
     assert (data.cache_fingerprint, data.cache_hit) == ("abc123", True)
     assert fixture.allow_full_corpus is False
+
+
+def test_registered_countries_come_from_the_canonical_transactions(
+    adapter: tuple[_Adapter, list[dict[str, Any]]],
+) -> None:
+    data = loading.load_run_data(loading.DataRequest(dataset="fixture"), with_countries=True)
+
+    assert data.countries == ("CA", "US", "CA", "US", "CA", "US")
 
 
 def test_the_full_corpus_opt_in_is_set_only_when_asked(

@@ -42,6 +42,11 @@ LABEL_DELAY_NOTE = (
 OPERATING_THRESHOLD_SOURCE = "threshold.json"
 TEST_ROC_CURVE_SOURCE = "test_roc_curve"
 
+# SEGMENT_TEST_ROC_CURVE_SOURCE: like TEST_ROC_CURVE_SOURCE, but read off the ROC
+# curve of one segment's own test rows, so each segment's recall is a point on
+# that segment's curve.
+SEGMENT_TEST_ROC_CURVE_SOURCE = "segment_test_roc_curve"
+
 
 @dataclass(frozen=True)
 class ResultContext:

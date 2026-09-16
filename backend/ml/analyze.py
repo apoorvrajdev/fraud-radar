@@ -9,12 +9,20 @@ Usage:
     cd backend
     uv run python -m ml.analyze
     uv run python -m ml.analyze --limit 5000  # quick smoke run
+
+A named run is analysed through `ml.run_analysis` instead: the run is verified
+against its own records first, and every output is written into its run
+directory, never over the served artifacts:
+
+    uv run python -m ml.analyze --run-name synthetic_v1
+    uv run python -m ml.analyze --run-name sparkov_v1_200cards
 """
 from __future__ import annotations
 
 import argparse
 import json
 import logging
+import sys
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -34,13 +42,16 @@ from ml.analysis import (
     render_calibration_plot,
 )
 from ml.data import load_dataset_with_csv_labels
+from ml.loading import synthetic_countries
+from ml.paths import FEATURE_CACHE_DIR, RUNS_ROOT
+from ml.run_analysis import analyze_run
+from ml.run_verification import RunVerificationError
 from ml.splits import chronological_split
 
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s  %(levelname)s  %(name)s  %(message)s",
-)
 log = logging.getLogger("analyze")
+
+DEFAULT_ARTIFACT_DIR = Path("ml/artifacts")
+DEFAULT_CARD_PATH = Path("ml/MODEL_CARD.md")
 
 
 # ---------------------------------------------------------------------------
@@ -68,13 +79,13 @@ _FEATURE_INTERPRETATIONS: dict[str, str] = {
 }
 
 
-def parse_args() -> argparse.Namespace:
+def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Run post-training analyses")
     parser.add_argument(
         "--artifact-dir",
         type=Path,
-        default=Path("ml/artifacts"),
-        help="Where model.json, metrics.json, etc. live",
+        default=None,
+        help=f"Where model.json, metrics.json, etc. live (default: {DEFAULT_ARTIFACT_DIR})",
     )
     parser.add_argument(
         "--csv-path",
@@ -85,16 +96,77 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--card-path",
         type=Path,
-        default=Path("ml/MODEL_CARD.md"),
-        help="Where to write the regenerated model card",
+        default=None,
+        help=f"Where to write the regenerated model card (default: {DEFAULT_CARD_PATH})",
     )
     parser.add_argument(
         "--limit",
         type=int,
         default=None,
-        help="Optional row cap for fast smoke runs",
+        help=(
+            "Optional row cap for fast smoke runs; for a named synthetic run, the limit it "
+            "was trained with"
+        ),
     )
-    return parser.parse_args()
+
+    named = parser.add_argument_group("named runs")
+    named.add_argument(
+        "--run-name",
+        default=None,
+        help="Verify and analyse ml/artifacts/runs/<run-name>/, writing only into it",
+    )
+    named.add_argument(
+        "--root",
+        type=Path,
+        default=None,
+        help="Directory holding a registered dataset's files (default: ml/data/raw/<dataset>)",
+    )
+    named.add_argument(
+        "--cache-root",
+        type=Path,
+        default=None,
+        help=f"Feature cache directory (default: {FEATURE_CACHE_DIR})",
+    )
+    named.add_argument(
+        "--full-corpus",
+        action="store_true",
+        help="Allow an unsubsampled load where the adapter guards against one",
+    )
+
+    args = parser.parse_args(argv)
+    _check_arguments(parser, args)
+    return args
+
+
+def _check_arguments(parser: argparse.ArgumentParser, args: argparse.Namespace) -> None:
+    """Refuse options that would not do what they say in the chosen mode."""
+    if args.run_name is not None:
+        served_only = [
+            flag
+            for flag, given in (
+                ("--artifact-dir", args.artifact_dir is not None),
+                ("--card-path", args.card_path is not None),
+            )
+            if given
+        ]
+        if served_only:
+            parser.error(
+                f"{', '.join(served_only)} cannot be combined with --run-name: a named run is "
+                "analysed from, and written into, its own run directory."
+            )
+        return
+
+    named_only = [
+        flag
+        for flag, given in (
+            ("--root", args.root is not None),
+            ("--cache-root", args.cache_root is not None),
+            ("--full-corpus", args.full_corpus),
+        )
+        if given
+    ]
+    if named_only:
+        parser.error(f"{', '.join(named_only)} apply to --run-name only.")
 
 
 def _json_dump(path: Path, payload: Any) -> None:
@@ -375,9 +447,40 @@ protected classes would be mandatory before launch.
 # Orchestrator
 # ---------------------------------------------------------------------------
 
-def main() -> None:
-    args = parse_args()
-    artifact_dir: Path = args.artifact_dir
+def main(argv: list[str] | None = None) -> None:
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s  %(levelname)s  %(name)s  %(message)s",
+    )
+    args = parse_args(argv)
+    if args.run_name is not None:
+        _analyze_named_run(args)
+    else:
+        _analyze_served(args)
+
+
+def _analyze_named_run(args: argparse.Namespace) -> None:
+    try:
+        analysis = analyze_run(
+            args.run_name,
+            runs_root=RUNS_ROOT,
+            root=args.root,
+            cache_root=args.cache_root or FEATURE_CACHE_DIR,
+            csv_path=args.csv_path,
+            limit=args.limit,
+            full_corpus=args.full_corpus,
+        )
+    except RunVerificationError as exc:
+        log.error("Run %s was not analysed: %s", args.run_name, exc)
+        sys.exit(1)
+    for path in analysis.written:
+        log.info("Wrote %s", path)
+
+
+def _analyze_served(args: argparse.Namespace) -> None:
+    """The analysis of the served artifacts, unchanged by named-run analysis."""
+    artifact_dir: Path = args.artifact_dir or DEFAULT_ARTIFACT_DIR
+    card_path: Path = args.card_path or DEFAULT_CARD_PATH
     log.info("Reading existing artifacts from %s", artifact_dir.resolve())
 
     with (artifact_dir / "metrics.json").open(encoding="utf-8") as f:
@@ -412,7 +515,7 @@ def main() -> None:
     # The feature matrix doesn't carry the raw country string; pull it from
     # the same CSV the labels came from so segment routing is consistent.
     log.info("Loading country column from %s", args.csv_path)
-    countries_by_id = _load_country_column(args.csv_path)
+    countries_by_id = synthetic_countries(args.csv_path)
     test_countries = [countries_by_id[tid] for tid in test_ids]
 
     # ----- Segment metrics -----
@@ -439,7 +542,7 @@ def main() -> None:
     )
 
     # ----- Model card -----
-    log.info("Writing model card to %s", args.card_path)
+    log.info("Writing model card to %s", card_path)
     card_text = _build_model_card(
         metadata=metadata,
         metrics=metrics,
@@ -447,22 +550,10 @@ def main() -> None:
         calibration_metrics=calibration_metrics,
         feature_importance=feature_importance,
     )
-    args.card_path.parent.mkdir(parents=True, exist_ok=True)
-    args.card_path.write_text(card_text, encoding="utf-8")
+    card_path.parent.mkdir(parents=True, exist_ok=True)
+    card_path.write_text(card_text, encoding="utf-8")
 
     _print_summary(metrics, segment_metrics, calibration_metrics, feature_importance)
-
-
-def _load_country_column(csv_path: Path) -> dict[str, str]:
-    """Read just (id, country) from the synthetic CSV — keeps memory small."""
-    import csv
-
-    mapping: dict[str, str] = {}
-    with csv_path.open(encoding="utf-8") as f:
-        reader = csv.DictReader(f)
-        for row in reader:
-            mapping[row["id"]] = row["country"]
-    return mapping
 
 
 def _print_summary(
