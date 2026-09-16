@@ -83,7 +83,7 @@ def load_model(artifact_dir: Path) -> xgb.XGBClassifier:
     booster = xgb.Booster()
     booster.load_model(str(artifact_dir / "model.json"))
     clf = xgb.XGBClassifier()
-    clf._Booster = booster  # type: ignore[attr-defined]
+    clf._Booster = booster
     return clf
 
 
