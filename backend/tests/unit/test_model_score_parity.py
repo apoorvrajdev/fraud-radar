@@ -144,6 +144,14 @@ def test_the_explainer_serves_the_training_score_for_every_test_row(
     np.testing.assert_array_equal(served_scores, run.outcome.test_scores)
 
 
+def test_the_explainer_scores_the_test_fold_in_one_batch_as_training_did(
+    run: TrainedRun, served: FraudExplainer
+) -> None:
+    X_test, _ = run.fold("test")
+
+    np.testing.assert_array_equal(served.predict_proba_batch(X_test), run.outcome.test_scores)
+
+
 def test_the_saved_model_reproduces_the_operating_threshold_on_the_val_fold(
     run: TrainedRun,
 ) -> None:

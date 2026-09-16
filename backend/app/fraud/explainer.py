@@ -99,6 +99,21 @@ class FraudExplainer:
         dmat = xgb.DMatrix(x_row, feature_names=self._feature_names)
         return float(self._booster.predict(dmat)[0])
 
+    def predict_proba_batch(self, X: np.ndarray) -> np.ndarray:
+        """Score a batch of feature vectors. Returns P(fraud=1) per row.
+
+        The booster call `predict_proba` makes, on one matrix instead of one
+        row at a time, so every row scores exactly as it would alone. Not used
+        by the inference endpoint.
+        """
+        X = np.asarray(X, dtype=np.float64)
+        if X.ndim != 2 or X.shape[1] != N_FEATURES:
+            raise ValueError(
+                f"Expected shape (n_rows, {N_FEATURES}); got {X.shape}"
+            )
+        dmat = xgb.DMatrix(X, feature_names=self._feature_names)
+        return np.asarray(self._booster.predict(dmat))
+
     def explain_local(self, x_row: np.ndarray) -> LocalExplanation:
         """Compute SHAP values for one feature vector.
 

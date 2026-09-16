@@ -235,6 +235,26 @@ def test_classify_maps_decision_ladder_correctly() -> None:
     assert explainer.classify(0.99) == "DECLINE"
 
 
+def test_a_batch_scores_every_row_exactly_as_one_row_alone() -> None:
+    explainer = _build_explainer()
+    rows = np.random.default_rng(3).normal(size=(25, N_FEATURES))
+
+    batch = explainer.predict_proba_batch(rows)
+
+    assert batch.shape == (25,)
+    one_at_a_time = np.array([explainer.predict_proba(row) for row in rows], dtype=np.float32)
+    np.testing.assert_array_equal(batch, one_at_a_time)
+
+
+def test_batch_scoring_rejects_wrong_shape() -> None:
+    explainer = _build_explainer()
+
+    with pytest.raises(ValueError, match="Expected shape"):
+        explainer.predict_proba_batch(np.zeros((4, N_FEATURES - 1)))
+    with pytest.raises(ValueError, match="Expected shape"):
+        explainer.predict_proba_batch(np.zeros(N_FEATURES))
+
+
 def test_compute_global_shap_shape() -> None:
     explainer = _build_explainer()
     rng = np.random.default_rng(0)
