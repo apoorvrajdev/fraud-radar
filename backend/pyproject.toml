@@ -62,6 +62,7 @@ extend-immutable-calls = [
 "app/fraud/rules.py" = ["UP042"]
 # `X` is the conventional name for a feature matrix.
 "app/fraud/explainer.py" = ["N803", "N806"]
+"ml/features/cache.py" = ["N803", "N806"]
 # `id` is the domain term for a primary key in the repository API.
 "app/repositories/base.py" = ["A002"]
 # Test-local sessionmaker/engine factories are class-like by convention,
