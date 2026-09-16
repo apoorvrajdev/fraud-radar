@@ -106,9 +106,16 @@ _USED_COLUMNS: tuple[str, ...] = (
 )
 
 # Sparkov's 14 categories onto this project's 12-category taxonomy.
-# `health_fitness` has no equivalent here; it is placed in the closest
-# MEDIUM-risk bucket, which is a judgment call rather than a mapping, and is
-# reported as such in the field inventory.
+#
+# Category carries merchant *type* here; channel is carried separately by
+# is_card_present, which is why grocery_pos and grocery_net both land in
+# GROCERY. `health_fitness` has no exact equivalent, so it goes to
+# ENTERTAINMENT: a discretionary recreation service, MEDIUM risk, in the same
+# 7xxx MCC family as health clubs. ONLINE_SERVICE would contradict the axis
+# split above — its MCC 5968 (direct marketing/subscription) asserts a
+# card-not-present channel, while health_fitness carries no _pos/_net suffix
+# and is treated as card-present. This is still a judgment call, and it is
+# reported as one in the field inventory.
 CATEGORY_MAP: Mapping[str, str] = {
     "grocery_pos": "GROCERY",
     "grocery_net": "GROCERY",
@@ -123,7 +130,7 @@ CATEGORY_MAP: Mapping[str, str] = {
     "gas_transport": "GAS_STATION",
     "entertainment": "ENTERTAINMENT",
     "travel": "TRAVEL",
-    "health_fitness": "ONLINE_SERVICE",
+    "health_fitness": "ENTERTAINMENT",
 }
 
 # Every merchant name in the source is prefixed "fraud_" — on legitimate and

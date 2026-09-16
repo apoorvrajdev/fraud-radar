@@ -55,7 +55,7 @@ Fraud Radar trains and evaluates on datasets it does not own. This file records 
 
 - Card numbers, merchant names and transaction numbers are hashed to UUIDs (`uuid5`); no card-like value is stored or logged.
 - The generator prefixes every merchant name with `fraud_`, on legitimate and fraudulent rows alike. It is stripped: it carries no signal, and leaving a token spelling "fraud" in a merchant name invites a future text model to latch onto it.
-- The 14 source categories are folded onto this project's 12-category taxonomy. `health_fitness` has no equivalent and is placed in the closest medium-risk bucket — a judgment call, recorded as such in the field inventory.
+- The 14 source categories are folded onto this project's 12-category taxonomy. Category carries merchant *type*; the channel is carried separately by `is_card_present`, which is why the `_pos` and `_net` variants of a category share one canonical bucket. `health_fitness` has no exact equivalent and is mapped to `ENTERTAINMENT` — a discretionary recreation service at the same medium risk level, in the same 7xxx MCC family as health clubs. `ONLINE_SERVICE` was rejected: its MCC 5968 (direct marketing/subscription) asserts a card-not-present channel, while `health_fitness` carries no `_pos`/`_net` suffix and is treated as card-present. This remains a judgment call and is recorded as one in the field inventory.
 - Cardholder name, address, coordinates, job and date of birth are dropped: no canonical field, and no reason to carry personal-looking detail.
 - Risk tier and account age have no source equivalent and are filled with inert constants rather than plausible-looking values. Deriving an account age from the birth date would invent signal.
 

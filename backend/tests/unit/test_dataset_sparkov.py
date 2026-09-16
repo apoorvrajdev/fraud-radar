@@ -252,15 +252,53 @@ def test_stripping_the_prefix_does_not_merge_distinct_merchants(
 def test_every_sparkov_category_is_mapped() -> None:
     """The source publishes 14 categories; an unmapped one must fail loudly."""
     assert len(CATEGORY_MAP) == 14
-    assert set(CATEGORY_MAP.values()) <= {
+    assert set(CATEGORY_MAP) == {
+        "grocery_pos",
+        "grocery_net",
+        "food_dining",
+        "shopping_pos",
+        "shopping_net",
+        "misc_pos",
+        "misc_net",
+        "home",
+        "kids_pets",
+        "personal_care",
+        "gas_transport",
+        "entertainment",
+        "travel",
+        "health_fitness",
+    }
+
+
+def test_mapping_targets_are_exactly_these_canonical_categories() -> None:
+    """Pinned as an equality: a retargeted mapping must be a deliberate edit."""
+    assert set(CATEGORY_MAP.values()) == {
         "GROCERY",
         "RESTAURANT",
         "RETAIL",
         "GAS_STATION",
         "ENTERTAINMENT",
         "TRAVEL",
-        "ONLINE_SERVICE",
     }
+
+
+def test_health_fitness_maps_to_entertainment_not_an_online_bucket() -> None:
+    """Category carries merchant type; is_card_present carries channel.
+
+    ONLINE_SERVICE (MCC 5968, direct marketing/subscription) asserts a
+    card-not-present channel, but health_fitness has no _pos/_net suffix and
+    is treated as card-present — so routing it there would contradict the
+    adapter's own channel handling.
+    """
+    assert CATEGORY_MAP["health_fitness"] == "ENTERTAINMENT"
+    assert is_card_present_for("health_fitness") is True
+    assert "ONLINE_SERVICE" not in set(CATEGORY_MAP.values())
+
+
+def test_health_fitness_keeps_the_medium_risk_level() -> None:
+    from ml.synthesis.merchants import CATEGORIES
+
+    assert CATEGORIES[CATEGORY_MAP["health_fitness"]]["risk"] == "MEDIUM"
 
 
 def test_category_suffix_decides_card_present() -> None:
