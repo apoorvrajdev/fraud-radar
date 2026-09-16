@@ -2,8 +2,9 @@
 
 The Phase 5D methodology measures two things about each run beyond its
 metrics, both on the test fold: calibration, with no calibrator fitted, and
-global mean-absolute SHAP importance. This module produces them, and country
-segments where the test fold holds more than one country group.
+global mean-absolute SHAP importance. This module produces them, country
+segments where the test fold holds more than one country group, and the run's
+model card.
 
 Nothing is analysed until the run has been verified: its data is rebuilt from
 its `run.json`, and its saved model has to reproduce its `metrics.json`
@@ -36,16 +37,21 @@ from ml.analysis import (
     render_beeswarm_plot,
     render_calibration_plot,
 )
+from ml.artifacts import utc_now_iso
+from ml.datasets.quality import QUALITY_REPORT_FILENAME
 from ml.loading import DEFAULT_SYNTHETIC_CSV, DataRequest, load_run_data
 from ml.paths import FEATURE_CACHE_DIR, RUNS_ROOT
 from ml.reporting import SEGMENT_TEST_ROC_CURVE_SOURCE
+from ml.run_card import build_run_card, write_run_card
 from ml.run_verification import (
+    RecordedRun,
     RunVerificationError,
     VerifiedRun,
     check_recorded_run,
     read_recorded_run,
     verify_run,
 )
+from ml.runs import current_git_commit
 
 CALIBRATION_FILENAME = "calibration_metrics.json"
 FEATURE_IMPORTANCE_FILENAME = "feature_importance.json"
@@ -72,7 +78,8 @@ class RunAnalysis:
     """What analysing one verified run produced.
 
     `shap_values` is the test fold's SHAP matrix, in `verified.splits.test`
-    row order; only its ranking is written.
+    row order; only its ranking is written. `card` is the model card written
+    into the run directory.
     """
 
     verified: VerifiedRun
@@ -80,6 +87,7 @@ class RunAnalysis:
     feature_importance: dict[str, Any]
     segments: dict[str, Any]
     shap_values: np.ndarray
+    card: str
     written: tuple[Path, ...]
 
 
@@ -103,6 +111,7 @@ def analyze_run(
     recorded = read_recorded_run(run_name, runs_root=runs_root)
     # Refuse on the record alone before loading what may be a whole corpus.
     check_recorded_run(recorded)
+    quality_report = _read_quality_report(recorded)
     try:
         request = DataRequest.from_run_record(
             recorded.record,
@@ -120,7 +129,7 @@ def analyze_run(
     verified = verify_run(recorded, data, explainer)
     if data.countries is None:  # pragma: no cover - requested above
         raise RunVerificationError(f"Run {run_name!r} was loaded without countries.")
-    return _analyze_verified(verified, explainer, data.countries)
+    return _analyze_verified(verified, explainer, data.countries, quality_report)
 
 
 def describe_calibration(test_labels: np.ndarray, test_scores: np.ndarray) -> dict[str, Any]:
@@ -171,7 +180,10 @@ def describe_segments(
 
 
 def _analyze_verified(
-    verified: VerifiedRun, explainer: FraudExplainer, countries: Sequence[str]
+    verified: VerifiedRun,
+    explainer: FraudExplainer,
+    countries: Sequence[str],
+    quality_report: dict[str, Any] | None,
 ) -> RunAnalysis:
     test = verified.splits.test
     test_features = verified.ds.X[test]
@@ -199,14 +211,44 @@ def _analyze_verified(
     render_beeswarm_plot(shap_values, test_features, feature_names, plots[1])
     render_bar_plot(shap_values, test_features, feature_names, plots[2])
 
+    card = build_run_card(
+        verified.recorded,
+        calibration=calibration,
+        feature_importance=feature_importance,
+        segments=segments,
+        quality_report=quality_report,
+        generated_at=utc_now_iso(),
+        code_version=current_git_commit(),
+    )
+    card_path = write_run_card(verified.recorded, card)
+
     return RunAnalysis(
         verified=verified,
         calibration=calibration,
         feature_importance=feature_importance,
         segments=segments,
         shap_values=shap_values,
-        written=written + plots,
+        card=card,
+        written=(*written, *plots, card_path),
     )
+
+
+def _read_quality_report(recorded: RecordedRun) -> dict[str, Any] | None:
+    """The run's quality report, if it has one; read before anything is written."""
+    path = recorded.directory / QUALITY_REPORT_FILENAME
+    if not path.exists():
+        return None
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError) as exc:
+        raise RunVerificationError(
+            f"Run {recorded.name!r}: {QUALITY_REPORT_FILENAME} could not be read: {exc}"
+        ) from exc
+    if not isinstance(payload, dict):
+        raise RunVerificationError(
+            f"Run {recorded.name!r}: {QUALITY_REPORT_FILENAME} does not hold a JSON object."
+        )
+    return payload
 
 
 def _write_json(path: Path, payload: dict[str, Any]) -> Path:

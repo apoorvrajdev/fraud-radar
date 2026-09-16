@@ -33,6 +33,8 @@ from ml.analysis import (
     compute_segment_metrics,
 )
 from ml.data import LabelledDataset
+from ml.datasets.quality import QUALITY_REPORT_FILENAME
+from ml.datasets.sparkov import build_report
 from ml.paths import ARTIFACTS_DIR, ML_ROOT
 from ml.reporting import SEGMENT_TEST_ROC_CURVE_SOURCE
 from ml.run_verification import RunVerificationError
@@ -48,6 +50,7 @@ ANALYSIS_FILES = {
     "calibration_curve.png",
     "global_shap_beeswarm.png",
     "global_shap_bar.png",
+    "MODEL_CARD.md",
 }
 
 
@@ -98,9 +101,9 @@ class Observed:
     shap_inputs: list[np.ndarray] = field(default_factory=list)
 
 
-@pytest.fixture(scope="module")
-def observed(tmp_path_factory: pytest.TempPathFactory) -> Observed:
-    run = train_fixture_run(tmp_path_factory.mktemp("analysed"))
+def observe_analysis(root: Path) -> Observed:
+    """Train the synthetic fixture run under `root` and analyse it under observation."""
+    run = train_fixture_run(root)
     scored_rows: list[np.ndarray] = []
     calibration_inputs: list[tuple[np.ndarray, np.ndarray]] = []
     shap_inputs: list[np.ndarray] = []
@@ -140,6 +143,11 @@ def observed(tmp_path_factory: pytest.TempPathFactory) -> Observed:
         calibration_inputs=calibration_inputs,
         shap_inputs=shap_inputs,
     )
+
+
+@pytest.fixture(scope="module")
+def observed(tmp_path_factory: pytest.TempPathFactory) -> Observed:
+    return observe_analysis(tmp_path_factory.mktemp("analysed"))
 
 
 def _test_rows(observed: Observed) -> np.ndarray:
@@ -295,9 +303,15 @@ class Benchmark:
     cache_files: list[Path]
 
 
-@pytest.fixture(scope="module")
-def benchmark(tmp_path_factory: pytest.TempPathFactory) -> Benchmark:
-    root = tmp_path_factory.mktemp("benchmark")
+BENCHMARK_RUN = "sparkov-fixture"
+
+
+def analyze_benchmark(root: Path) -> Benchmark:
+    """Train a Sparkov fixture run under `root`, report its data quality, and analyse it.
+
+    The quality report is written into the run directory, where the adapter's
+    CLI writes a benchmark run's report.
+    """
     corpus = _benchmark_corpus(root)
     adapter = fixture_adapter(root)
 
@@ -317,7 +331,7 @@ def benchmark(tmp_path_factory: pytest.TempPathFactory) -> Benchmark:
                 "--dataset", "sparkov",
                 "--root", str(corpus),
                 "--cache-root", str(root / "cache"),
-                "--run-name", "sparkov-fixture",
+                "--run-name", BENCHMARK_RUN,
                 "--max-cards", "3",
                 "--seed", "11",
                 "--n-iter", "1",
@@ -326,8 +340,11 @@ def benchmark(tmp_path_factory: pytest.TempPathFactory) -> Benchmark:
             ]
         )
         cache_files = sorted((root / "cache").glob("*.npz"))
+        build_report(adapter.load_detailed(corpus, max_entities=3, seed=11)).write(
+            root / "runs" / BENCHMARK_RUN
+        )
         analysis = run_analysis.analyze_run(
-            "sparkov-fixture",
+            BENCHMARK_RUN,
             runs_root=root / "runs",
             root=corpus,
             cache_root=root / "cache",
@@ -341,6 +358,11 @@ def benchmark(tmp_path_factory: pytest.TempPathFactory) -> Benchmark:
     )
 
 
+@pytest.fixture(scope="module")
+def benchmark(tmp_path_factory: pytest.TempPathFactory) -> Benchmark:
+    return analyze_benchmark(tmp_path_factory.mktemp("benchmark"))
+
+
 def test_a_benchmark_run_is_analysed_from_its_own_record(benchmark: Benchmark) -> None:
     verified = benchmark.analysis.verified
     record = verified.recorded.record
@@ -350,6 +372,7 @@ def test_a_benchmark_run_is_analysed_from_its_own_record(benchmark: Benchmark) -
     assert sorted(benchmark.cache_root.glob("*.npz")) == benchmark.cache_files
     assert benchmark.analysis.calibration["n_test_samples"] == len(verified.splits.test)
     assert {path.name for path in benchmark.analysis.written} == ANALYSIS_FILES
+    assert (verified.recorded.directory / QUALITY_REPORT_FILENAME).exists()
 
 
 def test_a_benchmark_run_with_one_country_reports_no_segments(benchmark: Benchmark) -> None:
@@ -364,7 +387,7 @@ def test_a_benchmark_run_with_one_country_reports_no_segments(benchmark: Benchma
 def test_a_row_limit_is_refused_for_a_benchmark_run(benchmark: Benchmark) -> None:
     with pytest.raises(RunVerificationError, match="cannot be reloaded"):
         run_analysis.analyze_run(
-            "sparkov-fixture",
+            BENCHMARK_RUN,
             runs_root=benchmark.runs_root,
             root=benchmark.corpus,
             cache_root=benchmark.cache_root,
