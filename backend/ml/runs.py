@@ -1,14 +1,15 @@
 """The reproducibility record for a single benchmark run.
 
 `run.json` answers "what would I have to hold fixed to get this number again?"
-— which dataset bytes, which slice of them, which feature contract, which
-seed, which code, which libraries. It is written per run directory, next to
-that run's metrics.
+— which dataset bytes, which slice of them and the seed that drew it, which
+feature contract, which code, which libraries. It is written per run
+directory, next to that run's metrics.
 
 This is deliberately separate from `training_metadata.json` (see
 `ml/artifacts.py`), which records the *model fit*: fold sizes, fraud rates,
-chosen hyperparameters. One describes the inputs, the other the fit; a run
-directory carries both, and neither has to grow the other's fields.
+chosen hyperparameters, and the fit's settings, its random state among them.
+One describes the inputs, the other the fit; a run directory carries both,
+and neither has to grow the other's fields.
 """
 from __future__ import annotations
 
@@ -32,7 +33,10 @@ RUN_METADATA_FILENAME = "run.json"
 
 # Bumped when the shape of run.json changes, so an old run stays readable
 # instead of being silently misparsed by newer code.
-RUN_METADATA_VERSION = "1"
+#   "1"  seed was the subsample seed, or the model random state when the
+#        dataset had no subsample record.
+#   "2"  seed is only ever the subsample seed, and null without a subsample.
+RUN_METADATA_VERSION = "2"
 
 # Names the chronological folds are recorded under, in time order.
 TRAIN_SPLIT = "train"
@@ -118,7 +122,6 @@ class RunMetadata:
     run_name: str
     dataset: DatasetProvenance
     featureset_version: str
-    seed: int
     created_at_utc: str = field(default_factory=lambda: _utc_now_iso())
     code_version: str | None = None
     library_versions: Mapping[str, str] = field(default_factory=dict)
@@ -135,6 +138,16 @@ class RunMetadata:
             raise DatasetContractError(f"Duplicate split names in run {self.run_name!r}: {names}.")
         object.__setattr__(self, "library_versions", MappingProxyType(dict(self.library_versions)))
         object.__setattr__(self, "splits", tuple(self.splits))
+
+    @property
+    def seed(self) -> int | None:
+        """The seed the dataset's subsample was drawn with; None without a subsample record.
+
+        Derived rather than stored, so it cannot mean anything else. The model's
+        random state is a fact of the fit, recorded in `training_metadata.json`.
+        """
+        subsample = self.dataset.subsample
+        return None if subsample is None else subsample.seed
 
     def split(self, name: str) -> SplitPeriod | None:
         """Return the named fold's period, or None if it was not recorded."""
@@ -156,11 +169,16 @@ class RunMetadata:
 
     @classmethod
     def from_dict(cls, payload: Mapping[str, Any]) -> RunMetadata:
+        """Inverse of `to_dict`. `seed` is derived, so it is ignored.
+
+        That also reads version 1 records correctly: where one stored the model
+        random state as its seed, the dataset had no subsample record, and the
+        seed reads back as None.
+        """
         return cls(
             run_name=str(payload["run_name"]),
             dataset=DatasetProvenance.from_dict(payload["dataset"]),
             featureset_version=str(payload["featureset_version"]),
-            seed=int(payload["seed"]),
             created_at_utc=str(payload["created_at_utc"]),
             code_version=_opt_str(payload.get("code_version")),
             library_versions=dict(payload.get("library_versions") or {}),

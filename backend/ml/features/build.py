@@ -111,7 +111,6 @@ def main(argv: list[str] | None = None) -> int:
             run_name=args.run_name,
             dataset=dataset.provenance,
             featureset_version=args.featureset,
-            seed=args.seed,
             code_version=current_git_commit(),
             library_versions=collect_library_versions(),
             notes=f"Feature matrix cached at {metadata.fingerprint}.",

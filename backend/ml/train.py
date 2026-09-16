@@ -146,7 +146,6 @@ class _TrainingData:
 
     ds: LabelledDataset
     provenance: DatasetProvenance | None
-    seed: int
     notes: str
     targets: dict[str, float]
 
@@ -482,7 +481,6 @@ def write_run(
     *,
     dataset: DatasetProvenance,
     featureset: str,
-    seed: int,
     metrics: dict[str, object],
     notes: str = "",
     runs_root: Path = RUNS_ROOT,
@@ -491,13 +489,13 @@ def write_run(
 
     The run record is assembled before anything is written, so an invalid
     name, provenance or fold period refuses the run instead of leaving a
-    partial directory behind.
+    partial directory behind. Its seed comes from the dataset's subsample
+    record; the model's random state is written with the fit.
     """
     record = RunMetadata(
         run_name=run_name,
         dataset=dataset,
         featureset_version=featureset,
-        seed=seed,
         code_version=current_git_commit(),
         library_versions=collect_library_versions(),
         splits=split_periods(ds.timestamps, outcome.splits),
@@ -546,10 +544,9 @@ def _load_synthetic(args: argparse.Namespace) -> _TrainingData:
     return _TrainingData(
         ds=ds,
         provenance=provenance,
-        seed=RANDOM_STATE,
         notes=(
-            "No subsampling applies to the synthetic dataset, so seed records the model "
-            f"random_state ({RANDOM_STATE}), the only seed this run uses."
+            "No subsampling applies to the synthetic dataset, so seed is null. The model "
+            "random_state is recorded with the fit, in training_metadata.json."
         ),
         targets=SYNTHETIC_TARGETS,
     )
@@ -577,11 +574,10 @@ def _load_registered(args: argparse.Namespace) -> _TrainingData:
     return _TrainingData(
         ds=ds,
         provenance=dataset.provenance,
-        seed=args.seed,
         notes=(
             f"Feature matrix {'read from' if cache_hit else 'written to'} cache "
             f"{cache.fingerprint}. seed is the entity-subsampling seed; the model "
-            f"random_state is {RANDOM_STATE}."
+            "random_state is recorded with the fit, in training_metadata.json."
         ),
         # A benchmark records what it measured, never the synthetic-era targets.
         targets={},
@@ -632,7 +628,6 @@ def main(argv: list[str] | None = None) -> None:
             outcome,
             dataset=data.provenance,
             featureset=args.featureset,
-            seed=data.seed,
             metrics=metrics,
             notes=data.notes,
             runs_root=RUNS_ROOT,

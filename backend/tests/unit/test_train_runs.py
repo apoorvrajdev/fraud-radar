@@ -172,6 +172,19 @@ def test_the_run_record_carries_provenance_featureset_seed_and_fold_periods(
     ]
 
 
+def test_the_subsample_seed_and_the_model_random_state_are_recorded_apart(
+    workspace: Path, sparkov_root: Path, tuner_calls: list[dict[str, Any]]
+) -> None:
+    """--seed draws the subsample; it never becomes the model's random state."""
+    run = _train_sparkov(workspace, sparkov_root, "--max-cards", "3", "--seed", "11")
+
+    run_record = _read(run, RUN_METADATA_FILENAME)
+    assert run_record["seed"] == run_record["dataset"]["subsample"]["seed"] == 11
+    assert run_record["dataset"]["subsample"]["strategy"] == "cards"
+    assert _read(run, "training_metadata.json")["random_state"] == train.RANDOM_STATE == 42
+    assert tuner_calls[0]["random_state"] == train.RANDOM_STATE
+
+
 def test_benchmark_metrics_record_observed_results_without_synthetic_targets(
     workspace: Path, sparkov_root: Path, tuner_calls: list[dict[str, Any]]
 ) -> None:
@@ -266,7 +279,11 @@ def test_a_named_synthetic_run_records_the_label_csv_and_keeps_its_targets(
         "synthetic_transactions.csv": hashlib.sha256(labels.read_bytes()).hexdigest()
     }
     assert "no digest" in record.dataset.notes
-    assert record.seed == train.RANDOM_STATE
+    # No subsample, so no seed in run.json; the model's random state is a fit fact.
+    assert record.dataset.subsample is None
+    assert record.seed is None
+    assert _read(run, RUN_METADATA_FILENAME)["seed"] is None
+    assert _read(run, "training_metadata.json")["random_state"] == train.RANDOM_STATE
     assert "random_state" in record.notes
     ds = synthetic_loader
     assert record.splits == split_periods(ds.timestamps, chronological_split(ds.timestamps))

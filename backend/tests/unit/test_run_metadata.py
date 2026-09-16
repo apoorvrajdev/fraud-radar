@@ -8,6 +8,7 @@ version survive a write/read cycle intact.
 from __future__ import annotations
 
 import json
+from dataclasses import replace
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
@@ -59,7 +60,6 @@ def _metadata(**overrides: object) -> RunMetadata:
         "run_name": "fixture-run",
         "dataset": _provenance(),
         "featureset_version": "v1",
-        "seed": 42,
         "code_version": "0" * 40,
         "library_versions": {"xgboost": "3.2.0"},
         "splits": (
@@ -157,7 +157,7 @@ def test_saved_payload_records_every_reproducibility_field(tmp_path: Path) -> No
         "notes",
     }
     assert payload["metadata_version"] == RUN_METADATA_VERSION
-    assert payload["seed"] == 42
+    assert payload["seed"] == 7
     assert payload["featureset_version"] == "v1"
 
 
@@ -178,6 +178,47 @@ def test_saved_payload_carries_the_dataset_provenance(tmp_path: Path) -> None:
         "max_entities": 200,
         "selected_entities": 200,
     }
+
+
+def test_seed_is_the_seed_the_subsample_was_drawn_with() -> None:
+    metadata = _metadata()
+
+    assert metadata.dataset.subsample is not None
+    assert metadata.seed == metadata.dataset.subsample.seed == 7
+
+
+def test_seed_is_null_when_the_dataset_has_no_subsample_record(tmp_path: Path) -> None:
+    """No subsample, no subsample seed — never a stand-in such as the model random state."""
+    original = _metadata(dataset=replace(_provenance(), subsample=None))
+    save_run_metadata(original, runs_root=tmp_path)
+    payload = json.loads((tmp_path / "fixture-run" / RUN_METADATA_FILENAME).read_text("utf-8"))
+
+    assert original.seed is None
+    assert payload["seed"] is None
+    assert load_run_metadata("fixture-run", runs_root=tmp_path) == original
+
+
+@pytest.mark.parametrize(
+    ("subsample", "expected_seed"),
+    [
+        pytest.param(Subsample(strategy="cards", seed=7, max_entities=200), 7, id="subsampled"),
+        pytest.param(None, None, id="no-subsample-record"),
+    ],
+)
+def test_a_version_1_record_reads_its_seed_from_the_subsample_record(
+    tmp_path: Path, subsample: Subsample | None, expected_seed: int | None
+) -> None:
+    """Version 1 stored the model random state as seed when there was no subsample."""
+    payload = _metadata(dataset=replace(_provenance(), subsample=subsample)).to_dict()
+    payload.update(metadata_version="1", seed=42)
+    target = ensure_dir(tmp_path / "fixture-run") / RUN_METADATA_FILENAME
+    target.write_text(json.dumps(payload), encoding="utf-8")
+
+    record = load_run_metadata("fixture-run", runs_root=tmp_path)
+
+    assert RUN_METADATA_VERSION == "2"
+    assert record.metadata_version == "1"
+    assert record.seed == expected_seed
 
 
 def test_split_periods_survive_the_round_trip(tmp_path: Path) -> None:
