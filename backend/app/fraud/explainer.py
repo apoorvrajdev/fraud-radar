@@ -194,6 +194,17 @@ def initialize_explainer(artifacts_dir: Path | str) -> FraudExplainer:
     if _singleton is not None:
         return _singleton
 
+    _singleton = load_explainer(artifacts_dir)
+    return _singleton
+
+
+def load_explainer(artifacts_dir: Path | str) -> FraudExplainer:
+    """Load model + threshold + feature list into a new explainer.
+
+    Never cached and never touches the serving singleton, so each call
+    explains the model in `artifacts_dir` and no other. Offline analysis of a
+    run uses this; serving goes through `initialize_explainer`.
+    """
     artifacts_dir = Path(artifacts_dir)
     model_path = artifacts_dir / _MODEL_FILE
     threshold_path = artifacts_dir / _THRESHOLD_FILE
@@ -222,7 +233,7 @@ def initialize_explainer(artifacts_dir: Path | str) -> FraudExplainer:
     log.info("Constructing TreeExplainer (one-time)...")
     explainer = shap.TreeExplainer(booster)
 
-    _singleton = FraudExplainer(
+    loaded = FraudExplainer(
         booster=booster,
         explainer=explainer,
         threshold=threshold,
@@ -230,7 +241,7 @@ def initialize_explainer(artifacts_dir: Path | str) -> FraudExplainer:
     )
     log.info("FraudExplainer ready — threshold=%.4f, n_features=%d",
              threshold, len(feature_names))
-    return _singleton
+    return loaded
 
 
 def get_explainer() -> FraudExplainer:

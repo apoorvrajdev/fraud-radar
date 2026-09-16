@@ -4,6 +4,7 @@ from app.fraud.explainer import (
     LocalExplanation,
     get_explainer,
     initialize_explainer,
+    load_explainer,
     top_contributors,
 )
 from app.fraud.feature_spec import FEATURE_NAMES
@@ -17,5 +18,6 @@ __all__ = [
     "extract_features",
     "get_explainer",
     "initialize_explainer",
+    "load_explainer",
     "top_contributors",
 ]

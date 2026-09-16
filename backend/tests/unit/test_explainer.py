@@ -15,7 +15,9 @@ import xgboost as xgb
 
 from app.fraud.explainer import (
     FraudExplainer,
+    get_explainer,
     initialize_explainer,
+    load_explainer,
     reset_explainer_for_tests,
     top_contributors,
 )
@@ -106,6 +108,70 @@ def test_initialize_is_idempotent(tmp_path: Path) -> None:
     a = initialize_explainer(artifacts_dir)
     b = initialize_explainer(artifacts_dir)
     assert a is b
+
+
+def _write_model(directory: Path, booster: xgb.Booster, threshold: float) -> Path:
+    directory.mkdir(parents=True)
+    booster.save_model(str(directory / "model.json"))
+    (directory / "threshold.json").write_text(json.dumps({"value": threshold}))
+    (directory / "feature_list.json").write_text(json.dumps({"features": list(FEATURE_NAMES)}))
+    return directory
+
+
+def _two_runs(tmp_path: Path) -> tuple[Path, Path, np.ndarray]:
+    """Two artifact directories whose models score the same rows differently."""
+    first = _write_model(tmp_path / "first", _train_tiny_model(seed=42), threshold=0.3)
+    second = _write_model(tmp_path / "second", _train_tiny_model(seed=7), threshold=0.7)
+    rows = np.random.default_rng(1).normal(size=(16, N_FEATURES))
+    return first, second, rows
+
+
+def _booster_scores(directory: Path, rows: np.ndarray) -> np.ndarray:
+    booster = xgb.Booster()
+    booster.load_model(str(directory / "model.json"))
+    return np.asarray(booster.predict(xgb.DMatrix(rows, feature_names=FEATURE_NAMES)))
+
+
+def test_load_explainer_returns_a_new_explainer_for_each_directory(tmp_path: Path) -> None:
+    first, second, rows = _two_runs(tmp_path)
+    assert not np.array_equal(_booster_scores(first, rows), _booster_scores(second, rows))
+
+    a = load_explainer(first)
+    b = load_explainer(second)
+
+    assert a is not b
+    assert (a.threshold, b.threshold) == (pytest.approx(0.3), pytest.approx(0.7))
+    for directory, explainer in ((first, a), (second, b)):
+        served = np.array([explainer.predict_proba(row) for row in rows], dtype=np.float32)
+        np.testing.assert_array_equal(served, _booster_scores(directory, rows))
+
+
+def test_load_explainer_leaves_the_serving_singleton_alone(tmp_path: Path) -> None:
+    first, _, _ = _two_runs(tmp_path)
+
+    load_explainer(first)
+
+    with pytest.raises(RuntimeError, match="not initialized"):
+        get_explainer()
+
+
+def test_a_run_loaded_after_serving_started_explains_its_own_model(tmp_path: Path) -> None:
+    """Cross-run contamination: the singleton must never stand in for another run.
+
+    `initialize_explainer` keeps returning the first model it loaded, whatever
+    directory it is given, which is right for serving and wrong for analysis.
+    """
+    first, second, rows = _two_runs(tmp_path)
+    serving = initialize_explainer(first)
+
+    analysed = load_explainer(second)
+
+    assert initialize_explainer(second) is serving
+    assert get_explainer() is serving
+    assert analysed is not serving
+    analysed_scores = np.array([analysed.predict_proba(row) for row in rows], dtype=np.float32)
+    np.testing.assert_array_equal(analysed_scores, _booster_scores(second, rows))
+    assert not np.array_equal(analysed_scores, _booster_scores(first, rows))
 
 
 def test_shap_values_satisfy_additivity() -> None:
