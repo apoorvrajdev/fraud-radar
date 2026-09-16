@@ -51,6 +51,10 @@ def _save(artifact_dir: Path, model: xgb.XGBClassifier, n_features: int) -> None
             scale_pos_weight=1.0,
             early_stopping_rounds=50,
             best_iteration=12,
+            live_feature_count=n_features - 1,
+            constant_features=["f0"],
+            live_feature_count_whole_matrix=n_features,
+            constant_features_whole_matrix=[],
         ),
     )
 
@@ -228,7 +232,7 @@ def test_a_threshold_written_before_the_fallback_flag_reads_as_unrecorded(
     )
 
 
-def test_training_metadata_adds_the_fit_settings_to_the_existing_fields(
+def test_training_metadata_adds_the_fit_settings_and_live_features_to_the_existing_fields(
     trained_pair: tuple,
 ) -> None:
     _, _, artifact_dir = trained_pair
@@ -254,8 +258,15 @@ def test_training_metadata_adds_the_fit_settings_to_the_existing_fields(
         "early_stopping_rounds": 50,
         "best_iteration": 12,
     }
-    assert set(payload) == existing | set(fit)
+    live = {
+        "live_feature_count": 4,
+        "constant_features": ["f0"],
+        "live_feature_count_whole_matrix": 5,
+        "constant_features_whole_matrix": [],
+    }
+    assert set(payload) == existing | set(fit) | set(live)
     assert {key: payload[key] for key in fit} == fit
+    assert {key: payload[key] for key in live} == live
 
 
 def test_collect_library_versions_returns_real_strings() -> None:

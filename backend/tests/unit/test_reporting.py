@@ -1,9 +1,10 @@
 """Phase 5D — what every result is reported with, besides the result itself.
 
 The methodology reports each result with the conditions it was measured under
-(decision 13). These tests pin how each condition is computed from the folds
-and the confusion matrix it describes, and that the label-delay note is the
-decision record's own wording.
+(decision 13) and counts the features that could contribute to it (decision 6).
+These tests pin how each condition is computed from the folds and the
+confusion matrix it describes, that the label-delay note is the decision
+record's own wording, and that liveness is decided on the training fold.
 """
 from __future__ import annotations
 
@@ -14,7 +15,7 @@ import numpy as np
 import pytest
 
 from ml.evaluation import ConfusionAtThreshold, confusion_at_threshold
-from ml.reporting import LABEL_DELAY_NOTE, result_context
+from ml.reporting import LABEL_DELAY_NOTE, live_features, result_context
 
 METHODOLOGY = (
     Path(__file__).resolve().parents[3] / "docs" / "adr" / "PHASE_5D_BENCHMARK_METHODOLOGY.md"
@@ -136,3 +137,86 @@ def test_the_label_delay_note_is_the_methodology_wording() -> None:
     decision_record = METHODOLOGY.read_text(encoding="utf-8")
     wording = LABEL_DELAY_NOTE[0].lower() + LABEL_DELAY_NOTE[1:].removesuffix(".")
     assert f"a label-delay note: {wording}." in decision_record
+
+
+# ---------------------------------------------------------------------------
+# Live features
+# ---------------------------------------------------------------------------
+
+NAMES = ["varies", "constant_everywhere", "constant_in_training", "two_values"]
+
+
+def _matrix() -> tuple[np.ndarray, np.ndarray]:
+    """Four training rows, then two later rows; returns (training fold, whole matrix)."""
+    whole = np.array(
+        [
+            [0.1, 5.0, 1.0, 0.0],
+            [0.7, 5.0, 1.0, 1.0],
+            [0.3, 5.0, 1.0, 0.0],
+            [0.9, 5.0, 1.0, 0.0],
+            [0.2, 5.0, 4.0, 1.0],
+            [0.4, 5.0, 1.0, 0.0],
+        ]
+    )
+    return whole[:4], whole
+
+
+def test_a_feature_is_live_when_it_varies_in_the_training_fold() -> None:
+    training, whole = _matrix()
+
+    live = live_features(training_fold=training, whole_matrix=whole, feature_names=NAMES)
+
+    assert live.live_count == 2
+    assert live.constant == ("constant_everywhere", "constant_in_training")
+
+
+def test_the_whole_matrix_count_is_kept_beside_the_training_fold_count() -> None:
+    """A column constant in training that varies later is live over the whole matrix only."""
+    training, whole = _matrix()
+
+    live = live_features(training_fold=training, whole_matrix=whole, feature_names=NAMES)
+
+    assert live.live_count_whole_matrix == 3
+    assert live.constant_whole_matrix == ("constant_everywhere",)
+
+
+def test_constant_features_are_named_in_feature_order() -> None:
+    training, whole = _matrix()
+    reordered = [3, 2, 1, 0]
+    names = [NAMES[index] for index in reordered]
+
+    live = live_features(
+        training_fold=training[:, reordered],
+        whole_matrix=whole[:, reordered],
+        feature_names=names,
+    )
+
+    assert live.constant == ("constant_in_training", "constant_everywhere")
+
+
+@pytest.mark.parametrize(
+    ("column", "is_live"),
+    [
+        pytest.param([0.0, -0.0, 0.0], False, id="signed-zeros-are-one-value"),
+        pytest.param([np.nan, np.nan, np.nan], False, id="all-nan-is-one-value"),
+        pytest.param([np.nan, 1.0, 1.0], True, id="nan-and-a-number-are-two-values"),
+        pytest.param([999.0, 999.0, 998.0], True, id="one-differing-row-is-enough"),
+    ],
+)
+def test_distinct_values_decide_liveness(column: list[float], is_live: bool) -> None:
+    matrix = np.array(column).reshape(-1, 1)
+
+    live = live_features(training_fold=matrix, whole_matrix=matrix, feature_names=["f"])
+
+    assert live.live_count == int(is_live)
+    assert live.constant == (() if is_live else ("f",))
+
+
+@pytest.mark.parametrize("fold", ["training_fold", "whole_matrix"])
+def test_a_matrix_that_does_not_match_the_feature_names_is_refused(fold: str) -> None:
+    training, whole = _matrix()
+    matrices = {"training_fold": training, "whole_matrix": whole}
+    matrices[fold] = matrices[fold][:, :3]
+
+    with pytest.raises(ValueError, match="feature names were given"):
+        live_features(**matrices, feature_names=NAMES)

@@ -75,7 +75,13 @@ from ml.paths import (
     run_dir,
     validate_run_name,
 )
-from ml.reporting import OPERATING_THRESHOLD_SOURCE, TEST_ROC_CURVE_SOURCE, result_context
+from ml.reporting import (
+    OPERATING_THRESHOLD_SOURCE,
+    TEST_ROC_CURVE_SOURCE,
+    LiveFeatures,
+    live_features,
+    result_context,
+)
 from ml.runs import RunMetadata, current_git_commit, save_run_metadata, split_periods
 from ml.splits import SplitIndices, assert_no_temporal_leakage, chronological_split
 from ml.tuning import TuningResult, compute_scale_pos_weight, tune_hyperparameters
@@ -125,10 +131,11 @@ class TrainingOutcome:
 
     Nothing in it has been written anywhere. `metrics` holds observed results
     only; `test_scores` are the model's scores for the test fold, in the order
-    of `splits.test`.
+    of `splits.test`. `live_features` is counted on the training fold.
     """
 
     splits: SplitIndices
+    live_features: LiveFeatures
     tuning: TuningResult
     model: xgb.XGBClassifier
     fit: FitRecord
@@ -359,6 +366,23 @@ def train_and_evaluate(
         _fraud_rate(y_val) * 100,
         _fraud_rate(y_test) * 100,
     )
+    live = live_features(
+        training_fold=X_train,
+        whole_matrix=ds.X,
+        feature_names=ds.feature_names,
+    )
+    log.info(
+        "Live features  %d of %d in the training fold; constant there: %s",
+        live.live_count,
+        len(ds.feature_names),
+        ", ".join(live.constant) or "none",
+    )
+    if live.live_count_whole_matrix != live.live_count:
+        log.info(
+            "Live features  %d of %d over the whole matrix",
+            live.live_count_whole_matrix,
+            len(ds.feature_names),
+        )
 
     # ---- Tune -----------------------------------------------------------
     tuning = tune_hyperparameters(
@@ -457,6 +481,7 @@ def train_and_evaluate(
 
     return TrainingOutcome(
         splits=splits,
+        live_features=live,
         tuning=tuning,
         model=model,
         fit=fit,
@@ -475,10 +500,11 @@ def training_metadata(ds: LabelledDataset, outcome: TrainingOutcome) -> Training
     """The fit record for `outcome`.
 
     Fold sizes, fold fraud rates and chosen hyperparameters, plus the settings
-    the fit ran with and the round early stopping chose.
+    the fit ran with, the round early stopping chose, and the live features.
     """
     splits = outcome.splits
     fit = outcome.fit
+    live = outcome.live_features
     return TrainingMetadata(
         trained_at_utc=utc_now_iso(),
         dataset_size=ds.n_rows,
@@ -496,6 +522,10 @@ def training_metadata(ds: LabelledDataset, outcome: TrainingOutcome) -> Training
         scale_pos_weight=fit.scale_pos_weight,
         early_stopping_rounds=fit.early_stopping_rounds,
         best_iteration=fit.best_iteration,
+        live_feature_count=live.live_count,
+        constant_features=list(live.constant),
+        live_feature_count_whole_matrix=live.live_count_whole_matrix,
+        constant_features_whole_matrix=list(live.constant_whole_matrix),
     )
 
 

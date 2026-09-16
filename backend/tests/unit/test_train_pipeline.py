@@ -441,6 +441,28 @@ def test_training_metadata_records_the_round_early_stopping_chose(tuner_calls: l
     assert 0 <= metadata.best_iteration < outcome.model.get_booster().num_boosted_rounds()
 
 
+def test_live_features_are_counted_on_the_training_fold_by_time(tuner_calls: list[Any]) -> None:
+    """Column f5 never varies; f6 is constant on the training fold's rows only.
+
+    The training fold is chosen by timestamp, and row order is shuffled against
+    time, so counting on the first 70% of rows by position would see f6 vary.
+    """
+    ds = _dataset()
+    train_rows = chronological_split(ds.timestamps).train
+    ds.X[:, 5] = 3.0
+    ds.X[:, 6] = np.arange(N_ROWS, dtype=np.float64)
+    ds.X[train_rows, 6] = 1.0
+    assert np.unique(ds.X[: len(train_rows), 6]).size > 1, "position and time must disagree"
+
+    outcome = _run(ds)
+    metadata = train.training_metadata(ds, outcome)
+
+    assert metadata.live_feature_count == N_FEATURES - 2
+    assert metadata.constant_features == ["f5", "f6"]
+    assert metadata.live_feature_count_whole_matrix == N_FEATURES - 1
+    assert metadata.constant_features_whole_matrix == ["f5"]
+
+
 def test_the_fit_settings_are_the_frozen_protocol() -> None:
     """Phase 5D froze random state 42, 25 iterations, 4 folds and 50 early-stopping rounds."""
     args = train.parse_args([])

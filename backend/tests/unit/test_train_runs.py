@@ -25,6 +25,7 @@ import pytest
 from app.fraud.feature_spec import FEATURESETS
 from ml import train
 from ml.data import LabelledDataset
+from ml.features.cache import load_feature_cache
 from ml.reporting import LABEL_DELAY_NOTE
 from ml.runs import RUN_METADATA_FILENAME, load_run_metadata, split_periods
 from ml.splits import chronological_split
@@ -261,6 +262,48 @@ def test_a_benchmark_run_records_the_facts_of_its_fit(
     assert metadata["scale_pos_weight"] == 4.0
     assert isinstance(metadata["best_iteration"], int)
     assert metadata["best_iteration"] >= 0
+
+
+def test_a_benchmark_run_counts_its_live_features_from_its_own_matrix(
+    workspace: Path, sparkov_root: Path, tuner_calls: list[dict[str, Any]]
+) -> None:
+    """The recorded constants are those of the cached matrix's training rows.
+
+    The fixture corpus is US-only, has no account-open date or risk tier, and
+    no high-risk category, so the five columns the methodology expects to be
+    constant on Sparkov are constant here too, among whatever else the small
+    corpus leaves constant.
+    """
+    run = _train_sparkov(workspace, sparkov_root)
+    (cache_file,) = (workspace / "cache").glob("sparkov_v1_*.npz")
+    matrix, _ = load_feature_cache(cache_file)
+    training = matrix.X[chronological_split(matrix.timestamps).train]
+    expected_constant = [
+        name
+        for column, name in enumerate(matrix.feature_names)
+        if (training[:, column] == training[0, column]).all()
+    ]
+    expected_constant_whole = [
+        name
+        for column, name in enumerate(matrix.feature_names)
+        if (matrix.X[:, column] == matrix.X[0, column]).all()
+    ]
+
+    metadata = _read(run, "training_metadata.json")
+
+    assert metadata["constant_features"] == expected_constant
+    assert metadata["live_feature_count"] == len(FEATURESETS["v1"]) - len(expected_constant)
+    assert metadata["constant_features_whole_matrix"] == expected_constant_whole
+    assert metadata["live_feature_count_whole_matrix"] == (
+        len(FEATURESETS["v1"]) - len(expected_constant_whole)
+    )
+    assert {
+        "country_mismatch_customer",
+        "country_mismatch_merchant",
+        "customer_account_age_days",
+        "customer_risk_tier_encoded",
+        "is_high_risk_category",
+    } <= set(metadata["constant_features"])
 
 
 def test_a_benchmark_run_records_that_its_threshold_fell_back(

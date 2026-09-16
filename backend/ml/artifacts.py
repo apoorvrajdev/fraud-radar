@@ -9,7 +9,7 @@ The artifact directory layout is:
         feature_list.json         Canonical feature order (committed)
         threshold.json            Decision threshold, its FPR target, whether it fell back
         metrics.json              Test-set evaluation results (committed)
-        training_metadata.json    The fit: folds, hyperparameters, fit settings (committed)
+        training_metadata.json    The fit: folds, hyperparameters, fit settings, live features (committed)
         pr_curve.png              Plot of test-set PR curve (gitignored)
 """
 from __future__ import annotations
@@ -56,6 +56,11 @@ class TrainingMetadata:
     `best_iteration` is the zero-based boosting round with the best val-fold
     score; boosting stops once `early_stopping_rounds` rounds pass without
     improving on it.
+
+    `live_feature_count` counts the features that take more than one distinct
+    value in the training fold, and `constant_features` names the others in
+    feature order. The `_whole_matrix` pair is the same count over every row
+    of the dataset (see `ml/reporting.py`).
     """
 
     trained_at_utc: str
@@ -74,6 +79,10 @@ class TrainingMetadata:
     scale_pos_weight: float
     early_stopping_rounds: int
     best_iteration: int
+    live_feature_count: int
+    constant_features: list[str]
+    live_feature_count_whole_matrix: int
+    constant_features_whole_matrix: list[str]
 
 
 def _json_dump(path: Path, payload: Any) -> None:
