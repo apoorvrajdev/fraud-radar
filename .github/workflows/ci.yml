@@ -1,0 +1,82 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  backend:
+    name: Backend — ruff, mypy, pytest
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    env:
+      # No .env is committed, so this mirrors the Settings default explicitly.
+      DATABASE_URL: sqlite:///./fraud_radar.db
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up uv (Python 3.11 — the declared floor)
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+          cache-dependency-glob: backend/uv.lock
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: uv sync --locked
+
+      # ml/ and alembic/versions/ are outside the lint scope for now: the
+      # migrations are frozen, and the ml/ cleanup lands with the Phase 5
+      # dataset work that rewrites those modules anyway.
+      - name: Lint (ruff)
+        run: uv run ruff check app tests alembic/env.py
+
+      - name: Type-check (mypy, strict)
+        run: uv run mypy app
+
+      # tests/integration/test_scoring_endpoint.py loads the real model from
+      # backend/ml/artifacts/, which is gitignored. Train a deliberately tiny
+      # model so those tests run for real instead of skipping. ~1 minute.
+      - name: Bootstrap model artifacts
+        run: |
+          uv run alembic upgrade head
+          uv run python -m ml.generate_dataset --n-transactions 3000
+          uv run python -m ml.train --n-iter 2
+
+      - name: Tests (pytest)
+        run: uv run pytest
+
+  frontend:
+    name: Frontend — tsc, vite build
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Type-check (tsc)
+        run: npx tsc -b
+
+      # VITE_DEMO_MODE mirrors the Vercel demo build, so CI compiles the same
+      # code path the public deployment ships.
+      - name: Build
+        run: npm run build
+        env:
+          VITE_DEMO_MODE: "true"

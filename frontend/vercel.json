@@ -1,3 +1,8 @@
 {
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "framework": "vite",
+  "installCommand": "npm ci",
+  "buildCommand": "VITE_DEMO_MODE=true VITE_DEMO_SNAPSHOT_DATE=$(node -p \"require('./public/demo-data/manifest.json').exported_at.slice(0, 10)\") npm run build",
+  "outputDirectory": "dist",
   "rewrites": [{ "source": "/(.*)", "destination": "/" }]
 }

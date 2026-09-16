@@ -5,6 +5,7 @@
 </p>
 
 <p align="center">
+  <a href="https://github.com/apoorvrajdev/fraud-radar/actions/workflows/ci.yml"><img src="https://github.com/apoorvrajdev/fraud-radar/actions/workflows/ci.yml/badge.svg?branch=main" alt="CI" /></a>
   <img src="https://img.shields.io/badge/status-in%20development-yellow?style=flat-square" alt="Status: In Development" />
   <img src="https://img.shields.io/badge/python-3.11+-3776AB?style=flat-square&logo=python&logoColor=white" alt="Python 3.11+" />
   <img src="https://img.shields.io/badge/FastAPI-009688?style=flat-square&logo=fastapi&logoColor=white" alt="FastAPI" />
@@ -16,6 +17,11 @@
 
 <p align="center">
   A deliberately scoped engineering showcase that mirrors how tier-1 financial institutions build the systems that decide, in milliseconds, whether your card transaction goes through.
+</p>
+
+<!-- TODO: replace with the Vercel URL after the first deploy — see "Deploying the Demo" below. -->
+<p align="center">
+  <strong>Live demo:</strong> <em>not deployed yet</em> — the repository is deploy-ready (<a href="#deploying-the-demo">one-step Vercel import</a>); the URL lands here after the first deploy.
 </p>
 
 ---
@@ -321,7 +327,9 @@ cd backend
 uv run pytest -v
 ```
 
-Runs 197 test cases covering the chronological splitter, evaluation metrics, artifact round-trip, SHAP additivity, force / waterfall plot rendering, segment routing, calibration math (including positive-class variants), the six-rule engine (hour and high-risk-country boundaries parametrised), Stripe-pattern idempotency (hash determinism, replay path, 409 conflict, 422 paths), the scoring orchestrator (decision matrix, audit-log writes, hard-block short-circuit), the feature extractor's pre-loaded-history parity contract, the simulator payload builder, the dashboard stats service (24h window edges, hourly bucket fill, decimal quantisation, top-10 cap), and the `/explain`, `/transactions`, and `/stats/*` endpoints via `TestClient`.
+Runs 276 test cases covering the chronological splitter, evaluation metrics, artifact round-trip, SHAP additivity, force / waterfall plot rendering, segment routing, calibration math (including positive-class variants), the six-rule engine (hour and high-risk-country boundaries parametrised), Stripe-pattern idempotency (hash determinism, replay path, 409 conflict, 422 paths), the scoring orchestrator (decision matrix, audit-log writes, hard-block short-circuit), the feature extractor's pre-loaded-history parity contract, the simulator payload builder, the dashboard stats service (24h window edges, hourly bucket fill, decimal quantisation, top-10 cap), and the `/explain`, `/transactions`, and `/stats/*` endpoints via `TestClient`.
+
+[`.github/workflows/ci.yml`](.github/workflows/ci.yml) runs the same suite on every push to `main` and every pull request, alongside `ruff`, strict `mypy`, and the frontend's `tsc` + production build. The integration tests that load a real model would otherwise skip in CI — `backend/ml/artifacts/model.json` is gitignored — so the workflow trains a deliberately tiny model first (3,000 rows, two search iterations, about a minute) to keep them running for real rather than green-by-skip. Those CI numbers are throwaway; the published metrics come from the full training run above.
 
 ### Simulator
 
@@ -333,6 +341,29 @@ uv run python -m app.simulator.main --rate 1 --fraud-rate 0.10
 ```
 
 Defaults to 1 transaction per second with 10% of transactions shaped to trip a fraud pattern (geo-velocity, high-amount, off-hours, high-risk-country, dormant-account, or stealth foreign). The simulator is a normal HTTP client — every transaction goes through the rules engine, ML scorer, SHAP attribution, audit log, and idempotency cache exactly as any other client would. Ctrl+C stops it cleanly.
+
+### Deploying the Demo
+
+The public demo is the static-snapshot build locked in [`docs/adr/PHASE_4A_DEMO_SCOPE.md`](docs/adr/PHASE_4A_DEMO_SCOPE.md): no hosted backend, no cold starts, no running costs. [`frontend/vercel.json`](frontend/vercel.json) carries everything the deploy needs, so no dashboard environment variables are required:
+
+1. Import the repository on Vercel and set **Root Directory** to `frontend`. Everything else is auto-detected.
+2. The pinned build command turns demo mode on (`VITE_DEMO_MODE=true`) and stamps the banner with the snapshot date read from [`frontend/public/demo-data/manifest.json`](frontend/public/demo-data/manifest.json), so the date in the UI can never drift from the data that ships with it.
+3. The SPA rewrite sends every path to `index.html`, so deep links such as `/transactions/{id}` survive a refresh.
+
+To refresh the snapshot, run the backend locally and re-export — the next deploy picks up the new date automatically:
+
+```bash
+uv run --project backend python scripts/export_demo_snapshot.py   # writes frontend/public/demo-data/
+```
+
+Verify the exact deploy build locally before pushing:
+
+```bash
+cd frontend
+npm ci
+VITE_DEMO_MODE=true VITE_DEMO_SNAPSHOT_DATE=$(node -p "require('./public/demo-data/manifest.json').exported_at.slice(0, 10)") npm run build
+npm run preview
+```
 
 ---
 
@@ -388,7 +419,7 @@ Defaults to 1 transaction per second with 10% of transactions shaped to trip a f
 - [x] **4C** — Frontend demo mode: axios adapter ([`frontend/src/lib/demoApi.ts`](frontend/src/lib/demoApi.ts)) resolves every GET from `public/demo-data/*.json` with client-side filtering for transactions and alerts; central api client ([`frontend/src/lib/api.ts`](frontend/src/lib/api.ts)) swaps the adapter in when `VITE_DEMO_MODE=true`; dismissible amber banner stamps the snapshot date and links to GitHub + the Loom; sidebar footer and topbar pulse flip to demo styling; analyst decision form renders visibly disabled with a lock note instead of faking writes; polling is collapsed via `demoRefetchInterval()` across all five query hooks; `vercel.json` rewrite keeps `/transactions/:id` and `/alerts` deep links working on refresh; tsc + production build clean
 - [x] **4D** — Architecture diagram ([`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md)) with four Mermaid diagrams (live vs demo topology, end-to-end scoring sequence, analyst-review loop with cache wiring, layered code structure); `docs/screenshots/` ready with capture conventions (full screenshots dropped in separately)
 - [ ] **4E** — Loom walkthrough recorded against the live local stack
-- [ ] **4F** — Vercel deploy + README "Live Demo" section at the top (Loom + live URL + screenshots)
+- [ ] **4F** — Vercel deploy + README "Live Demo" section at the top (Loom + live URL + screenshots). Deploy configuration and CI are in place ([`frontend/vercel.json`](frontend/vercel.json), [`.github/workflows/ci.yml`](.github/workflows/ci.yml)); the box gets ticked when the URL is live
 
 ---
 
