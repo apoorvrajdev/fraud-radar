@@ -105,9 +105,12 @@ def _manifest(tmp_path: Path, filenames: Sequence[str] = ("fraudTrain.csv",)) ->
     return path
 
 
-@pytest.fixture
-def corpus(tmp_path: Path) -> Path:
-    """Three cards, mixed channels and categories, one fraud."""
+def build_fixture_corpus(tmp_path: Path) -> Path:
+    """Three cards, mixed channels and categories, one fraud.
+
+    Exposed as a plain function so the quality-report suite can reuse the same
+    corpus without duplicating the row definitions.
+    """
     root = tmp_path / "raw" / "sparkov"
     root.mkdir(parents=True)
     rows = [
@@ -125,9 +128,19 @@ def corpus(tmp_path: Path) -> Path:
     return root
 
 
+def fixture_adapter(tmp_path: Path) -> SparkovAdapter:
+    """An adapter pointed at a fixture manifest, with hash pinning off."""
+    return SparkovAdapter(manifest_path=_manifest(tmp_path), verify_hashes=False)
+
+
+@pytest.fixture
+def corpus(tmp_path: Path) -> Path:
+    return build_fixture_corpus(tmp_path)
+
+
 @pytest.fixture
 def adapter(tmp_path: Path) -> SparkovAdapter:
-    return SparkovAdapter(manifest_path=_manifest(tmp_path), verify_hashes=False)
+    return fixture_adapter(tmp_path)
 
 
 def _load(adapter: SparkovAdapter, root: Path, **kwargs: object) -> CanonicalDataset:

@@ -13,6 +13,7 @@ quietly drop rows: every exclusion is counted, reasoned, and reported.
 """
 from __future__ import annotations
 
+import argparse
 import logging
 import uuid
 from collections.abc import Iterable, Mapping, Sequence
@@ -41,8 +42,15 @@ from ml.datasets.manifest import (
     require_verified,
     sha256_file,
 )
-from ml.datasets.quality import ExclusionRecord, FieldNote, FieldStatus
+from ml.datasets.quality import (
+    ExclusionRecord,
+    FieldNote,
+    FieldStatus,
+    QualityReport,
+    build_quality_report,
+)
 from ml.datasets.registry import register_adapter
+from ml.paths import RAW_DATA_DIR, run_dir
 from ml.synthesis.merchants import CATEGORIES
 
 log = logging.getLogger("ml.datasets.sparkov")
@@ -616,3 +624,82 @@ def _digests_without_verification(entry: DatasetManifestEntry, root: Path) -> di
 
 
 register_adapter(SparkovAdapter())
+
+
+def build_report(result: SparkovLoadResult) -> QualityReport:
+    """Summarise a load, including the checks that are Sparkov-specific."""
+    return build_quality_report(
+        result.dataset,
+        raw_row_count=result.raw_row_count,
+        exclusions=result.exclusions,
+        field_notes=result.field_notes,
+        extra={
+            "unix_time_mismatches": result.unix_time_mismatches,
+            "multi_category_merchant_names": result.multi_category_merchants,
+        },
+    )
+
+
+def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description="Load the Sparkov benchmark into canonical form")
+    parser.add_argument(
+        "--root",
+        type=Path,
+        default=RAW_DATA_DIR / DATASET_NAME,
+        help="Directory holding the source CSVs (default: ml/data/raw/sparkov)",
+    )
+    parser.add_argument(
+        "--max-cards",
+        type=int,
+        default=None,
+        help="Keep only N cards, with their full histories (default: every card)",
+    )
+    parser.add_argument("--seed", type=int, default=42, help="Seed for card subsampling")
+    parser.add_argument(
+        "--report",
+        action="store_true",
+        help="Write quality_report.json into the run directory",
+    )
+    parser.add_argument(
+        "--run-name",
+        default=f"{DATASET_NAME}_v1",
+        help="Run directory under ml/artifacts/runs/ for the report",
+    )
+    parser.add_argument(
+        "--skip-hash-check",
+        action="store_true",
+        help="Load without verifying against the manifest (development only)",
+    )
+    return parser.parse_args(argv)
+
+
+def main(argv: list[str] | None = None) -> int:
+    """CLI: load, summarise, and optionally write the quality report."""
+    logging.basicConfig(level=logging.INFO, format="%(asctime)s  %(levelname)s  %(message)s")
+    args = _parse_args(argv)
+
+    adapter = SparkovAdapter(verify_hashes=not args.skip_hash_check)
+    result = adapter.load_detailed(args.root, max_entities=args.max_cards, seed=args.seed)
+    report = build_report(result)
+
+    log.info(
+        "Loaded %d of %d rows | %d cards | %d merchants | fraud %d (%.3f%%)",
+        report.kept_row_count,
+        report.raw_row_count,
+        report.customer_count,
+        report.merchant_count,
+        report.fraud_count,
+        report.fraud_rate * 100,
+    )
+    for warning in report.warnings:
+        log.warning("%s", warning)
+
+    if args.report:
+        written = report.write(run_dir(args.run_name))
+        log.info("Quality report written to %s", written)
+
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
