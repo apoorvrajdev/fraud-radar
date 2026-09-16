@@ -17,18 +17,27 @@ import subprocess
 from collections.abc import Mapping
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
+from itertools import pairwise
 from pathlib import Path
 from types import MappingProxyType
 from typing import Any
 
+import numpy as np
+
 from ml.datasets.base import DatasetContractError, DatasetProvenance
 from ml.paths import RUNS_ROOT, ensure_dir, run_dir, validate_run_name
+from ml.splits import SplitIndices
 
 RUN_METADATA_FILENAME = "run.json"
 
 # Bumped when the shape of run.json changes, so an old run stays readable
 # instead of being silently misparsed by newer code.
 RUN_METADATA_VERSION = "1"
+
+# Names the chronological folds are recorded under, in time order.
+TRAIN_SPLIT = "train"
+VAL_SPLIT = "val"
+TEST_SPLIT = "test"
 
 _GIT_TIMEOUT_SECONDS = 5
 
@@ -69,6 +78,37 @@ class SplitPeriod:
             start=datetime.fromisoformat(str(payload["start"])),
             end=datetime.fromisoformat(str(payload["end"])),
         )
+
+
+def split_periods(timestamps: np.ndarray, splits: SplitIndices) -> tuple[SplitPeriod, ...]:
+    """The period each chronological fold actually covers, train → val → test.
+
+    Read from the timestamps the folds hold, not from the split fractions, so
+    the record states what was trained and scored on. A fold that is empty,
+    naive, or out of time order has no honest period to record, and is refused.
+    Adjacent folds may share a boundary timestamp: transactions at the same
+    instant can fall on both sides of a split.
+    """
+    values = np.asarray(timestamps, dtype=object)
+    periods: list[SplitPeriod] = []
+    for name, indices in (
+        (TRAIN_SPLIT, splits.train),
+        (VAL_SPLIT, splits.val),
+        (TEST_SPLIT, splits.test),
+    ):
+        if len(indices) == 0:
+            raise DatasetContractError(f"Split {name!r} is empty, so it covers no period.")
+        fold = values[indices]
+        periods.append(SplitPeriod(name=name, start=min(fold), end=max(fold)))
+
+    for earlier, later in pairwise(periods):
+        if earlier.end > later.start:
+            raise DatasetContractError(
+                f"Split {later.name!r} starts ({later.start.isoformat()}) before "
+                f"{earlier.name!r} ends ({earlier.end.isoformat()}); the folds are "
+                "not in time order."
+            )
+    return tuple(periods)
 
 
 @dataclass(frozen=True)

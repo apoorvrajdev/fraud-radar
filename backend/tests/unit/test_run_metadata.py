@@ -11,6 +11,7 @@ import json
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
+import numpy as np
 import pytest
 
 from ml import paths
@@ -24,7 +25,9 @@ from ml.runs import (
     current_git_commit,
     load_run_metadata,
     save_run_metadata,
+    split_periods,
 )
+from ml.splits import SplitIndices, chronological_split
 
 ANCHOR = datetime(2026, 3, 1, 12, 0, tzinfo=UTC)
 DIGEST = "b" * 64
@@ -224,6 +227,67 @@ def test_inverted_split_period_is_refused() -> None:
 def test_naive_split_boundaries_are_refused() -> None:
     with pytest.raises(DatasetContractError, match="timezone-aware"):
         SplitPeriod("train", datetime(2026, 1, 1), datetime(2026, 2, 1))
+
+
+def _timestamps(hours: list[int]) -> np.ndarray:
+    return np.asarray([ANCHOR + timedelta(hours=hour) for hour in hours], dtype=object)
+
+
+def test_split_periods_cover_what_each_fold_holds_in_time_order() -> None:
+    """Twenty hourly rows split 14 / 3 / 3, deliberately stored out of time order."""
+    hours = [19, 3, 11, 0, 7, 15, 2, 18, 9, 13, 5, 16, 1, 10, 17, 6, 12, 4, 14, 8]
+    timestamps = _timestamps(hours)
+
+    periods = split_periods(timestamps, chronological_split(timestamps))
+
+    assert [period.name for period in periods] == ["train", "val", "test"]
+    assert [(period.start, period.end) for period in periods] == [
+        (ANCHOR, ANCHOR + timedelta(hours=13)),
+        (ANCHOR + timedelta(hours=14), ANCHOR + timedelta(hours=16)),
+        (ANCHOR + timedelta(hours=17), ANCHOR + timedelta(hours=19)),
+    ]
+
+
+def test_split_periods_round_trip_through_the_run_record(tmp_path: Path) -> None:
+    timestamps = _timestamps(list(range(20)))
+    periods = split_periods(timestamps, chronological_split(timestamps))
+
+    save_run_metadata(_metadata(splits=periods), runs_root=tmp_path)
+
+    assert load_run_metadata("fixture-run", runs_root=tmp_path).splits == periods
+
+
+def test_split_periods_allow_folds_to_share_a_boundary_instant() -> None:
+    """Transactions at the same instant can fall on both sides of a split."""
+    timestamps = _timestamps([0, 1, 1, 2])
+    splits = SplitIndices(train=np.array([0, 1]), val=np.array([2]), test=np.array([3]))
+
+    periods = split_periods(timestamps, splits)
+
+    assert periods[0].end == periods[1].start == ANCHOR + timedelta(hours=1)
+
+
+def test_split_periods_refuse_naive_timestamps() -> None:
+    timestamps = np.asarray([datetime(2026, 1, 1, hour) for hour in range(10)], dtype=object)
+
+    with pytest.raises(DatasetContractError, match="timezone-aware"):
+        split_periods(timestamps, chronological_split(timestamps))
+
+
+def test_split_periods_refuse_an_empty_fold() -> None:
+    timestamps = _timestamps([0, 1, 2])
+    splits = SplitIndices(train=np.array([0, 1]), val=np.array([], dtype=int), test=np.array([2]))
+
+    with pytest.raises(DatasetContractError, match="'val' is empty"):
+        split_periods(timestamps, splits)
+
+
+def test_split_periods_refuse_folds_out_of_time_order() -> None:
+    timestamps = _timestamps([0, 1, 2, 3])
+    splits = SplitIndices(train=np.array([2, 3]), val=np.array([0]), test=np.array([1]))
+
+    with pytest.raises(DatasetContractError, match="not in time order"):
+        split_periods(timestamps, splits)
 
 
 def test_library_versions_cannot_be_mutated_after_construction() -> None:
