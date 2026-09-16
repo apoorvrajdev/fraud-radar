@@ -327,7 +327,7 @@ cd backend
 uv run pytest -v
 ```
 
-Runs 276 test cases covering the chronological splitter, evaluation metrics, artifact round-trip, SHAP additivity, force / waterfall plot rendering, segment routing, calibration math (including positive-class variants), the six-rule engine (hour and high-risk-country boundaries parametrised), Stripe-pattern idempotency (hash determinism, replay path, 409 conflict, 422 paths), the scoring orchestrator (decision matrix, audit-log writes, hard-block short-circuit), the feature extractor's pre-loaded-history parity contract, the simulator payload builder, the dashboard stats service (24h window edges, hourly bucket fill, decimal quantisation, top-10 cap), and the `/explain`, `/transactions`, and `/stats/*` endpoints via `TestClient`.
+Runs 357 test cases covering the dataset contracts and run records (canonical invariants, provenance round-trip, adapter registry, offline layout), the featureset registry pin, the chronological splitter, evaluation metrics, artifact round-trip, SHAP additivity, force / waterfall plot rendering, segment routing, calibration math (including positive-class variants), the six-rule engine (hour and high-risk-country boundaries parametrised), Stripe-pattern idempotency (hash determinism, replay path, 409 conflict, 422 paths), the scoring orchestrator (decision matrix, audit-log writes, hard-block short-circuit), the feature extractor's pre-loaded-history parity contract, the simulator payload builder, the dashboard stats service (24h window edges, hourly bucket fill, decimal quantisation, top-10 cap), and the `/explain`, `/transactions`, and `/stats/*` endpoints via `TestClient`.
 
 [`.github/workflows/ci.yml`](.github/workflows/ci.yml) runs the same suite on every push to `main` and every pull request, alongside `ruff`, strict `mypy`, and the frontend's `tsc` + production build. The integration tests that load a real model would otherwise skip in CI — `backend/ml/artifacts/model.json` is gitignored — so the workflow trains a deliberately tiny model first (3,000 rows, two search iterations, about a minute) to keep them running for real rather than green-by-skip. Those CI numbers are throwaway; the published metrics come from the full training run above.
 
@@ -421,6 +421,18 @@ npm run preview
 - [x] **4E** — [Loom walkthrough](https://www.loom.com/share/a4fb7eb81ba7496e80e300a36c41617b) recorded against the live local stack: real-time scoring through the FastAPI backend, the XGBoost model and SHAP contributors behind a decision, rules such as impossible geo-velocity firing, dashboard metrics and the live transaction feed, audit logs, and an analyst working a flagged transaction through to a fraud/legitimate verdict with notes
 - [x] **4F** — Vercel deploy live at [fraud-radar-lilac.vercel.app](https://fraud-radar-lilac.vercel.app) and linked at the top of this README; build configuration in [`frontend/vercel.json`](frontend/vercel.json), CI in [`.github/workflows/ci.yml`](.github/workflows/ci.yml)
 
+### Phase 5 — External Benchmarks
+
+Today's headline metrics come from data produced by this repository's own generator, which measures whether that generator is learnable rather than whether fraud is detectable. Phase 5 breaks that loop with externally generated and real-world benchmarks, and reports the drop honestly rather than quietly keeping the friendlier number.
+
+- [x] **5A** — Data and benchmark architecture ([`docs/adr/PHASE_5A_DESIGN.md`](docs/adr/PHASE_5A_DESIGN.md)): canonical dataset contract over the production ORM types with labels held outside the objects, load-time invariant validation, name-resolved adapter protocol, provenance record carrying licence and per-file hashes, four-stage offline layout (raw / cache / run outputs / promoted artifacts), per-run reproducibility record, and a versioned featureset registry with v1 frozen and pinned by test. Licensing policy in [`docs/DATA_LICENSES.md`](docs/DATA_LICENSES.md). No scoring, threshold, feature, schema, simulator or demo behaviour changed
+- [ ] **5B** — Download script with SHA-256 manifest verification; external synthetic adapter (column mapping, deterministic id hashing, category taxonomy, entity subsampling) and its quality report
+- [ ] **5C** — Batch feature builder on the production extractor, with a golden parity test against the serving path
+- [ ] **5D** — Training, evaluation, temporal-drift experiment, rules audit and regenerated model card on external data, with promotion
+- [ ] **5E** — Real-world benchmark track (ULB), never promoted to the serving API
+- [ ] **5F** — Multi-currency FX enrichment with tested failure modes
+- [ ] **5G** — Model/dataset badge, currency-aware amounts, docs and demo snapshot refresh
+
 ---
 
 ## 📑 Documentation
@@ -433,6 +445,8 @@ npm run preview
 - [`docs/adr/PHASE_3G_DESIGN.md`](docs/adr/PHASE_3G_DESIGN.md) — design for the transaction detail slice (composite envelope, analyst-override endpoint, `effective_decision` semantics, audit-row contract, SHAP rendering strategy).
 - [`docs/adr/PHASE_3H_DESIGN.md`](docs/adr/PHASE_3H_DESIGN.md) — design for the alerts queue slice (dedicated worklist endpoint, queue predicate, score-bucket boundaries calibrated to the empirical REVIEW distribution, summary-block semantics, dedicated keyset cursor codec).
 - [`docs/adr/PHASE_4A_DEMO_SCOPE.md`](docs/adr/PHASE_4A_DEMO_SCOPE.md) — design for the public demo (zero-cost Vercel-only architecture, snapshot contract, in-scope vs Loom-only behaviour, honesty posture, routing/hosting notes).
+- [`docs/adr/PHASE_5A_DESIGN.md`](docs/adr/PHASE_5A_DESIGN.md) — data and benchmark architecture (canonical schema invariant, adapter protocol, labels held outside the objects, provenance record, four-stage offline layout, run reproducibility record, featureset versioning).
+- [`docs/DATA_LICENSES.md`](docs/DATA_LICENSES.md) — per-source licence, citation and provenance policy: what is derived and committed, what never enters the repository.
 - [`backend/ml/MODEL_CARD.md`](backend/ml/MODEL_CARD.md) — auto-regenerated model card with segment, calibration, and global SHAP analyses.
 
 ---
