@@ -277,11 +277,14 @@ class UnixTimeCheck:
 
     @property
     def is_uniform_offset(self) -> bool:
-        """True when every row shares one offset — a timezone, not a defect."""
-        return self.rows_at_modal_offset > 0 and self.mismatches in (
-            0,
-            self.rows_at_modal_offset,
-        )
+        """True when every row with a numeric `unix_time` has the same offset.
+
+        Read from the complete distribution, so any second offset makes it
+        false, however few rows it holds and however close it sits to the
+        first. With no comparable rows there is no shared offset, so it is
+        false then too.
+        """
+        return self.offset_distribution.distinct_offsets == 1
 
 
 @dataclass(frozen=True)

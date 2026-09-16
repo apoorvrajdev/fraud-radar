@@ -594,6 +594,90 @@ def test_a_listing_limit_below_one_is_refused() -> None:
         sparkov.check_unix_time(frame, listing_limit=0)
 
 
+@pytest.mark.parametrize(
+    "offsets",
+    [
+        pytest.param([18000, 18000, 18000, 18000], id="nonzero-offset"),
+        pytest.param([0, 0, 0], id="zero-offset"),
+        pytest.param([3600, 3600, None], id="rows-without-unix-time-do-not-count"),
+    ],
+)
+def test_one_distinct_offset_is_uniform(
+    tmp_path: Path, adapter: SparkovAdapter, offsets: list[int | None]
+) -> None:
+    check = adapter.load_detailed(_corpus_with_offsets(tmp_path, "one", offsets)).unix_time
+
+    assert check.offset_distribution.distinct_offsets == 1
+    assert check.is_uniform_offset is True
+
+
+@pytest.mark.parametrize(
+    "offsets",
+    [
+        pytest.param([18000, 18000, 18000, 0], id="modal-offset-beside-exact-rows"),
+        pytest.param([0, 0, 1], id="one-second-apart"),
+        pytest.param([3600, -3600], id="equal-counts"),
+    ],
+)
+def test_more_than_one_distinct_offset_is_never_uniform(
+    tmp_path: Path, adapter: SparkovAdapter, offsets: list[int | None]
+) -> None:
+    check = adapter.load_detailed(_corpus_with_offsets(tmp_path, "several", offsets)).unix_time
+
+    assert check.offset_distribution.distinct_offsets > 1
+    assert check.is_uniform_offset is False
+
+
+@pytest.mark.parametrize(
+    "offsets",
+    [
+        pytest.param([18000, 18000, 18000, 0], id="exact-row-last"),
+        pytest.param([0, 18000, 18000, 18000], id="exact-row-first"),
+        pytest.param([18000, 0, 18000, 18000], id="exact-row-between"),
+    ],
+)
+def test_uniformity_and_modal_fields_do_not_depend_on_row_order(
+    tmp_path: Path, adapter: SparkovAdapter, offsets: list[int | None]
+) -> None:
+    """Three rows at +18000 and one matching the wall clock, in any order."""
+    result = adapter.load_detailed(_corpus_with_offsets(tmp_path, "ordered", offsets))
+    check = result.unix_time
+
+    assert check.mismatches == 3
+    assert check.modal_offset_seconds == 18000
+    assert check.rows_at_modal_offset == 3
+    assert check.is_uniform_offset is False
+    assert sparkov.build_report(result).to_dict()["extra"]["unix_time_offset_is_uniform"] is False
+
+
+def test_no_comparable_rows_is_not_uniform(tmp_path: Path, adapter: SparkovAdapter) -> None:
+    """With no numeric unix_time there is no offset to share."""
+    check = adapter.load_detailed(_corpus_with_offsets(tmp_path, "none", [None, None])).unix_time
+
+    assert check.offset_distribution.rows_compared == 0
+    assert check.mismatches == 0
+    assert check.modal_offset_seconds is None
+    assert check.rows_at_modal_offset == 0
+    assert check.is_uniform_offset is False
+
+
+def test_an_empty_frame_is_not_uniform() -> None:
+    frame = sparkov.parse_timestamps(
+        pd.DataFrame(
+            {
+                "trans_date_trans_time": pd.Series([], dtype="string"),
+                "unix_time": pd.Series([], dtype="float64"),
+            }
+        )
+    )
+
+    check = sparkov.check_unix_time(frame)
+
+    assert check.offset_distribution.rows_compared == 0
+    assert check.modal_offset_seconds is None
+    assert check.is_uniform_offset is False
+
+
 def test_the_wall_clock_drives_the_transaction_timestamp(
     tmp_path: Path, adapter: SparkovAdapter
 ) -> None:

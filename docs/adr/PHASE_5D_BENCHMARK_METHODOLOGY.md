@@ -203,7 +203,7 @@ The quality report records the distribution under `extra.unix_time_offset_distri
 - `distinct_offsets`, `min_offset_seconds` and `max_offset_seconds`, which always cover every compared row;
 - `listing_limit` (50), `truncated`, `unlisted_offsets` and `unlisted_rows` — at most 50 offsets are listed, so the report stays bounded, and a truncated listing states exactly what it left out.
 
-The field records observations and makes no judgement. The existing `unix_time_mismatches`, `unix_time_modal_offset_seconds`, `unix_time_rows_at_modal_offset` and `unix_time_offset_is_uniform` fields are kept unchanged for compatibility. The first acquisition is inspected from the distribution rather than from `unix_time_offset_is_uniform`, which can read true when more than one offset was observed (for example, a nonzero modal offset alongside rows that match the wall clock exactly). If the listing is truncated on the real corpus, that is reported before any offset is interpreted.
+The field records observations and makes no judgement. The existing `unix_time_mismatches`, `unix_time_modal_offset_seconds`, `unix_time_rows_at_modal_offset` and `unix_time_offset_is_uniform` fields are kept for compatibility. `unix_time_offset_is_uniform` is true exactly when `distinct_offsets` is 1: any second offset makes it false, even one second from the first, and so does having no comparable rows. It summarises the distribution; the first acquisition is still inspected from the distribution itself. If the listing is truncated on the real corpus, that is reported before any offset is interpreted.
 
 ---
 
