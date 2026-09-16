@@ -47,7 +47,12 @@ def _row(
     is_fraud: str = "0",
     unix_time: str | None = None,
 ) -> list[str]:
-    parsed = datetime.fromisoformat(timestamp).replace(tzinfo=UTC)
+    # Deliberately malformed timestamps are a fixture case, so the derived
+    # epoch falls back to 0 instead of the helper refusing to build the row.
+    try:
+        epoch = str(int(datetime.fromisoformat(timestamp).replace(tzinfo=UTC).timestamp()))
+    except ValueError:
+        epoch = "0"
     return [
         str(index),
         timestamp,
@@ -68,7 +73,7 @@ def _row(
         "Engineer",
         "1985-04-12",
         trans_num,
-        unix_time if unix_time is not None else str(int(parsed.timestamp())),
+        unix_time if unix_time is not None else epoch,
         "39.8",
         "-89.7",
         is_fraud,
@@ -395,8 +400,70 @@ def test_unix_time_disagreement_is_reported_not_enforced(
     )
 
     result = adapter.load_detailed(root)
-    assert result.unix_time_mismatches == 1
+    assert result.unix_time.mismatches == 1
     assert result.dataset.n_rows == 2
+
+
+def test_a_uniform_unix_time_offset_is_recognised_as_a_timezone(
+    tmp_path: Path, adapter: SparkovAdapter
+) -> None:
+    """Every row off by the same amount is the generator's local clock.
+
+    The generator derives its epoch from a naive datetime, so the offset is
+    whichever timezone produced the corpus — a provenance fact, not a defect.
+    """
+    root = tmp_path / "raw" / "offset"
+    root.mkdir(parents=True)
+    offset = 5 * 3600
+    rows = []
+    for index in range(4):
+        timestamp = f"2019-01-0{index + 1} 10:15:00"
+        epoch = int(datetime.fromisoformat(timestamp).replace(tzinfo=UTC).timestamp())
+        rows.append(
+            _row(index, trans_num=f"t{index}", timestamp=timestamp, unix_time=str(epoch - offset))
+        )
+    _write_csv(root / "fraudTrain.csv", rows)
+
+    check = adapter.load_detailed(root).unix_time
+
+    assert check.mismatches == 4
+    assert check.modal_offset_seconds == offset
+    assert check.rows_at_modal_offset == 4
+    assert check.is_uniform_offset is True
+
+
+def test_scattered_unix_time_errors_are_not_a_uniform_offset(
+    tmp_path: Path, adapter: SparkovAdapter
+) -> None:
+    root = tmp_path / "raw" / "scatter"
+    root.mkdir(parents=True)
+    _write_csv(
+        root / "fraudTrain.csv",
+        [
+            _row(0, trans_num="t0", timestamp="2019-01-01 10:15:00", unix_time="1"),
+            _row(1, trans_num="t1", timestamp="2019-01-02 10:15:00", unix_time="2"),
+            _row(2, trans_num="t2", timestamp="2019-01-03 10:15:00"),
+        ],
+    )
+
+    check = adapter.load_detailed(root).unix_time
+    assert check.mismatches == 2
+    assert check.is_uniform_offset is False
+
+
+def test_the_wall_clock_drives_the_transaction_timestamp(
+    tmp_path: Path, adapter: SparkovAdapter
+) -> None:
+    """A wrong epoch must not move a transaction: the wall clock is authoritative."""
+    root = tmp_path / "raw" / "authority"
+    root.mkdir(parents=True)
+    _write_csv(
+        root / "fraudTrain.csv",
+        [_row(0, trans_num="t1", timestamp="2019-04-05 23:45:00", unix_time="0")],
+    )
+
+    dataset = adapter.load(root)
+    assert dataset.transactions[0].created_at == datetime(2019, 4, 5, 23, 45, tzinfo=UTC)
 
 
 # ---------------------------------------------------------------------------

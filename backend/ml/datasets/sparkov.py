@@ -10,6 +10,15 @@ rules transfer beyond the generator they were designed against.
 What this adapter does *not* do is as important as what it does. It does not
 touch scoring, it does not invent fields the source lacks, and it does not
 quietly drop rows: every exclusion is counted, reasoned, and reported.
+
+**Which clock is authoritative.** `trans_date_trans_time` is, and `unix_time`
+is advisory. The generator samples an hour-of-day from a shopping daypart,
+builds a naive `datetime`, and derives the epoch from it with `.timestamp()`
+(`profile_weights.py`) — which resolves a naive datetime against the local
+timezone of whatever machine ran the generator. The wall clock is therefore
+the quantity the simulation actually modelled, and the epoch is a by-product
+carrying that machine's timezone offset. Every temporal feature reads the wall
+clock; the epoch is only cross-checked and reported.
 """
 from __future__ import annotations
 
@@ -22,6 +31,7 @@ from datetime import UTC, datetime
 from decimal import Decimal, InvalidOperation
 from pathlib import Path
 from random import Random
+from typing import Any
 
 import pandas as pd
 
@@ -140,6 +150,17 @@ _MERCHANT_PREFIX = "fraud_"
 
 _CARD_PRESENT_SUFFIX: Mapping[str, bool] = {"_pos": True, "_net": False}
 
+# The generator writes a date and a time of day, which the publisher joined
+# into one column. One explicit format, parsed once: per-element inference
+# would be slow over 1.85M rows and could resolve ambiguous strings
+# inconsistently, which is the worst possible failure for a timestamp that
+# every velocity feature is computed from.
+SPARKOV_TIMESTAMP_FORMAT = "%Y-%m-%d %H:%M:%S"
+
+# Where the single parse result lives while the frame is being processed.
+# No leading underscore: pandas' itertuples renames such columns positionally.
+_PARSED_AT_COLUMN = "parsed_at"
+
 # Constants for fields the source does not carry. Chosen to be inert rather
 # than plausible: a fabricated account age would feed a live feature with
 # invented signal.
@@ -152,9 +173,43 @@ _DEFAULT_STATUS = "APPROVED"
 
 _UNIX_TIME_TOLERANCE_SECONDS = 1.0
 
+# Measured, not guessed: building canonical Transaction objects plus their
+# label entries costs ~1,983 bytes per row (tracemalloc over 20k rows), so the
+# published 1.85M-row corpus needs roughly 3.7 GB for those objects alone,
+# before the source frame and the feature matrix.
+ESTIMATED_BYTES_PER_ROW = 2_000
+
+# A full-corpus load above this many rows must be asked for explicitly. This
+# is a row count, not a memory limit: the repository cannot know how much RAM
+# a given machine has, so it refuses to pretend. The threshold sits far above
+# any fixture or subsampled development run and far below the published
+# corpus, so the guard only ever fires for the case it is about.
+FULL_CORPUS_ROW_LIMIT = 500_000
+
 
 class SparkovSchemaError(DatasetContractError):
     """The source file does not look like the Sparkov dataset we expect."""
+
+
+class CorpusTooLargeError(DatasetContractError):
+    """A full-corpus load was attempted without asking for one."""
+
+
+@dataclass(frozen=True)
+class UnixTimeCheck:
+    """How `unix_time` relates to the parsed wall clock across a corpus."""
+
+    mismatches: int
+    modal_offset_seconds: int | None
+    rows_at_modal_offset: int
+
+    @property
+    def is_uniform_offset(self) -> bool:
+        """True when every row shares one offset — a timezone, not a defect."""
+        return self.rows_at_modal_offset > 0 and self.mismatches in (
+            0,
+            self.rows_at_modal_offset,
+        )
 
 
 @dataclass(frozen=True)
@@ -165,7 +220,7 @@ class SparkovLoadResult:
     raw_row_count: int
     exclusions: tuple[ExclusionRecord, ...]
     field_notes: tuple[FieldNote, ...]
-    unix_time_mismatches: int
+    unix_time: UnixTimeCheck
     multi_category_merchants: int = 0
 
     @property
@@ -183,9 +238,11 @@ class SparkovAdapter:
         *,
         manifest_path: Path = DEFAULT_MANIFEST_PATH,
         verify_hashes: bool = True,
+        allow_full_corpus: bool = False,
     ) -> None:
         self.manifest_path = manifest_path
         self.verify_hashes = verify_hashes
+        self.allow_full_corpus = allow_full_corpus
 
     def load(
         self,
@@ -216,13 +273,17 @@ class SparkovAdapter:
         raw_row_count = len(frame)
         log.info("Read %d rows from %s", raw_row_count, ", ".join(entry.filenames))
 
+        frame = parse_timestamps(frame)
         frame, exclusions = _apply_exclusions(frame)
         frame, subsample = _subsample_by_card(frame, max_entities=max_entities, seed=seed)
+        _guard_projected_size(
+            len(frame), subsample=subsample, allow_full_corpus=self.allow_full_corpus
+        )
 
         customers = _build_customers(frame["cc_num"])
         merchants, multi_category_merchants = _build_merchants(frame[["merchant", "category"]])
         transactions, labels = _build_transactions(frame)
-        mismatches = _count_unix_time_mismatches(frame)
+        unix_time = check_unix_time(frame)
 
         provenance = _build_provenance(
             entry=entry,
@@ -246,7 +307,7 @@ class SparkovAdapter:
             raw_row_count=raw_row_count,
             exclusions=exclusions,
             field_notes=field_inventory(),
-            unix_time_mismatches=mismatches,
+            unix_time=unix_time,
             multi_category_merchants=multi_category_merchants,
         )
 
@@ -351,6 +412,23 @@ def _read_one(path: Path) -> pd.DataFrame:
     )
 
 
+def parse_timestamps(frame: pd.DataFrame) -> pd.DataFrame:
+    """Parse `trans_date_trans_time` once, with one explicit format.
+
+    Every later step — the exclusion gate, the transaction objects, the
+    unix_time cross-check — reads this column instead of re-parsing. Parsing
+    the same field twice with two different parsers is how a row passes
+    validation and then fails, or worse, is interpreted two ways.
+
+    Unparsable values become NaT here and are excluded (and counted) below,
+    rather than raising midway through object construction.
+    """
+    parsed = pd.to_datetime(
+        frame["trans_date_trans_time"], format=SPARKOV_TIMESTAMP_FORMAT, errors="coerce"
+    )
+    return frame.assign(**{_PARSED_AT_COLUMN: parsed})
+
+
 def _apply_exclusions(frame: pd.DataFrame) -> tuple[pd.DataFrame, tuple[ExclusionRecord, ...]]:
     """Remove rows that cannot become valid canonical transactions.
 
@@ -374,8 +452,9 @@ def _apply_exclusions(frame: pd.DataFrame) -> tuple[pd.DataFrame, tuple[Exclusio
     frame, record = _exclude(frame, invalid_label, "label_not_zero_or_one", "trans_num")
     exclusions.append(record)
 
-    timestamps = pd.to_datetime(frame["trans_date_trans_time"], errors="coerce", format="mixed")
-    frame, record = _exclude(frame, timestamps.isna(), "unparsable_timestamp", "trans_num")
+    frame, record = _exclude(
+        frame, frame[_PARSED_AT_COLUMN].isna(), "unparsable_timestamp", "trans_num"
+    )
     exclusions.append(record)
 
     # Keep the first occurrence in file order so a re-run keeps the same row.
@@ -431,6 +510,38 @@ def _subsample_by_card(
         seed=seed,
         max_entities=max_entities,
         selected_entities=len(chosen),
+    )
+
+
+def projected_bytes(rows: int) -> int:
+    """Rough memory the canonical objects for `rows` will occupy."""
+    return rows * ESTIMATED_BYTES_PER_ROW
+
+
+def _guard_projected_size(
+    rows: int, *, subsample: Subsample, allow_full_corpus: bool
+) -> None:
+    """Refuse a large unsubsampled load unless it was asked for explicitly.
+
+    Canonical objects are built in memory, so a full-corpus load is a
+    multi-gigabyte decision. Rather than guess how much RAM is available —
+    which this code cannot know — it declines to make that decision silently
+    on the caller's behalf.
+    """
+    log.info(
+        "Projected canonical footprint: %d rows x ~%d bytes = %.2f GB",
+        rows,
+        ESTIMATED_BYTES_PER_ROW,
+        projected_bytes(rows) / 1e9,
+    )
+    if allow_full_corpus or subsample.strategy != "none" or rows <= FULL_CORPUS_ROW_LIMIT:
+        return
+    raise CorpusTooLargeError(
+        f"Loading {rows:,} rows without subsampling needs roughly "
+        f"{projected_bytes(rows) / 1e9:.1f} GB for the canonical objects alone, "
+        f"plus the source frame and the feature matrix. Pass --max-cards N for a "
+        f"sampled run (histories are kept whole), or opt in explicitly with "
+        f"--full-corpus once you know the machine can take it."
     )
 
 
@@ -531,7 +642,7 @@ def _build_transactions(frame: pd.DataFrame) -> tuple[list[Transaction], dict[st
                 payment_method=_DEFAULT_PAYMENT_METHOD,
                 country=_DEFAULT_COUNTRY,
                 is_card_present=is_card_present_for(source_category),
-                created_at=_to_utc(str(row.trans_date_trans_time)),
+                created_at=_to_utc(getattr(row, _PARSED_AT_COLUMN)),
             )
         )
         # The label is written to a separate map, never onto the row above.
@@ -548,27 +659,52 @@ def _to_amount(value: object) -> Decimal:
         raise SparkovSchemaError(f"Unparsable amount {value!r}") from exc
 
 
-def _to_utc(raw: str) -> datetime:
-    """Source timestamps are naive; the dataset documents them as a single clock."""
-    parsed = datetime.fromisoformat(raw)
-    return parsed if parsed.tzinfo else parsed.replace(tzinfo=UTC)
+def _to_utc(value: Any) -> datetime:
+    """Normalise one already-parsed timestamp to a tz-aware UTC datetime.
+
+    The generator emits a naive wall clock (see the clock-authority note in
+    the module docstring), so UTC is applied explicitly here rather than being
+    inherited from whatever locale the reader happens to run in.
+    """
+    timestamp = value.to_pydatetime() if hasattr(value, "to_pydatetime") else value
+    if not isinstance(timestamp, datetime):  # pragma: no cover - excluded upstream
+        raise SparkovSchemaError(f"Unparsable timestamp {value!r}")
+    return timestamp if timestamp.tzinfo else timestamp.replace(tzinfo=UTC)
 
 
-def _count_unix_time_mismatches(frame: pd.DataFrame) -> int:
-    """How often `unix_time` disagrees with the parsed timestamp.
+def check_unix_time(frame: pd.DataFrame) -> UnixTimeCheck:
+    """Compare `unix_time` against the parsed wall clock.
 
-    Reported rather than enforced: a systematic offset is a property of the
-    generator worth stating, not a reason to reject the corpus.
+    A uniform offset is expected, not a defect. The generator builds a naive
+    datetime and calls `.timestamp()` on it, which resolves against the local
+    timezone of whatever machine produced the corpus — so `unix_time` encodes
+    that machine's offset and carries no information the wall clock lacks.
+
+    Reporting the modal offset and how many rows sit at it turns an alarming
+    "100% mismatch" into a legible "every row is off by one fixed offset",
+    which is the difference between a data problem and a provenance fact.
     """
     if frame.empty:
-        return 0
-    parsed = pd.to_datetime(frame["trans_date_trans_time"], errors="coerce", format="mixed")
+        return UnixTimeCheck(mismatches=0, modal_offset_seconds=None, rows_at_modal_offset=0)
+
     # Cast to second resolution before taking the integer view: the underlying
     # unit of a datetime64 column is version-dependent (ns or us), and dividing
     # by a hard-coded factor silently turns every row into a mismatch.
-    epoch_seconds = parsed.astype("datetime64[s]").astype("int64")
-    delta = (epoch_seconds - pd.to_numeric(frame["unix_time"], errors="coerce")).abs()
-    return int((delta > _UNIX_TIME_TOLERANCE_SECONDS).sum())
+    epoch_seconds = frame[_PARSED_AT_COLUMN].astype("datetime64[s]").astype("int64")
+    deltas = epoch_seconds - pd.to_numeric(frame["unix_time"], errors="coerce")
+    mismatches = int((deltas.abs() > _UNIX_TIME_TOLERANCE_SECONDS).sum())
+
+    modes = deltas.mode(dropna=True)
+    if modes.empty:
+        return UnixTimeCheck(
+            mismatches=mismatches, modal_offset_seconds=None, rows_at_modal_offset=0
+        )
+    modal_offset = int(modes.iloc[0])
+    return UnixTimeCheck(
+        mismatches=mismatches,
+        modal_offset_seconds=modal_offset,
+        rows_at_modal_offset=int((deltas == modal_offset).sum()),
+    )
 
 
 def _build_provenance(
@@ -641,7 +777,11 @@ def build_report(result: SparkovLoadResult) -> QualityReport:
         exclusions=result.exclusions,
         field_notes=result.field_notes,
         extra={
-            "unix_time_mismatches": result.unix_time_mismatches,
+            "unix_time_mismatches": result.unix_time.mismatches,
+            "unix_time_modal_offset_seconds": result.unix_time.modal_offset_seconds,
+            "unix_time_rows_at_modal_offset": result.unix_time.rows_at_modal_offset,
+            "unix_time_offset_is_uniform": result.unix_time.is_uniform_offset,
+            "authoritative_clock": "trans_date_trans_time",
             "multi_category_merchant_names": result.multi_category_merchants,
         },
     )
@@ -677,6 +817,14 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         action="store_true",
         help="Load without verifying against the manifest (development only)",
     )
+    parser.add_argument(
+        "--full-corpus",
+        action="store_true",
+        help=(
+            "Allow an unsubsampled load above "
+            f"{FULL_CORPUS_ROW_LIMIT:,} rows (multi-gigabyte)"
+        ),
+    )
     return parser.parse_args(argv)
 
 
@@ -685,7 +833,10 @@ def main(argv: list[str] | None = None) -> int:
     logging.basicConfig(level=logging.INFO, format="%(asctime)s  %(levelname)s  %(message)s")
     args = _parse_args(argv)
 
-    adapter = SparkovAdapter(verify_hashes=not args.skip_hash_check)
+    adapter = SparkovAdapter(
+        verify_hashes=not args.skip_hash_check,
+        allow_full_corpus=args.full_corpus,
+    )
     result = adapter.load_detailed(args.root, max_entities=args.max_cards, seed=args.seed)
     report = build_report(result)
 

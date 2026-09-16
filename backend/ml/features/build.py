@@ -66,6 +66,11 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         default=None,
         help="Write a run record under ml/artifacts/runs/<run-name>/",
     )
+    parser.add_argument(
+        "--full-corpus",
+        action="store_true",
+        help="Allow an unsubsampled load where the adapter guards against one",
+    )
     return parser.parse_args(argv)
 
 
@@ -75,6 +80,12 @@ def main(argv: list[str] | None = None) -> int:
 
     adapter = get_adapter(args.dataset)
     root = args.root or RAW_DATA_DIR / args.dataset
+
+    # Adapters that guard against an accidental full-corpus load expose the
+    # opt-in as an attribute. Set it only where it exists, so this entry point
+    # stays dataset-agnostic.
+    if args.full_corpus and hasattr(adapter, "allow_full_corpus"):
+        adapter.allow_full_corpus = True
 
     dataset = adapter.load(root, max_entities=args.max_cards, seed=args.seed)
     matrix, metadata, cache_hit = build_or_load(
