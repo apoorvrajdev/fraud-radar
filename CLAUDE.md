@@ -47,3 +47,27 @@ Keep subject under 72 characters. Body optional but explains *why*, not *what*.
 - Plan before implementing for any non-trivial change
 - One module at a time, with tests
 - After making changes, summarize what you did so the user can review and commit
+
+## Phase 5 Implementation Rules
+
+The Phase 5 implementation specification is:
+`docs/PHASE_5_PLAN.md`
+
+Before performing Phase 5 work:
+- Read `docs/PHASE_5_PLAN.md`.
+- Implement exactly ONE milestone (M0–M7) at a time.
+- Do not begin the next milestone automatically.
+- Section 6 defines explicit Phase 5 non-goals.
+- Section 25 identifies files that should not be modified unless necessary.
+- Tests are part of each milestone's implementation.
+- Preserve existing behavior unless the milestone explicitly requires a change.
+- Do not weaken or delete existing tests to make a milestone pass.
+- Do not add dependencies unless the milestone requires them.
+- Do not commit changes unless explicitly instructed.
+- At the end of each milestone, report:
+  1. files changed
+  2. tests run/results
+  3. git diff summary
+  4. deviations from the Phase 5 plan
+  5. suggested commit message
+- STOP after the milestone and wait for explicit approval before starting the next milestone.
