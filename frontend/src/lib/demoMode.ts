@@ -27,4 +27,5 @@ export const demoRefetchInterval = (live: number): number | false =>
  * Public links surfaced in the demo banner and sidebar footer.
  */
 export const DEMO_REPO_URL = "https://github.com/apoorvrajdev/fraud-radar";
-export const DEMO_LOOM_URL = ""; // filled in once Phase 4E records it
+export const DEMO_LOOM_URL =
+  "https://www.loom.com/share/a4fb7eb81ba7496e80e300a36c41617b";
