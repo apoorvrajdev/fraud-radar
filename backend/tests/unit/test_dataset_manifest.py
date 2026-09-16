@@ -167,14 +167,83 @@ def test_changed_bytes_are_refused(tmp_path: Path, data_root: Path) -> None:
         require_verified(entry, data_root)
 
 
-def test_size_mismatch_is_caught_before_hashing(tmp_path: Path, data_root: Path) -> None:
+def test_size_mismatch_against_a_pinned_digest_is_refused(
+    tmp_path: Path, data_root: Path
+) -> None:
+    """A pinned file that changed size is different data, full stop."""
+    path = tmp_path / "manifest.json"
+    path.write_text(
+        json.dumps(_manifest_payload(sha256=DIGEST, size=999_999)), encoding="utf-8"
+    )
+    entry = load_manifest_entry("fixture", path=path)
+
+    check = check_file(entry.file("data.csv"), data_root)
+    assert check.status is FileStatus.SIZE_MISMATCH
+    assert check.is_blocking
+    assert check.actual_sha256 is None
+
+
+def test_stale_advertised_size_does_not_block_a_first_acquisition(
+    tmp_path: Path, data_root: Path
+) -> None:
+    """The size came from the publisher's metadata, not from bytes we held.
+
+    Refusing here would dead-end the only download that can establish the
+    truth, since pinning is unreachable while verification fails.
+    """
     path = tmp_path / "manifest.json"
     path.write_text(json.dumps(_manifest_payload(size=999_999)), encoding="utf-8")
     entry = load_manifest_entry("fixture", path=path)
 
     check = check_file(entry.file("data.csv"), data_root)
-    assert check.status is FileStatus.SIZE_MISMATCH
-    assert check.actual_sha256 is None
+    assert check.status is FileStatus.UNPINNED
+    assert not check.is_blocking
+    assert check.actual_sha256 == DIGEST
+    assert "reported rather than refused" in check.detail
+
+
+def test_pinning_records_the_size_that_actually_arrived(
+    tmp_path: Path, data_root: Path
+) -> None:
+    path = tmp_path / "manifest.json"
+    path.write_text(json.dumps(_manifest_payload(size=999_999)), encoding="utf-8")
+    entry = load_manifest_entry("fixture", path=path)
+
+    pin_hashes(entry, data_root, path=path)
+
+    repinned = load_manifest_entry("fixture", path=path)
+    assert repinned.file("data.csv").expected_bytes == len(CONTENT)
+    assert repinned.file("data.csv").sha256 == DIGEST
+    assert check_file(repinned.file("data.csv"), data_root).status is FileStatus.OK
+
+
+def test_first_acquisition_flow_end_to_end(tmp_path: Path, data_root: Path) -> None:
+    """Stale size -> verify passes -> pin -> later mismatch is refused."""
+    path = tmp_path / "manifest.json"
+    path.write_text(json.dumps(_manifest_payload(size=42)), encoding="utf-8")
+
+    assert (
+        download.main(
+            [
+                "--dataset",
+                "fixture",
+                "--manifest",
+                str(path),
+                "--raw-root",
+                str(data_root.parent),
+                "--pin-hashes",
+            ]
+        )
+        == download.EXIT_OK
+    )
+
+    pinned = load_manifest_entry("fixture", path=path)
+    assert pinned.file("data.csv").sha256 == DIGEST
+
+    (data_root / "data.csv").write_bytes(CONTENT + b"tampered\n")
+    assert check_file(
+        load_manifest_entry("fixture", path=path).file("data.csv"), data_root
+    ).is_blocking
 
 
 def test_missing_file_is_reported(manifest_path: Path, tmp_path: Path) -> None:

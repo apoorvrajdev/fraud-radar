@@ -146,24 +146,43 @@ def check_file(expectation: FileExpectation, root: Path) -> FileCheck:
         )
 
     actual_bytes = path.stat().st_size
-    if expectation.expected_bytes is not None and actual_bytes != expectation.expected_bytes:
-        return FileCheck(
-            name=expectation.name,
-            status=FileStatus.SIZE_MISMATCH,
-            actual_bytes=actual_bytes,
-            detail=(
-                f"Expected {expectation.expected_bytes} bytes, found {actual_bytes}. "
-                "The publisher may have republished the file."
-            ),
-        )
+    size_differs = (
+        expectation.expected_bytes is not None and actual_bytes != expectation.expected_bytes
+    )
 
     if not expectation.is_pinned:
+        # First acquisition. The advertised size came from the publisher's
+        # metadata, not from bytes anyone here has held, so a difference is a
+        # discrepancy to report — not grounds to refuse the only download that
+        # can ever establish the truth. Pinning records what actually arrived.
+        detail = "No digest pinned yet; run the download command with --pin-hashes."
+        if size_differs:
+            detail = (
+                f"Size differs from the manifest's advertised "
+                f"{expectation.expected_bytes} bytes (found {actual_bytes}). "
+                "Nothing is pinned yet, so this is reported rather than refused: "
+                "check the dataset page before pinning, and pinning will record "
+                "the size that actually arrived."
+            )
         return FileCheck(
             name=expectation.name,
             status=FileStatus.UNPINNED,
             actual_bytes=actual_bytes,
             actual_sha256=sha256_file(path),
-            detail="No digest pinned yet; run the download command with --pin-hashes.",
+            detail=detail,
+        )
+
+    if size_differs:
+        # A pinned file that changed size is different data, full stop.
+        return FileCheck(
+            name=expectation.name,
+            status=FileStatus.SIZE_MISMATCH,
+            actual_bytes=actual_bytes,
+            detail=(
+                f"Expected {expectation.expected_bytes} bytes, found {actual_bytes}, "
+                f"against a pinned digest. The file is not the one this manifest "
+                "describes."
+            ),
         )
 
     actual_sha256 = sha256_file(path)
