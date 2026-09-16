@@ -20,7 +20,8 @@
 </p>
 
 <p align="center">
-  <strong>Live demo:</strong> <a href="https://fraud-radar-lilac.vercel.app">https://fraud-radar-lilac.vercel.app</a>
+  <strong>Live demo:</strong> <a href="https://fraud-radar-lilac.vercel.app">https://fraud-radar-lilac.vercel.app</a><br />
+  <strong>Walkthrough:</strong> <a href="https://www.loom.com/share/a4fb7eb81ba7496e80e300a36c41617b">Loom video</a> — the live stack end to end, including behaviour the static demo cannot show
 </p>
 
 ---
@@ -417,8 +418,8 @@ npm run preview
 - [x] **4B** — Snapshot export script ([`scripts/export_demo_snapshot.py`](scripts/export_demo_snapshot.py)): paginates the live API and writes `stats-overview.json`, `stats-timeseries.json`, `stats-breakdown.json`, `transactions.json` (300 rows), `transactions/{id}.json` (curated coverage: BLOCK / REVIEW / ALLOW / overridden + every alert ID), `alerts.json` (100 rows + summary), and `manifest.json` to `frontend/public/demo-data/`
 - [x] **4C** — Frontend demo mode: axios adapter ([`frontend/src/lib/demoApi.ts`](frontend/src/lib/demoApi.ts)) resolves every GET from `public/demo-data/*.json` with client-side filtering for transactions and alerts; central api client ([`frontend/src/lib/api.ts`](frontend/src/lib/api.ts)) swaps the adapter in when `VITE_DEMO_MODE=true`; dismissible amber banner stamps the snapshot date and links to GitHub + the Loom; sidebar footer and topbar pulse flip to demo styling; analyst decision form renders visibly disabled with a lock note instead of faking writes; polling is collapsed via `demoRefetchInterval()` across all five query hooks; `vercel.json` rewrite keeps `/transactions/:id` and `/alerts` deep links working on refresh; tsc + production build clean
 - [x] **4D** — Architecture diagram ([`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md)) with four Mermaid diagrams (live vs demo topology, end-to-end scoring sequence, analyst-review loop with cache wiring, layered code structure); `docs/screenshots/` ready with capture conventions (full screenshots dropped in separately)
-- [ ] **4E** — Loom walkthrough recorded against the live local stack
-- [x] **4F** — Vercel deploy live at [fraud-radar-lilac.vercel.app](https://fraud-radar-lilac.vercel.app) and linked at the top of this README; build configuration in [`frontend/vercel.json`](frontend/vercel.json), CI in [`.github/workflows/ci.yml`](.github/workflows/ci.yml). The Loom link joins it once 4E is recorded
+- [x] **4E** — [Loom walkthrough](https://www.loom.com/share/a4fb7eb81ba7496e80e300a36c41617b) recorded against the live local stack: real-time scoring through the FastAPI backend, the XGBoost model and SHAP contributors behind a decision, rules such as impossible geo-velocity firing, dashboard metrics and the live transaction feed, audit logs, and an analyst working a flagged transaction through to a fraud/legitimate verdict with notes
+- [x] **4F** — Vercel deploy live at [fraud-radar-lilac.vercel.app](https://fraud-radar-lilac.vercel.app) and linked at the top of this README; build configuration in [`frontend/vercel.json`](frontend/vercel.json), CI in [`.github/workflows/ci.yml`](.github/workflows/ci.yml)
 
 ---
 
