@@ -1,6 +1,7 @@
 """Round-trip tests: save → reload preserves predictions byte-for-byte."""
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 import numpy as np
@@ -58,6 +59,12 @@ def trained_pair(tmp_path: Path) -> tuple[xgb.XGBClassifier, np.ndarray, Path]:
             test_fraud_rate=0.5,
             best_hyperparameters={"max_depth": 3},
             library_versions=collect_library_versions(),
+            random_state=42,
+            tuning_iterations=25,
+            tuning_cv_folds=4,
+            scale_pos_weight=1.0,
+            early_stopping_rounds=50,
+            best_iteration=12,
         ),
     )
     return model, X, tmp_path
@@ -98,6 +105,36 @@ def test_threshold_round_trip(trained_pair: tuple) -> None:
     assert threshold.value == 0.5
     assert threshold.target_fpr == 0.01
     assert threshold.realised_fpr_on_val == pytest.approx(0.008)
+
+
+def test_training_metadata_adds_the_fit_settings_to_the_existing_fields(
+    trained_pair: tuple,
+) -> None:
+    _, _, artifact_dir = trained_pair
+    payload = json.loads((artifact_dir / "training_metadata.json").read_text(encoding="utf-8"))
+
+    existing = {
+        "trained_at_utc",
+        "dataset_size",
+        "train_size",
+        "val_size",
+        "test_size",
+        "train_fraud_rate",
+        "val_fraud_rate",
+        "test_fraud_rate",
+        "best_hyperparameters",
+        "library_versions",
+    }
+    fit = {
+        "random_state": 42,
+        "tuning_iterations": 25,
+        "tuning_cv_folds": 4,
+        "scale_pos_weight": 1.0,
+        "early_stopping_rounds": 50,
+        "best_iteration": 12,
+    }
+    assert set(payload) == existing | set(fit)
+    assert {key: payload[key] for key in fit} == fit
 
 
 def test_collect_library_versions_returns_real_strings() -> None:

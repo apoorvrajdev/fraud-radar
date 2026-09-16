@@ -83,6 +83,9 @@ log = logging.getLogger("train")
 
 RANDOM_STATE = 42
 
+# Boosting stops once this many rounds pass without improving the val fold's PR-AUC.
+EARLY_STOPPING_ROUNDS = 50
+
 DEFAULT_SUBSAMPLE_SEED = 42
 
 # Goals set against the in-house generator. They are written into the
@@ -93,6 +96,22 @@ SYNTHETIC_TARGETS: dict[str, float] = {
     "target_pr_auc": 0.75,
     "target_recall_at_1pct_fpr": 0.60,
 }
+
+
+@dataclass(frozen=True)
+class FitRecord:
+    """The settings the fit ran with, and the round early stopping chose.
+
+    Taken from the tuner's arguments and the fitted model's own parameters,
+    so it describes the fit that happened rather than the one intended.
+    """
+
+    random_state: int
+    tuning_iterations: int
+    tuning_cv_folds: int
+    scale_pos_weight: float
+    early_stopping_rounds: int
+    best_iteration: int
 
 
 @dataclass(frozen=True)
@@ -107,6 +126,7 @@ class TrainingOutcome:
     splits: SplitIndices
     tuning: TuningResult
     model: xgb.XGBClassifier
+    fit: FitRecord
     threshold: ThresholdRecord
     test_scores: np.ndarray
     metrics: dict[str, object]
@@ -291,7 +311,7 @@ def _final_fit(
     argument (preferred) rather than a `fit()` keyword.
     """
     scale_pos_weight = compute_scale_pos_weight(y_train)
-    log.info("Final fit with early_stopping_rounds=50 against val set...")
+    log.info("Final fit with early_stopping_rounds=%d against val set...", EARLY_STOPPING_ROUNDS)
 
     model = xgb.XGBClassifier(
         **best_params,
@@ -300,7 +320,7 @@ def _final_fit(
         scale_pos_weight=scale_pos_weight,
         tree_method="hist",
         random_state=RANDOM_STATE,
-        early_stopping_rounds=50,
+        early_stopping_rounds=EARLY_STOPPING_ROUNDS,
     )
     model.fit(X_train, y_train, eval_set=[(X_val, y_val)], verbose=False)
     best_iter = getattr(model, "best_iteration", None)
@@ -347,6 +367,15 @@ def train_and_evaluate(
 
     # ---- Final fit ------------------------------------------------------
     model = _final_fit(X_train, y_train, X_val, y_val, tuning.best_params)
+    fitted_with = model.get_params()
+    fit = FitRecord(
+        random_state=RANDOM_STATE,
+        tuning_iterations=n_iter,
+        tuning_cv_folds=cv_splits,
+        scale_pos_weight=float(fitted_with["scale_pos_weight"]),
+        early_stopping_rounds=int(fitted_with["early_stopping_rounds"]),
+        best_iteration=int(model.best_iteration),
+    )
 
     # ---- Threshold selection on val -------------------------------------
     val_scores = model.predict_proba(X_val)[:, 1]
@@ -397,6 +426,7 @@ def train_and_evaluate(
         splits=splits,
         tuning=tuning,
         model=model,
+        fit=fit,
         threshold=ThresholdRecord(
             value=float(threshold_value),
             target_fpr=float(target_fpr),
@@ -408,8 +438,13 @@ def train_and_evaluate(
 
 
 def training_metadata(ds: LabelledDataset, outcome: TrainingOutcome) -> TrainingMetadata:
-    """The fit record for `outcome`: fold sizes, fold fraud rates, chosen hyperparameters."""
+    """The fit record for `outcome`.
+
+    Fold sizes, fold fraud rates and chosen hyperparameters, plus the settings
+    the fit ran with and the round early stopping chose.
+    """
     splits = outcome.splits
+    fit = outcome.fit
     return TrainingMetadata(
         trained_at_utc=utc_now_iso(),
         dataset_size=ds.n_rows,
@@ -421,6 +456,12 @@ def training_metadata(ds: LabelledDataset, outcome: TrainingOutcome) -> Training
         test_fraud_rate=_fraud_rate(ds.y[splits.test]),
         best_hyperparameters=outcome.tuning.best_params,
         library_versions=collect_library_versions(),
+        random_state=fit.random_state,
+        tuning_iterations=fit.tuning_iterations,
+        tuning_cv_folds=fit.tuning_cv_folds,
+        scale_pos_weight=fit.scale_pos_weight,
+        early_stopping_rounds=fit.early_stopping_rounds,
+        best_iteration=fit.best_iteration,
     )
 
 

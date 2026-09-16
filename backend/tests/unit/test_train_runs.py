@@ -192,6 +192,20 @@ def test_a_benchmark_run_trains_on_the_frozen_featureset(
     assert (metadata["train_size"], metadata["val_size"], metadata["test_size"]) == (70, 15, 15)
 
 
+def test_a_benchmark_run_records_the_facts_of_its_fit(
+    workspace: Path, sparkov_root: Path, tuner_calls: list[dict[str, Any]]
+) -> None:
+    metadata = _read(_train_sparkov(workspace, sparkov_root), "training_metadata.json")
+
+    assert metadata["random_state"] == train.RANDOM_STATE
+    assert (metadata["tuning_iterations"], metadata["tuning_cv_folds"]) == (3, 2)
+    assert metadata["early_stopping_rounds"] == train.EARLY_STOPPING_ROUNDS
+    # The training fold holds 70 rows, 14 of them fraudulent: 56 / 14.
+    assert metadata["scale_pos_weight"] == 4.0
+    assert isinstance(metadata["best_iteration"], int)
+    assert metadata["best_iteration"] >= 0
+
+
 # ---------------------------------------------------------------------------
 # The synthetic dataset
 # ---------------------------------------------------------------------------

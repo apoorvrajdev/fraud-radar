@@ -9,7 +9,7 @@ The artifact directory layout is:
         feature_list.json         Canonical feature order (committed)
         threshold.json            Decision threshold + the FPR target it serves
         metrics.json              Test-set evaluation results (committed)
-        training_metadata.json    Run provenance (committed)
+        training_metadata.json    The fit: folds, hyperparameters, fit settings (committed)
         pr_curve.png              Plot of test-set PR curve (gitignored)
 """
 from __future__ import annotations
@@ -37,7 +37,19 @@ class ThresholdRecord:
 
 @dataclass(frozen=True)
 class TrainingMetadata:
-    """Provenance for a single training run."""
+    """The record of a single model fit.
+
+    Fold sizes and fraud rates, the chosen hyperparameters, and the settings
+    the fit ran with. What went into a run is recorded separately, in
+    `run.json` (see `ml/runs.py`).
+
+    `random_state` is the fit's only random state: it seeds the hyperparameter
+    search, the shuffle of that search's cross-validation folds, and the final
+    model. `scale_pos_weight` is computed from the training fold's labels.
+    `best_iteration` is the zero-based boosting round with the best val-fold
+    score; boosting stops once `early_stopping_rounds` rounds pass without
+    improving on it.
+    """
 
     trained_at_utc: str
     dataset_size: int
@@ -49,6 +61,12 @@ class TrainingMetadata:
     test_fraud_rate: float
     best_hyperparameters: dict[str, Any]
     library_versions: dict[str, str]
+    random_state: int
+    tuning_iterations: int
+    tuning_cv_folds: int
+    scale_pos_weight: float
+    early_stopping_rounds: int
+    best_iteration: int
 
 
 def _json_dump(path: Path, payload: Any) -> None:

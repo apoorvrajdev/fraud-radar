@@ -239,6 +239,55 @@ def test_training_metadata_describes_the_folds_that_were_used(tuner_calls: list[
     assert metadata.best_hyperparameters == STUB_PARAMS
 
 
+def test_training_metadata_records_the_settings_the_fit_ran_with(
+    tuner_calls: list[tuple[np.ndarray, np.ndarray, dict[str, Any]]],
+) -> None:
+    ds = _dataset()
+    outcome = _run(ds)
+
+    metadata = train.training_metadata(ds, outcome)
+
+    # One random state seeds the search, its fold shuffle and the final model.
+    assert tuner_calls[0][2] == {
+        "n_iter": metadata.tuning_iterations,
+        "n_splits": metadata.tuning_cv_folds,
+        "random_state": metadata.random_state,
+    }
+    assert (metadata.tuning_iterations, metadata.tuning_cv_folds) == (3, 2)
+    fitted_with = outcome.model.get_params()
+    assert fitted_with["random_state"] == metadata.random_state == train.RANDOM_STATE
+    assert fitted_with["early_stopping_rounds"] == metadata.early_stopping_rounds
+    assert fitted_with["scale_pos_weight"] == metadata.scale_pos_weight
+
+    y_train = ds.y[outcome.splits.train]
+    assert metadata.scale_pos_weight == pytest.approx((y_train == 0).sum() / (y_train == 1).sum())
+
+
+def test_training_metadata_records_the_round_early_stopping_chose(tuner_calls: list[Any]) -> None:
+    ds = _dataset()
+    outcome = _run(ds)
+
+    metadata = train.training_metadata(ds, outcome)
+
+    # Early stopping keeps the first round with the best val-fold PR-AUC.
+    val_pr_auc = outcome.model.evals_result()["validation_0"]["aucpr"]
+    assert metadata.best_iteration == int(np.argmax(val_pr_auc))
+    assert metadata.best_iteration == outcome.model.best_iteration
+    assert 0 <= metadata.best_iteration < outcome.model.get_booster().num_boosted_rounds()
+
+
+def test_the_fit_settings_are_the_frozen_protocol() -> None:
+    """Phase 5D froze random state 42, 25 iterations, 4 folds and 50 early-stopping rounds."""
+    args = train.parse_args([])
+
+    assert (train.RANDOM_STATE, args.n_iter, args.cv_splits, train.EARLY_STOPPING_ROUNDS) == (
+        42,
+        25,
+        4,
+        50,
+    )
+
+
 # ---------------------------------------------------------------------------
 # The synthetic CLI keeps its behaviour
 # ---------------------------------------------------------------------------
