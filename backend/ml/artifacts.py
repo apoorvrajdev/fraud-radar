@@ -5,7 +5,7 @@ Python and XGBoost versions, smaller, and human-readable enough to diff.
 
 The artifact directory layout is:
     artifacts/
-        model.json                XGBoost native (gitignored)
+        model.json                XGBoost native, the rounds the model predicts with (gitignored)
         feature_list.json         Canonical feature order (committed)
         threshold.json            Decision threshold, its FPR target, whether it fell back
         metrics.json              Test-set evaluation results (committed)
@@ -95,12 +95,37 @@ def save_artifacts(
     artifact_dir.mkdir(parents=True, exist_ok=True)
 
     # XGBoost native JSON — load_model() reads this back exactly
-    model.get_booster().save_model(str(artifact_dir / "model.json"))
+    _predicting_booster(model).save_model(str(artifact_dir / "model.json"))
 
     _json_dump(artifact_dir / "feature_list.json", {"features": feature_names})
     _json_dump(artifact_dir / "threshold.json", asdict(threshold))
     _json_dump(artifact_dir / "metrics.json", metrics)
     _json_dump(artifact_dir / "training_metadata.json", asdict(metadata))
+
+
+def _predicting_booster(model: xgb.XGBClassifier) -> xgb.Booster:
+    """The booster holding exactly the rounds `model.predict_proba` scores with.
+
+    Early stopping records its best round as a booster attribute and keeps the
+    rounds boosted after it. The classifier scores with the rounds up to the
+    best one, which is what the threshold and test metrics are computed from.
+    A reloaded `Booster.predict`, which serving calls, scores with every round
+    it holds, while SHAP limits itself to the recorded best round. Saving only
+    the rounds the classifier uses, without the attribute, gives every reader
+    that one function.
+
+    The slice drops the attribute; the best round is recorded in
+    training_metadata.json.
+    """
+    booster = model.get_booster()
+    try:
+        best_iteration = model.best_iteration
+    except AttributeError:
+        # No early stopping, so the classifier scores with every round.
+        return booster
+    # best_iteration is zero-based, so the stop is at least 1. A stop of 0
+    # would select the whole model rather than none of it.
+    return booster[: best_iteration + 1]
 
 
 def load_model(artifact_dir: Path) -> xgb.XGBClassifier:

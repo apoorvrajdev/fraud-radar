@@ -21,6 +21,46 @@ from ml.artifacts import (
 )
 
 
+def _save(artifact_dir: Path, model: xgb.XGBClassifier, n_features: int) -> None:
+    """Save `model` with fixed threshold, metrics and metadata records."""
+    save_artifacts(
+        artifact_dir,
+        model=model,
+        feature_names=[f"f{index}" for index in range(n_features)],
+        threshold=ThresholdRecord(
+            value=0.5,
+            target_fpr=0.01,
+            realised_fpr_on_val=0.008,
+            fallback_used=False,
+        ),
+        metrics={"pr_auc": 0.9, "roc_auc": 0.95},
+        metadata=TrainingMetadata(
+            trained_at_utc="2026-05-21T00:00:00+00:00",
+            dataset_size=200,
+            train_size=140,
+            val_size=30,
+            test_size=30,
+            train_fraud_rate=0.5,
+            val_fraud_rate=0.5,
+            test_fraud_rate=0.5,
+            best_hyperparameters={"max_depth": 3},
+            library_versions=collect_library_versions(),
+            random_state=42,
+            tuning_iterations=25,
+            tuning_cv_folds=4,
+            scale_pos_weight=1.0,
+            early_stopping_rounds=50,
+            best_iteration=12,
+        ),
+    )
+
+
+def _saved_booster(artifact_dir: Path) -> xgb.Booster:
+    booster = xgb.Booster()
+    booster.load_model(str(artifact_dir / "model.json"))
+    return booster
+
+
 @pytest.fixture
 def trained_pair(tmp_path: Path) -> tuple[xgb.XGBClassifier, np.ndarray, Path]:
     """Train a tiny XGBoost on synthetic data and save to a tmp artifact dir."""
@@ -39,37 +79,35 @@ def trained_pair(tmp_path: Path) -> tuple[xgb.XGBClassifier, np.ndarray, Path]:
     )
     model.fit(X, y)
 
-    save_artifacts(
-        tmp_path,
-        model=model,
-        feature_names=["f0", "f1", "f2", "f3", "f4"],
-        threshold=ThresholdRecord(
-            value=0.5,
-            target_fpr=0.01,
-            realised_fpr_on_val=0.008,
-            fallback_used=False,
-        ),
-        metrics={"pr_auc": 0.9, "roc_auc": 0.95},
-        metadata=TrainingMetadata(
-            trained_at_utc="2026-05-21T00:00:00+00:00",
-            dataset_size=n,
-            train_size=140,
-            val_size=30,
-            test_size=30,
-            train_fraud_rate=0.5,
-            val_fraud_rate=0.5,
-            test_fraud_rate=0.5,
-            best_hyperparameters={"max_depth": 3},
-            library_versions=collect_library_versions(),
-            random_state=42,
-            tuning_iterations=25,
-            tuning_cv_folds=4,
-            scale_pos_weight=1.0,
-            early_stopping_rounds=50,
-            best_iteration=12,
-        ),
-    )
+    _save(tmp_path, model, n_features=5)
     return model, X, tmp_path
+
+
+@pytest.fixture
+def early_stopped() -> tuple[xgb.XGBClassifier, np.ndarray]:
+    """A model that kept boosting for ten rounds after its best one.
+
+    Noisy labels make the val score peak early: the best round is 3 of 14.
+    """
+    rng = np.random.default_rng(0)
+    X = rng.normal(size=(300, 4))
+    y = (X[:, 0] + rng.normal(size=300) > 1).astype(int)
+
+    model = xgb.XGBClassifier(
+        n_estimators=200,
+        max_depth=3,
+        learning_rate=0.3,
+        eval_metric="aucpr",
+        random_state=42,
+        early_stopping_rounds=10,
+    )
+    model.fit(X[:200], y[:200], eval_set=[(X[200:], y[200:])], verbose=False)
+
+    # Only meaningful if rounds after the best one exist and change the scores.
+    assert model.best_iteration + 1 < model.get_booster().num_boosted_rounds()
+    every_round = model.get_booster().predict(xgb.DMatrix(X))
+    assert not np.array_equal(every_round, model.predict_proba(X)[:, 1])
+    return model, X
 
 
 def test_all_six_artifact_files_are_written(trained_pair: tuple) -> None:
@@ -94,6 +132,60 @@ def test_reload_preserves_predictions(trained_pair: tuple) -> None:
     rehydrated = predict_proba(reloaded, X)
 
     np.testing.assert_allclose(original, rehydrated, rtol=0, atol=1e-7)
+
+
+def test_an_early_stopped_model_is_saved_with_only_the_rounds_it_predicts_with(
+    early_stopped: tuple[xgb.XGBClassifier, np.ndarray], tmp_path: Path
+) -> None:
+    model, X = early_stopped
+
+    _save(tmp_path, model, n_features=4)
+
+    saved = _saved_booster(tmp_path)
+    assert saved.num_boosted_rounds() == model.best_iteration + 1
+    # No early-stopping state survives, so no reader can apply it differently.
+    assert saved.attr("best_iteration") is None
+    assert saved.attr("best_score") is None
+    np.testing.assert_array_equal(
+        predict_proba(load_model(tmp_path), X), model.predict_proba(X)[:, 1]
+    )
+
+
+def test_a_model_without_early_stopping_is_saved_with_every_round(trained_pair: tuple) -> None:
+    model, X, artifact_dir = trained_pair
+    assert not hasattr(model, "best_iteration")
+
+    saved = _saved_booster(artifact_dir)
+
+    assert saved.num_boosted_rounds() == model.get_booster().num_boosted_rounds() == 20
+    np.testing.assert_array_equal(
+        predict_proba(load_model(artifact_dir), X), model.predict_proba(X)[:, 1]
+    )
+
+
+def test_a_best_round_of_zero_saves_one_round_rather_than_the_whole_model(tmp_path: Path) -> None:
+    """A zero-based best round of 0 is a stop of 1; a stop of 0 would select every round."""
+    rng = np.random.default_rng(7)
+    X = rng.normal(size=(200, 4))
+    y = (rng.random(200) < 0.3).astype(int)
+    model = xgb.XGBClassifier(
+        n_estimators=50,
+        max_depth=2,
+        learning_rate=0.3,
+        eval_metric="aucpr",
+        random_state=42,
+        early_stopping_rounds=5,
+    )
+    model.fit(X[:120], y[:120], eval_set=[(X[120:], y[120:])], verbose=False)
+    assert model.best_iteration == 0
+    assert model.get_booster().num_boosted_rounds() > 1
+
+    _save(tmp_path, model, n_features=4)
+
+    assert _saved_booster(tmp_path).num_boosted_rounds() == 1
+    np.testing.assert_array_equal(
+        predict_proba(load_model(tmp_path), X), model.predict_proba(X)[:, 1]
+    )
 
 
 def test_feature_list_round_trip(trained_pair: tuple) -> None:
