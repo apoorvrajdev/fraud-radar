@@ -57,6 +57,13 @@ backend/ml/artifacts/model.json
 backend/ml/artifacts/*.png
 !backend/ml/artifacts/.gitkeep
 
+# Offline pipeline: source bytes and derived caches are reproducible, so
+# they are never committed. Per-run metrics and metadata are.
+backend/ml/data/raw/
+backend/ml/data/cache/
+backend/ml/artifacts/runs/**/model.json
+backend/ml/artifacts/runs/**/*.png
+
 # Docker
 .docker/
 

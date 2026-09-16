@@ -1,0 +1,178 @@
+"""The reproducibility record for a single benchmark run.
+
+`run.json` answers "what would I have to hold fixed to get this number again?"
+— which dataset bytes, which slice of them, which feature contract, which
+seed, which code, which libraries. It is written per run directory, next to
+that run's metrics.
+
+This is deliberately separate from `training_metadata.json` (see
+`ml/artifacts.py`), which records the *model fit*: fold sizes, fraud rates,
+chosen hyperparameters. One describes the inputs, the other the fit; a run
+directory carries both, and neither has to grow the other's fields.
+"""
+from __future__ import annotations
+
+import json
+import subprocess
+from collections.abc import Mapping
+from dataclasses import dataclass, field
+from datetime import UTC, datetime
+from pathlib import Path
+from types import MappingProxyType
+from typing import Any
+
+from ml.datasets.base import DatasetContractError, DatasetProvenance
+from ml.paths import RUNS_ROOT, ensure_dir, run_dir, validate_run_name
+
+RUN_METADATA_FILENAME = "run.json"
+
+# Bumped when the shape of run.json changes, so an old run stays readable
+# instead of being silently misparsed by newer code.
+RUN_METADATA_VERSION = "1"
+
+_GIT_TIMEOUT_SECONDS = 5
+
+
+@dataclass(frozen=True)
+class SplitPeriod:
+    """The time span a fold covers.
+
+    Recorded because chronological splitting is the only defensible split for
+    a fraud model, and "chronological" is a claim a reader should be able to
+    check rather than take on trust.
+    """
+
+    name: str
+    start: datetime
+    end: datetime
+
+    def __post_init__(self) -> None:
+        if not self.name:
+            raise DatasetContractError("SplitPeriod.name must be non-empty.")
+        for attribute in ("start", "end"):
+            value: datetime = getattr(self, attribute)
+            if value.tzinfo is None:
+                raise DatasetContractError(f"SplitPeriod.{attribute} must be timezone-aware.")
+        if self.start > self.end:
+            raise DatasetContractError(
+                f"SplitPeriod {self.name!r} starts ({self.start.isoformat()}) "
+                f"after it ends ({self.end.isoformat()})."
+            )
+
+    def to_dict(self) -> dict[str, str]:
+        return {"name": self.name, "start": self.start.isoformat(), "end": self.end.isoformat()}
+
+    @classmethod
+    def from_dict(cls, payload: Mapping[str, Any]) -> SplitPeriod:
+        return cls(
+            name=str(payload["name"]),
+            start=datetime.fromisoformat(str(payload["start"])),
+            end=datetime.fromisoformat(str(payload["end"])),
+        )
+
+
+@dataclass(frozen=True)
+class RunMetadata:
+    """Everything needed to reproduce a benchmark run's inputs."""
+
+    run_name: str
+    dataset: DatasetProvenance
+    featureset_version: str
+    seed: int
+    created_at_utc: str = field(default_factory=lambda: _utc_now_iso())
+    code_version: str | None = None
+    library_versions: Mapping[str, str] = field(default_factory=dict)
+    splits: tuple[SplitPeriod, ...] = ()
+    notes: str = ""
+    metadata_version: str = RUN_METADATA_VERSION
+
+    def __post_init__(self) -> None:
+        validate_run_name(self.run_name)
+        if not self.featureset_version.strip():
+            raise DatasetContractError("RunMetadata.featureset_version must be non-empty.")
+        names = [split.name for split in self.splits]
+        if len(set(names)) != len(names):
+            raise DatasetContractError(f"Duplicate split names in run {self.run_name!r}: {names}.")
+        object.__setattr__(self, "library_versions", MappingProxyType(dict(self.library_versions)))
+        object.__setattr__(self, "splits", tuple(self.splits))
+
+    def split(self, name: str) -> SplitPeriod | None:
+        """Return the named fold's period, or None if it was not recorded."""
+        return next((split for split in self.splits if split.name == name), None)
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "metadata_version": self.metadata_version,
+            "run_name": self.run_name,
+            "created_at_utc": self.created_at_utc,
+            "dataset": self.dataset.to_dict(),
+            "featureset_version": self.featureset_version,
+            "seed": self.seed,
+            "code_version": self.code_version,
+            "library_versions": dict(self.library_versions),
+            "splits": [split.to_dict() for split in self.splits],
+            "notes": self.notes,
+        }
+
+    @classmethod
+    def from_dict(cls, payload: Mapping[str, Any]) -> RunMetadata:
+        return cls(
+            run_name=str(payload["run_name"]),
+            dataset=DatasetProvenance.from_dict(payload["dataset"]),
+            featureset_version=str(payload["featureset_version"]),
+            seed=int(payload["seed"]),
+            created_at_utc=str(payload["created_at_utc"]),
+            code_version=_opt_str(payload.get("code_version")),
+            library_versions=dict(payload.get("library_versions") or {}),
+            splits=tuple(SplitPeriod.from_dict(s) for s in payload.get("splits") or ()),
+            notes=str(payload.get("notes", "")),
+            metadata_version=str(payload.get("metadata_version", RUN_METADATA_VERSION)),
+        )
+
+
+def save_run_metadata(metadata: RunMetadata, *, runs_root: Path = RUNS_ROOT) -> Path:
+    """Write `run.json` into the run's directory, creating it if needed."""
+    target = ensure_dir(run_dir(metadata.run_name, runs_root=runs_root)) / RUN_METADATA_FILENAME
+    with target.open("w", encoding="utf-8") as handle:
+        json.dump(metadata.to_dict(), handle, indent=2, sort_keys=True)
+        handle.write("\n")
+    return target
+
+
+def load_run_metadata(run_name: str, *, runs_root: Path = RUNS_ROOT) -> RunMetadata:
+    """Read back a run's `run.json`."""
+    source = run_dir(run_name, runs_root=runs_root) / RUN_METADATA_FILENAME
+    if not source.exists():
+        raise FileNotFoundError(f"No {RUN_METADATA_FILENAME} for run {run_name!r} at {source}.")
+    with source.open(encoding="utf-8") as handle:
+        return RunMetadata.from_dict(json.load(handle))
+
+
+def current_git_commit() -> str | None:
+    """Best-effort commit SHA of the working tree, or None outside a repo.
+
+    Best-effort on purpose: a missing SHA should degrade the record, never
+    fail a training run that is otherwise fine.
+    """
+    try:
+        result = subprocess.run(
+            ["git", "rev-parse", "HEAD"],
+            capture_output=True,
+            text=True,
+            check=False,
+            timeout=_GIT_TIMEOUT_SECONDS,
+            cwd=Path(__file__).resolve().parent,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return None
+    if result.returncode != 0:
+        return None
+    return result.stdout.strip() or None
+
+
+def _utc_now_iso() -> str:
+    return datetime.now(UTC).replace(microsecond=0).isoformat()
+
+
+def _opt_str(value: Any) -> str | None:
+    return None if value is None else str(value)
