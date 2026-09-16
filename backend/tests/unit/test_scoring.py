@@ -8,9 +8,8 @@ fraud scores to exercise every branch of the decision matrix.
 from __future__ import annotations
 
 from collections.abc import Iterator
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from decimal import Decimal
-from typing import Any
 
 import numpy as np
 import pytest
@@ -28,7 +27,6 @@ from app.services.scoring import (
     _compose_decision,
     score_transaction,
 )
-
 
 CUSTOMER_ID = "11111111-1111-1111-1111-111111111111"
 MERCHANT_ID = "22222222-2222-2222-2222-222222222222"
@@ -140,7 +138,7 @@ def _make_tx(
         payment_method="CARD",
         country=country,
         is_card_present=is_card_present,
-        created_at=created_at or datetime.now(timezone.utc),
+        created_at=created_at or datetime.now(UTC),
     )
     db.add(tx)
     if flush:
@@ -196,7 +194,7 @@ def test_hard_block_rule_short_circuits_model(
     stub_explainer: _StubExplainer,
 ) -> None:
     """velocity_burst fires → DECLINE; explain_local must NOT be called."""
-    anchor = datetime.now(timezone.utc)
+    anchor = datetime.now(UTC)
     _seed_recent_burst(db_session, anchor=anchor, count=3)
     tx = _make_tx(db_session, created_at=anchor)
 
@@ -249,7 +247,7 @@ def test_audit_log_written_on_hard_block(
     db_session: Session,
     stub_explainer: _StubExplainer,
 ) -> None:
-    anchor = datetime.now(timezone.utc)
+    anchor = datetime.now(UTC)
     _seed_recent_burst(db_session, anchor=anchor, count=3)
     before = _audit_count(db_session)
     tx = _make_tx(db_session, created_at=anchor)

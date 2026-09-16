@@ -18,12 +18,11 @@ following the decision matrix in `docs/adr/PHASE_3_DESIGN.md`.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from enum import Enum
 
 from app.fraud.transaction_context import TransactionContext
-
 
 HIGH_RISK_COUNTRIES: frozenset[str] = frozenset({"RU", "CN", "NG", "RO", "VE", "ID"})
 
@@ -43,7 +42,7 @@ def _ensure_utc(ts: datetime) -> datetime:
     Defined locally rather than imported from features.py — cross-module
     private imports cost more than a duplicated three-line helper.
     """
-    return ts if ts.tzinfo is not None else ts.replace(tzinfo=timezone.utc)
+    return ts if ts.tzinfo is not None else ts.replace(tzinfo=UTC)
 
 
 class Severity(str, Enum):

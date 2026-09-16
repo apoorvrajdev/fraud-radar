@@ -9,6 +9,7 @@ if the Phase 2G model artifacts are not on disk yet.
 from __future__ import annotations
 
 from collections.abc import Iterator
+from datetime import UTC
 from pathlib import Path
 from typing import Any
 
@@ -23,7 +24,6 @@ from app.fraud.explainer import reset_explainer_for_tests
 from app.main import app
 from app.models import AuditLog, Customer, Merchant, Transaction
 from app.models.base import Base
-
 
 KNOWN_CUSTOMER_ID = "11111111-1111-1111-1111-111111111111"
 KNOWN_MERCHANT_ID = "22222222-2222-2222-2222-222222222222"
@@ -116,9 +116,9 @@ def client(db_session: Session) -> Iterator[TestClient]:
 
 def _seed_burst(db: Session, count: int = 3) -> None:
     """Insert `count` recent transactions to trigger velocity_burst."""
-    from datetime import datetime, timedelta, timezone
+    from datetime import datetime, timedelta
     from decimal import Decimal
-    anchor = datetime.now(timezone.utc)
+    anchor = datetime.now(UTC)
     for i in range(count):
         db.add(Transaction(
             id=f"burst-seed-{i}",

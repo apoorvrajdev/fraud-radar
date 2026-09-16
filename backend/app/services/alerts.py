@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import base64
 import json
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from typing import Final
 
@@ -43,7 +43,7 @@ def _as_utc(dt: datetime) -> datetime:
     without surprises.
     """
     if dt.tzinfo is None:
-        return dt.replace(tzinfo=timezone.utc)
+        return dt.replace(tzinfo=UTC)
     return dt
 
 
@@ -140,7 +140,7 @@ def list_alerts(
     predicate so the header strip still reflects total queue health
     when the analyst narrows the visible page.
     """
-    now = now or datetime.now(timezone.utc)
+    now = now or datetime.now(UTC)
 
     pending_count, oldest, buckets = (
         transaction_repository.pending_review_summary(db)

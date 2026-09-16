@@ -31,7 +31,6 @@ from app.main import app
 from app.models import Customer, Merchant
 from app.models.base import Base
 
-
 KNOWN_CUSTOMER_ID = "11111111-1111-1111-1111-111111111111"
 KNOWN_MERCHANT_ID = "22222222-2222-2222-2222-222222222222"
 

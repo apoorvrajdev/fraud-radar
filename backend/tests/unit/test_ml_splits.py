@@ -64,7 +64,7 @@ def test_unsorted_input_is_sorted_internally() -> None:
 
 def test_fractions_must_sum_to_one() -> None:
     ts = _make_timestamps(100)
-    with pytest.raises(ValueError, match="must sum to 1.0"):
+    with pytest.raises(ValueError, match=r"must sum to 1\.0"):
         chronological_split(ts, train_frac=0.5, val_frac=0.2, test_frac=0.2)
 
 

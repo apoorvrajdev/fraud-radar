@@ -8,7 +8,7 @@ That keeps the suite passing on a fresh clone without first running
 from __future__ import annotations
 
 from collections.abc import Iterator
-from datetime import datetime, timezone
+from datetime import datetime
 from decimal import Decimal
 
 import numpy as np
@@ -20,7 +20,6 @@ from sqlalchemy.pool import StaticPool
 
 from app.db import get_db
 from app.fraud.explainer import (
-    FraudExplainer,
     get_explainer,
     reset_explainer_for_tests,
 )
@@ -28,7 +27,6 @@ from app.fraud.feature_spec import FEATURE_NAMES, N_FEATURES
 from app.main import app
 from app.models import Customer, Merchant, Transaction
 from app.models.base import Base
-
 
 KNOWN_TX_ID = "11111111-1111-1111-1111-111111111111"
 KNOWN_CUSTOMER_ID = "22222222-2222-2222-2222-222222222222"

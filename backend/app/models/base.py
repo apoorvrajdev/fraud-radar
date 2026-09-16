@@ -1,5 +1,6 @@
 """SQLAlchemy declarative base for all ORM models."""
 from datetime import datetime
+
 from sqlalchemy import TIMESTAMP, func
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 

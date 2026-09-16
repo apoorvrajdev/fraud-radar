@@ -31,7 +31,6 @@ def test_inverted_classifier_has_low_pr_auc() -> None:
 def test_recall_at_fpr_finds_correct_operating_point() -> None:
     # 100 negatives at scores [0, 0.01, 0.02, ..., 0.99]
     # 10 positives at scores [0.50, 0.55, ..., 0.95]
-    rng = np.random.default_rng(0)
     neg_scores = np.linspace(0.0, 0.99, 100)
     pos_scores = np.linspace(0.50, 0.95, 10)
     y_true = np.concatenate([np.zeros(100), np.ones(10)]).astype(int)

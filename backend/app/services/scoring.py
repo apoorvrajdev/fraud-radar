@@ -17,7 +17,7 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
@@ -34,7 +34,6 @@ from app.models.customer import Customer
 from app.models.merchant import Merchant
 from app.models.transaction import Transaction
 from app.repositories.audit import audit_repository
-
 
 # 180 days = the longest rule lookback window (rule_dormant_account_high_value).
 # One context load covers every rule (ADR decision #5).
@@ -219,7 +218,7 @@ def score_transaction(
     Pass `write_audit=False` to skip the audit log row (the benchmark
     uses this to keep synthetic load from polluting `audit_log`).
     """
-    computed_at = datetime.now(timezone.utc)
+    computed_at = datetime.now(UTC)
     ctx = _load_context(db, tx)
     rule_results = evaluate_all(ctx)
     triggered_rules = [r for r in rule_results if r.triggered]

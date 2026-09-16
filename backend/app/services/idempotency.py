@@ -16,7 +16,7 @@ semantics including the 24-hour TTL and the canonical-JSON rationale.
 from __future__ import annotations
 
 import hashlib
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -45,7 +45,7 @@ def lookup(session: Session, key: str) -> IdempotencyKey | None:
     Expired rows are filtered out at the SQL layer — callers do not need
     to check `expires_at` themselves.
     """
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     stmt = select(IdempotencyKey).where(
         IdempotencyKey.key == key,
         IdempotencyKey.expires_at > now,
@@ -67,7 +67,7 @@ def store(
     The commit is intentional: callers that have already staged related
     rows (e.g. the new Transaction itself) get an atomic flush here.
     """
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     entry = IdempotencyKey(
         key=key,
         request_hash=request_hash,

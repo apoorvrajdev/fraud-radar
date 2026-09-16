@@ -7,7 +7,7 @@ narrow, fast unit tests that don't need a DB.
 """
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from decimal import Decimal
 
 import pytest
@@ -18,7 +18,6 @@ from app.services.alerts import (
     encode_alert_cursor,
 )
 
-
 # ---------------------------------------------------------------------------
 # Cursor codec
 # ---------------------------------------------------------------------------
@@ -26,7 +25,7 @@ from app.services.alerts import (
 
 def test_cursor_round_trips() -> None:
     score = Decimal("0.7142")
-    ts = datetime(2026, 5, 27, 14, 32, 18, tzinfo=timezone.utc)
+    ts = datetime(2026, 5, 27, 14, 32, 18, tzinfo=UTC)
     id_ = "70f98b5c-7053-4452-a2c6-52d9bcd44420"
 
     token = encode_alert_cursor(score, ts, id_)
@@ -39,7 +38,7 @@ def test_cursor_round_trips() -> None:
 
 def test_cursor_preserves_decimal_precision() -> None:
     score = Decimal("0.00021934561664238572")
-    ts = datetime(2026, 5, 27, 0, 0, 0, tzinfo=timezone.utc)
+    ts = datetime(2026, 5, 27, 0, 0, 0, tzinfo=UTC)
     token = encode_alert_cursor(score, ts, "x")
     assert decode_alert_cursor(token)[0] == score
 

@@ -11,9 +11,9 @@ import io
 import matplotlib
 
 matplotlib.use("Agg")  # headless backend — must be set before pyplot import
-import matplotlib.pyplot as plt  # noqa: E402
-import numpy as np  # noqa: E402
-import shap  # noqa: E402
+import matplotlib.pyplot as plt
+import numpy as np
+import shap
 
 _FIG_WIDTH_INCHES = 12.0
 _FIG_DPI = 100
@@ -76,7 +76,7 @@ def _aggregate_top_k_with_remainder(
     kept_shap = shap_arr[keep_idx]
 
     aggregated_shap = float(shap_arr[rest_idx].sum())
-    n_other = int(len(rest_idx))
+    n_other = len(rest_idx)
 
     out_names = [*kept_names, f"other ({n_other})"]
     # Feature value for the aggregated bar is not meaningful; the count is in the name.

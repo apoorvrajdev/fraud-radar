@@ -8,7 +8,7 @@ the 24-hour TTL on `store`.
 from __future__ import annotations
 
 from collections.abc import Iterator
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from typing import Any
 
@@ -23,22 +23,21 @@ from app.models.idempotency_key import IdempotencyKey
 from app.schemas.transaction import TransactionCreate
 from app.services.idempotency import TTL, hash_request, lookup, store
 
-
 _SEED_CUSTOMER_ID = "11111111-1111-1111-1111-111111111111"
 _SEED_MERCHANT_ID = "22222222-2222-2222-2222-222222222222"
 _SEED_TX_ID = "33333333-3333-3333-3333-333333333333"
 
 
 def _payload(**overrides: Any) -> TransactionCreate:
-    base: dict[str, Any] = dict(
-        customer_id=_SEED_CUSTOMER_ID,
-        merchant_id=_SEED_MERCHANT_ID,
-        amount=Decimal("100.00"),
-        currency="USD",
-        payment_method="CARD",
-        country="US",
-        is_card_present=True,
-    )
+    base: dict[str, Any] = {
+        "customer_id": _SEED_CUSTOMER_ID,
+        "merchant_id": _SEED_MERCHANT_ID,
+        "amount": Decimal("100.00"),
+        "currency": "USD",
+        "payment_method": "CARD",
+        "country": "US",
+        "is_card_present": True,
+    }
     base.update(overrides)
     return TransactionCreate(**base)
 
@@ -138,7 +137,7 @@ def test_lookup_returns_none_for_missing_key(db_session: Session) -> None:
 
 
 def test_lookup_returns_none_for_expired_key(db_session: Session) -> None:
-    past = datetime.now(timezone.utc) - timedelta(hours=1)
+    past = datetime.now(UTC) - timedelta(hours=1)
     db_session.add(IdempotencyKey(
         key="expired-key",
         request_hash="abc",
@@ -153,7 +152,7 @@ def test_lookup_returns_none_for_expired_key(db_session: Session) -> None:
 
 
 def test_lookup_returns_entry_for_valid_key(db_session: Session) -> None:
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     db_session.add(IdempotencyKey(
         key="live-key",
         request_hash="xyz",

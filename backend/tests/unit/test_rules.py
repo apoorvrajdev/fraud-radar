@@ -6,7 +6,7 @@ TransactionContext, so the tests prove behaviour without any I/O.
 """
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 
 import pytest
@@ -27,9 +27,8 @@ from app.models.customer import Customer
 from app.models.merchant import Merchant
 from app.models.transaction import Transaction
 
-
 # Reference instant; deltas are easy to reason about relative to a fixed point.
-NOW = datetime(2026, 5, 22, 12, 0, 0, tzinfo=timezone.utc)
+NOW = datetime(2026, 5, 22, 12, 0, 0, tzinfo=UTC)
 
 
 # ---------------------------------------------------------------------------
@@ -358,7 +357,7 @@ def test_dormant_account_uses_transaction_time_as_now() -> None:
     appear ~25 years old and the rule would fire. Asserting no-trigger here
     proves the determinism property.
     """
-    transaction_time = datetime(2000, 6, 1, 0, 0, 0, tzinfo=timezone.utc)
+    transaction_time = datetime(2000, 6, 1, 0, 0, 0, tzinfo=UTC)
     customer = _make_customer(
         created_at=transaction_time - timedelta(days=30),
         account_age_days=30,

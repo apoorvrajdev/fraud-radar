@@ -3,13 +3,13 @@ from datetime import datetime
 from decimal import Decimal
 
 from sqlalchemy import (
+    TIMESTAMP,
     Boolean,
     CheckConstraint,
     ForeignKey,
     Index,
     Numeric,
     String,
-    TIMESTAMP,
     Text,
     UniqueConstraint,
 )
@@ -58,7 +58,9 @@ class Transaction(Base, TimestampMixin):
     )
 
     # Fraud scoring results (denormalized for read performance)
-    fraud_score: Mapped[float | None] = mapped_column(Numeric(5, 4), nullable=True)
+    # Numeric(5, 4) hands back a Decimal at runtime — annotate it as such so
+    # the readers of this column type-check against what they actually get.
+    fraud_score: Mapped[Decimal | None] = mapped_column(Numeric(5, 4), nullable=True)
     fraud_decision: Mapped[str | None] = mapped_column(String(16), nullable=True)
     rules_triggered: Mapped[str | None] = mapped_column(Text, nullable=True)
     top_features: Mapped[str | None] = mapped_column(Text, nullable=True)

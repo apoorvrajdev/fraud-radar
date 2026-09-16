@@ -21,7 +21,7 @@ from __future__ import annotations
 
 import math
 from dataclasses import dataclass
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 
 from sqlalchemy import and_, select
@@ -50,7 +50,7 @@ def _ensure_utc(ts: datetime) -> datetime:
 
     No-op when the input is already offset-aware.
     """
-    return ts if ts.tzinfo is not None else ts.replace(tzinfo=timezone.utc)
+    return ts if ts.tzinfo is not None else ts.replace(tzinfo=UTC)
 
 
 # Risk-tier encoding: lower is safer
@@ -315,10 +315,10 @@ class FeatureExtractor:
             .order_by(Transaction.created_at.desc())
             .limit(1)
         )
-        last_ts = db.execute(stmt).scalar_one_or_none()
-        if last_ts is None:
+        last_row_ts = db.execute(stmt).scalar_one_or_none()
+        if last_row_ts is None:
             return 999
-        return (tx_ts - _ensure_utc(last_ts)).days
+        return (tx_ts - _ensure_utc(last_row_ts)).days
 
 
 # Module-level convenience function -------------------------------------------

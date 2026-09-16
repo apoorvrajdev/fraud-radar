@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import json
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from decimal import Decimal
 from typing import Annotated, Any
 
@@ -88,7 +88,9 @@ def explain_transaction(
 
     if format == "json":
         contributors = [
-            ContributorEntry(**c)
+            # `top_contributors` returns dict[str, object]; model_validate runs
+            # the same Pydantic validation as **kwargs without the typing lie.
+            ContributorEntry.model_validate(c)
             for c in top_contributors(
                 FEATURE_NAMES,
                 features,
@@ -108,7 +110,7 @@ def explain_transaction(
             base_value=local.base_value,
             top_contributors=contributors,
             all_shap_values=all_shap,
-            computed_at=datetime.now(timezone.utc),
+            computed_at=datetime.now(UTC),
         )
 
     if format == "force":
@@ -171,7 +173,7 @@ def _scored_from_transaction(tx: Transaction) -> TransactionScored:
             rules_list = []
 
     return TransactionScored(
-        transaction_id=tx.id,
+        transaction_id=uuid.UUID(tx.id),
         fraud_score=float(tx.fraud_score) if tx.fraud_score is not None else None,
         decision=(
             Decision(tx.fraud_decision) if tx.fraud_decision else Decision.PENDING
@@ -223,7 +225,7 @@ def create_transaction(
         return TransactionScored.model_validate_json(existing.response_body)
 
     tx_id = str(uuid.uuid4())
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     tx = Transaction(
         id=tx_id,
         idempotency_key=idempotency_key,
@@ -273,7 +275,7 @@ def create_transaction(
     )
 
     scored = TransactionScored(
-        transaction_id=tx_id,
+        transaction_id=uuid.UUID(tx_id),
         fraud_score=result.fraud_score,
         decision=result.decision,
         threshold=result.threshold,
