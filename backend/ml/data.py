@@ -13,7 +13,7 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import UTC, datetime
 
 import numpy as np
 from sqlalchemy import select
@@ -67,6 +67,18 @@ def load_labelled_dataset(
     )
 
 
+def _as_utc(ts: datetime) -> datetime:
+    """A database timestamp as a timezone-aware UTC datetime.
+
+    SQLite drops the zone on round-trip even for `TIMESTAMP(timezone=True)`
+    columns, and the synthetic generator stamps rows with naive
+    `datetime.utcnow()`, so a naive value here is UTC — the convention the
+    feature extractor and rules engine already apply. An aware value is
+    converted to UTC, never relabelled.
+    """
+    return ts.replace(tzinfo=UTC) if ts.tzinfo is None else ts.astimezone(UTC)
+
+
 def load_dataset_with_csv_labels(
     db: Session,
     csv_path: str | None = None,
@@ -80,6 +92,9 @@ def load_dataset_with_csv_labels(
     rows without label leakage. We join them on transaction `id` so features
     come from the production feature extractor (DB-backed) and labels come
     from the synthetic CSV.
+
+    Timestamps come back timezone-aware in UTC, like those of every other
+    dataset, so fold periods and provenance can be recorded from them.
     """
     import csv
     from pathlib import Path
@@ -132,7 +147,7 @@ def load_dataset_with_csv_labels(
         features = extractor.extract(db, tx, customer=customer, merchant=merchant)
         rows_X.append(features.values)
         rows_y.append(labels_by_id[tx.id])
-        rows_ts.append(tx.created_at)
+        rows_ts.append(_as_utc(tx.created_at))
         rows_ids.append(tx.id)
         if (i + 1) % 5000 == 0:
             log.info("    %d rows processed...", i + 1)
