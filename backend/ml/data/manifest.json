@@ -1,0 +1,27 @@
+{
+  "manifest_version": "1",
+  "datasets": {
+    "sparkov": {
+      "display_name": "Credit Card Transactions Fraud Detection Dataset",
+      "origin": "synthetic",
+      "source": "kaggle",
+      "reference": "kartik2112/fraud-detection",
+      "source_url": "https://www.kaggle.com/datasets/kartik2112/fraud-detection",
+      "license": "CC0: Public Domain (Kaggle dataset card, retrieved 2026-09-16)",
+      "citation": "Kartik Shenoy, Credit Card Transactions Fraud Detection Dataset, Kaggle, 2020. Generated with Sparkov Data Generation (Brandon Harris, MIT).",
+      "label_field": "is_fraud",
+      "label_definition": "1 = transaction labelled fraudulent by the Sparkov generator that produced it",
+      "notes": "External synthetic benchmark. Simulated transactions for 1 Jan 2019 - 31 Dec 2020 covering 1000 cards and 800 merchants. Not real card-transaction data.",
+      "files": {
+        "fraudTrain.csv": {
+          "bytes": 351238196,
+          "sha256": null
+        },
+        "fraudTest.csv": {
+          "bytes": 150354339,
+          "sha256": null
+        }
+      }
+    }
+  }
+}
