@@ -32,14 +32,13 @@ jobs:
       - name: Install dependencies
         run: uv sync --locked
 
-      # ml/ and alembic/versions/ are outside the lint scope for now: the
-      # migrations are frozen, and the ml/ cleanup lands with the Phase 5
-      # dataset work that rewrites those modules anyway.
+      # The ml/ modules are opted in as Phase 5 rewrites them; the older
+      # training scripts and the frozen alembic/versions/ stay out for now.
       - name: Lint (ruff)
-        run: uv run ruff check app tests alembic/env.py
+        run: uv run ruff check app tests alembic/env.py ml/datasets ml/paths.py ml/runs.py
 
       - name: Type-check (mypy, strict)
-        run: uv run mypy app
+        run: uv run mypy app ml/datasets ml/paths.py ml/runs.py
 
       # tests/integration/test_scoring_endpoint.py loads the real model from
       # backend/ml/artifacts/, which is gitignored. Train a deliberately tiny
