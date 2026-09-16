@@ -25,6 +25,7 @@ import pytest
 from app.fraud.feature_spec import FEATURESETS
 from ml import train
 from ml.data import LabelledDataset
+from ml.reporting import LABEL_DELAY_NOTE
 from ml.runs import RUN_METADATA_FILENAME, load_run_metadata, split_periods
 from ml.splits import chronological_split
 from ml.tuning import TuningResult
@@ -192,6 +193,49 @@ def test_benchmark_metrics_record_observed_results_without_synthetic_targets(
 
     assert set(metrics) == OBSERVED_METRICS
     assert not any(key.startswith("target_") for key in metrics)
+
+
+def test_benchmark_metrics_report_the_folds_recorded_in_the_run_record(
+    workspace: Path, sparkov_root: Path, tuner_calls: list[dict[str, Any]]
+) -> None:
+    """The context's fraud counts are those of the periods run.json records.
+
+    Each corpus row is placed in a fold by comparing its timestamp with the
+    recorded, timezone-aware fold periods; every fifth row is a fraud.
+    """
+    run = _train_sparkov(workspace, sparkov_root)
+    record = load_run_metadata("sparkov-fixture", runs_root=workspace / "runs")
+    frauds_by_period = {split.name: 0 for split in record.splits}
+    rows_by_period = dict(frauds_by_period)
+    for index in range(N_ROWS):
+        (name,) = [s.name for s in record.splits if s.start <= _at(index) <= s.end]
+        rows_by_period[name] += 1
+        frauds_by_period[name] += int(index % 5 == 0)
+
+    context = _read(run, "metrics.json")["context"]
+
+    assert all(split.start.utcoffset() == timedelta(0) for split in record.splits)
+    assert context["fraud_counts"] == frauds_by_period == {"train": 14, "val": 3, "test": 3}
+    assert context["test_prevalence"] == frauds_by_period["test"] / rows_by_period["test"]
+    assert context["label_delay_note"] == LABEL_DELAY_NOTE
+
+
+def test_a_benchmark_run_reports_the_realised_test_fpr_at_its_recorded_threshold(
+    workspace: Path, sparkov_root: Path, tuner_calls: list[dict[str, Any]]
+) -> None:
+    """Measured at the threshold in threshold.json — here the fallback, as recorded."""
+    run = _train_sparkov(workspace, sparkov_root)
+    metrics = _read(run, "metrics.json")
+    threshold = _read(run, "threshold.json")
+
+    at_threshold = metrics["at_operating_threshold"]
+    assert threshold["fallback_used"] is True
+    assert at_threshold["threshold"] == threshold["value"]
+    legitimate = at_threshold["false_positives"] + at_threshold["true_negatives"]
+    assert legitimate == 12
+    assert metrics["context"]["realised_fpr_on_test_at_operating_threshold"] == (
+        at_threshold["false_positives"] / legitimate
+    )
 
 
 def test_a_benchmark_run_trains_on_the_frozen_featureset(

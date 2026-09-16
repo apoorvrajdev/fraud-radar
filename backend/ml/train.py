@@ -75,6 +75,7 @@ from ml.paths import (
     run_dir,
     validate_run_name,
 )
+from ml.reporting import result_context
 from ml.runs import RunMetadata, current_git_commit, save_run_metadata, split_periods
 from ml.splits import SplitIndices, assert_no_temporal_leakage, chronological_split
 from ml.tuning import TuningResult, compute_scale_pos_weight, tune_hyperparameters
@@ -408,6 +409,13 @@ def train_and_evaluate(
     recall_at_1pct, _ = recall_at_fpr(y_test, test_scores, target_fpr=0.01)
     recall_at_5pct, _ = recall_at_fpr(y_test, test_scores, target_fpr=0.05)
     confusion = confusion_at_threshold(y_test, test_scores, threshold_value)
+    # The conditions the numbers above were measured under, not further metrics.
+    context = result_context(
+        train_labels=y_train,
+        val_labels=y_val,
+        test_labels=y_test,
+        at_operating_threshold=confusion,
+    )
 
     metrics: dict[str, object] = {
         "test_pr_auc": test_pr_auc,
@@ -416,6 +424,7 @@ def train_and_evaluate(
         "recall_at_5pct_fpr": recall_at_5pct,
         "at_operating_threshold": confusion.as_dict(),
         "best_cv_pr_auc": tuning.best_score,
+        "context": context.to_dict(),
     }
     log.info("=== Test-set evaluation ===")
     log.info("  PR-AUC              : %.4f", test_pr_auc)
@@ -428,6 +437,17 @@ def train_and_evaluate(
         confusion.precision,
         confusion.recall,
         confusion.f1,
+    )
+    log.info(
+        "  measured at test prevalence %.4f; frauds train=%d  val=%d  test=%d",
+        context.test_prevalence,
+        context.train_fraud_count,
+        context.val_fraud_count,
+        context.test_fraud_count,
+    )
+    log.info(
+        "  realised test FPR at the operating threshold: %s",
+        context.realised_fpr_on_test_at_operating_threshold,
     )
 
     return TrainingOutcome(

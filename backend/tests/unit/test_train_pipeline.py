@@ -49,6 +49,7 @@ OBSERVED_METRICS = {
     "recall_at_5pct_fpr",
     "at_operating_threshold",
     "best_cv_pr_auc",
+    "context",
 }
 
 
@@ -220,6 +221,78 @@ def test_the_pipeline_reports_observed_results_without_synthetic_targets(
     tuner_calls: list[Any],
 ) -> None:
     assert set(_run(_dataset()).metrics) == OBSERVED_METRICS
+
+
+def test_the_context_counts_the_frauds_of_each_fold_it_names(tuner_calls: list[Any]) -> None:
+    ds = _dataset()
+    outcome = _run(ds)
+    splits = outcome.splits
+    counts = {
+        name: int(ds.y[getattr(splits, name)].sum()) for name in ("train", "val", "test")
+    }
+    assert len(set(counts.values())) == 3, "a fold read in place of another would go unseen"
+
+    context = outcome.metrics["context"]
+
+    assert context["fraud_counts"] == counts
+    assert context["test_prevalence"] == pytest.approx(ds.y[splits.test].mean())
+    metadata = train.training_metadata(ds, outcome)
+    assert context["test_prevalence"] == pytest.approx(metadata.test_fraud_rate)
+
+
+def test_the_realised_test_fpr_is_measured_at_the_threshold_chosen_on_val(
+    tuner_calls: list[Any],
+) -> None:
+    ds = _dataset()
+    outcome = _run(ds)
+
+    test = outcome.splits.test
+    negatives = ds.y[test] == 0
+    flagged = outcome.test_scores >= outcome.threshold.value
+    expected = (flagged & negatives).sum() / negatives.sum()
+    context = outcome.metrics["context"]
+    assert context["realised_fpr_on_test_at_operating_threshold"] == pytest.approx(expected)
+
+    # The same threshold and rows as the confusion matrix reported beside it.
+    at_threshold = outcome.metrics["at_operating_threshold"]
+    assert at_threshold["threshold"] == outcome.threshold.value
+    assert context["realised_fpr_on_test_at_operating_threshold"] == pytest.approx(
+        at_threshold["false_positives"]
+        / (at_threshold["false_positives"] + at_threshold["true_negatives"])
+    )
+
+
+def test_the_context_is_computed_after_the_threshold_from_the_scored_test_fold(
+    monkeypatch: pytest.MonkeyPatch, tuner_calls: list[Any]
+) -> None:
+    """Test labels reach the context only once the threshold has been fixed on val."""
+    ds = _dataset()
+    events: list[str] = []
+    seen: dict[str, Any] = {}
+    real_find = train.find_threshold_at_fpr
+    real_context = train.result_context
+
+    def find_spy(y_true: np.ndarray, y_score: np.ndarray, target_fpr: float) -> float:
+        events.append("threshold")
+        return real_find(y_true, y_score, target_fpr)
+
+    def context_spy(**folds: Any) -> Any:
+        events.append("context")
+        seen.update(folds)
+        return real_context(**folds)
+
+    monkeypatch.setattr(train, "find_threshold_at_fpr", find_spy)
+    monkeypatch.setattr(train, "result_context", context_spy)
+    outcome = _run(ds)
+
+    assert events == ["threshold", "context"]
+    splits = outcome.splits
+    np.testing.assert_array_equal(seen["train_labels"], ds.y[splits.train])
+    np.testing.assert_array_equal(seen["val_labels"], ds.y[splits.val])
+    np.testing.assert_array_equal(seen["test_labels"], ds.y[splits.test])
+    assert seen["at_operating_threshold"] == confusion_at_threshold(
+        ds.y[splits.test], outcome.test_scores, outcome.threshold.value
+    )
 
 
 def test_without_a_threshold_under_the_fpr_ceiling_the_existing_fallback_applies(

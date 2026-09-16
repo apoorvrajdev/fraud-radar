@@ -173,6 +173,10 @@ def test_the_saved_model_reproduces_the_test_metrics(run: TrainedRun) -> None:
     assert metrics["at_operating_threshold"] == (
         confusion_at_threshold(y_test, scores, threshold).as_dict()
     )
+    negatives = y_test == 0
+    assert metrics["context"]["realised_fpr_on_test_at_operating_threshold"] == float(
+        ((scores >= threshold) & negatives).sum() / negatives.sum()
+    )
 
 
 def test_each_served_explanation_adds_up_to_the_score_served_beside_it(
