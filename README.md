@@ -19,9 +19,8 @@
   A deliberately scoped engineering showcase that mirrors how tier-1 financial institutions build the systems that decide, in milliseconds, whether your card transaction goes through.
 </p>
 
-<!-- TODO: replace with the Vercel URL after the first deploy — see "Deploying the Demo" below. -->
 <p align="center">
-  <strong>Live demo:</strong> <em>not deployed yet</em> — the repository is deploy-ready (<a href="#deploying-the-demo">one-step Vercel import</a>); the URL lands here after the first deploy.
+  <strong>Live demo:</strong> <a href="https://fraud-radar-lilac.vercel.app">https://fraud-radar-lilac.vercel.app</a>
 </p>
 
 ---
@@ -419,7 +418,7 @@ npm run preview
 - [x] **4C** — Frontend demo mode: axios adapter ([`frontend/src/lib/demoApi.ts`](frontend/src/lib/demoApi.ts)) resolves every GET from `public/demo-data/*.json` with client-side filtering for transactions and alerts; central api client ([`frontend/src/lib/api.ts`](frontend/src/lib/api.ts)) swaps the adapter in when `VITE_DEMO_MODE=true`; dismissible amber banner stamps the snapshot date and links to GitHub + the Loom; sidebar footer and topbar pulse flip to demo styling; analyst decision form renders visibly disabled with a lock note instead of faking writes; polling is collapsed via `demoRefetchInterval()` across all five query hooks; `vercel.json` rewrite keeps `/transactions/:id` and `/alerts` deep links working on refresh; tsc + production build clean
 - [x] **4D** — Architecture diagram ([`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md)) with four Mermaid diagrams (live vs demo topology, end-to-end scoring sequence, analyst-review loop with cache wiring, layered code structure); `docs/screenshots/` ready with capture conventions (full screenshots dropped in separately)
 - [ ] **4E** — Loom walkthrough recorded against the live local stack
-- [ ] **4F** — Vercel deploy + README "Live Demo" section at the top (Loom + live URL + screenshots). Deploy configuration and CI are in place ([`frontend/vercel.json`](frontend/vercel.json), [`.github/workflows/ci.yml`](.github/workflows/ci.yml)); the box gets ticked when the URL is live
+- [x] **4F** — Vercel deploy live at [fraud-radar-lilac.vercel.app](https://fraud-radar-lilac.vercel.app) and linked at the top of this README; build configuration in [`frontend/vercel.json`](frontend/vercel.json), CI in [`.github/workflows/ci.yml`](.github/workflows/ci.yml). The Loom link joins it once 4E is recorded
 
 ---
 
