@@ -23,7 +23,7 @@ from typing import Any
 import numpy as np
 import pytest
 
-from ml import loading, train
+from ml import holdout, loading, train
 from ml.data import LabelledDataset
 from ml.evaluation import (
     confusion_at_threshold,
@@ -311,7 +311,7 @@ def test_the_context_is_computed_after_the_threshold_from_the_scored_test_fold(
     events: list[str] = []
     seen: dict[str, Any] = {}
     real_find = train.find_threshold_at_fpr
-    real_context = train.result_context
+    real_context = holdout.result_context
 
     def find_spy(y_true: np.ndarray, y_score: np.ndarray, target_fpr: float) -> float:
         events.append("threshold")
@@ -323,7 +323,7 @@ def test_the_context_is_computed_after_the_threshold_from_the_scored_test_fold(
         return real_context(**folds)
 
     monkeypatch.setattr(train, "find_threshold_at_fpr", find_spy)
-    monkeypatch.setattr(train, "result_context", context_spy)
+    monkeypatch.setattr(holdout, "result_context", context_spy)
     outcome = _run(ds)
 
     assert events == ["threshold", "context"]

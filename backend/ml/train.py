@@ -54,14 +54,8 @@ from ml.artifacts import (
 from ml.data import SYNTHETIC_DATASET_NAME, LabelledDataset
 from ml.datasets.base import DatasetProvenance
 from ml.datasets.registry import available_datasets
-from ml.evaluation import (
-    confusion_at_threshold,
-    find_threshold_at_fpr,
-    pr_auc,
-    recall_at_fpr,
-    roc_auc,
-    save_pr_curve_png,
-)
+from ml.evaluation import find_threshold_at_fpr, save_pr_curve_png
+from ml.holdout import evaluate_test_fold
 from ml.loading import (
     DEFAULT_SUBSAMPLE_SEED,
     DEFAULT_SYNTHETIC_CSV,
@@ -76,13 +70,7 @@ from ml.paths import (
     run_dir,
     validate_run_name,
 )
-from ml.reporting import (
-    OPERATING_THRESHOLD_SOURCE,
-    TEST_ROC_CURVE_SOURCE,
-    LiveFeatures,
-    live_features,
-    result_context,
-)
+from ml.reporting import LiveFeatures, live_features
 from ml.runs import RunMetadata, current_git_commit, save_run_metadata, split_periods
 from ml.splits import SplitIndices, assert_no_temporal_leakage, chronological_split
 from ml.tuning import TuningResult, compute_scale_pos_weight, tune_hyperparameters
@@ -413,38 +401,31 @@ def train_and_evaluate(
 
     # ---- Evaluate on test -----------------------------------------------
     test_scores = model.predict_proba(X_test)[:, 1]
-    test_pr_auc = pr_auc(y_test, test_scores)
-    test_roc_auc = roc_auc(y_test, test_scores)
-    recall_at_1pct, _ = recall_at_fpr(y_test, test_scores, target_fpr=0.01)
-    recall_at_5pct, _ = recall_at_fpr(y_test, test_scores, target_fpr=0.05)
-    confusion = confusion_at_threshold(y_test, test_scores, threshold_value)
-    # The conditions the numbers above were measured under, not further metrics.
-    context = result_context(
+    evaluation = evaluate_test_fold(
         train_labels=y_train,
         val_labels=y_val,
         test_labels=y_test,
-        at_operating_threshold=confusion,
+        test_scores=test_scores,
+        operating_threshold=threshold_value,
     )
-
     metrics: dict[str, object] = {
-        "test_pr_auc": test_pr_auc,
-        "test_roc_auc": test_roc_auc,
-        "recall_at_1pct_fpr": recall_at_1pct,
-        "recall_at_5pct_fpr": recall_at_5pct,
-        "at_operating_threshold": confusion.as_dict(),
+        **evaluation.metrics(),
         "best_cv_pr_auc": tuning.best_score,
-        "threshold_source": {
-            "at_operating_threshold": OPERATING_THRESHOLD_SOURCE,
-            "recall_at_1pct_fpr": TEST_ROC_CURVE_SOURCE,
-            "recall_at_5pct_fpr": TEST_ROC_CURVE_SOURCE,
-        },
-        "context": context.to_dict(),
     }
+    confusion = evaluation.at_operating_threshold
+    context = evaluation.context
+
     log.info("=== Test-set evaluation ===")
-    log.info("  PR-AUC              : %.4f", test_pr_auc)
-    log.info("  ROC-AUC             : %.4f", test_roc_auc)
-    log.info("  Recall @ 1%% FPR     : %.4f  (point on the test ROC curve)", recall_at_1pct)
-    log.info("  Recall @ 5%% FPR     : %.4f  (point on the test ROC curve)", recall_at_5pct)
+    log.info("  PR-AUC              : %.4f", evaluation.pr_auc)
+    log.info("  ROC-AUC             : %.4f", evaluation.roc_auc)
+    log.info(
+        "  Recall @ 1%% FPR     : %.4f  (point on the test ROC curve)",
+        evaluation.recall_at_1pct_fpr,
+    )
+    log.info(
+        "  Recall @ 5%% FPR     : %.4f  (point on the test ROC curve)",
+        evaluation.recall_at_5pct_fpr,
+    )
     log.info(
         "  @ threshold %.4f  : precision=%.4f  recall=%.4f  f1=%.4f",
         threshold_value,
