@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import math
 from collections.abc import Iterator
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 
 import numpy as np
@@ -24,8 +24,7 @@ from app.fraud.features import FeatureExtractor
 from app.models import Customer, Merchant, Transaction
 from app.models.base import Base
 
-
-NOW = datetime(2026, 5, 22, 12, 0, 0, tzinfo=timezone.utc)
+NOW = datetime(2026, 5, 22, 12, 0, 0, tzinfo=UTC)
 CUSTOMER_ID = "cust-parity-1"
 CUSTOMER_2_ID = "cust-parity-2"
 MERCHANT_ID = "merch-parity-1"

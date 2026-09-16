@@ -111,7 +111,7 @@ def test_shap_values_satisfy_additivity() -> None:
     # default. Additivity holds on the margin, so compare in margin space.
     dmat = xgb.DMatrix(x.reshape(1, -1), feature_names=FEATURE_NAMES)
     raw_margin = float(
-        explainer._booster.predict(dmat, output_margin=True)[0]  # noqa: SLF001
+        explainer._booster.predict(dmat, output_margin=True)[0]
     )
     reconstructed = float(local.base_value + local.shap_values.sum())
     assert reconstructed == pytest.approx(raw_margin, abs=1e-4)

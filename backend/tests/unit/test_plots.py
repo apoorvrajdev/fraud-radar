@@ -6,10 +6,10 @@ import numpy as np
 import pytest
 
 matplotlib.use("Agg")
-import matplotlib.pyplot as plt  # noqa: E402
+import matplotlib.pyplot as plt
 
-from app.fraud.feature_spec import FEATURE_NAMES, N_FEATURES  # noqa: E402
-from app.fraud.plots import (  # noqa: E402
+from app.fraud.feature_spec import FEATURE_NAMES, N_FEATURES
+from app.fraud.plots import (
     _aggregate_top_k_with_remainder,
     _format_feature_value,
     render_force_plot,

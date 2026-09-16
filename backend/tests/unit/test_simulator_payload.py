@@ -19,7 +19,6 @@ from app.simulator.main import (
     _generate_fraud_payload,
 )
 
-
 # Sample IDs matching the 36-char Pydantic constraint on the schema.
 _CUSTOMER_IDS = [
     "10000000-0000-4000-8000-00000000000a",

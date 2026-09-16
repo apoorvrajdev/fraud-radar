@@ -38,7 +38,6 @@ from app.db import SessionLocal
 from app.models.customer import Customer
 from app.models.merchant import Merchant
 
-
 # Skip benchmark seed entities — they live under a fixed UUID prefix
 # (see ml/benchmark_latency.py) and would dominate the random sample
 # if not filtered out.

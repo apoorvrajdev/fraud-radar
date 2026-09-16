@@ -9,12 +9,12 @@ from __future__ import annotations
 from datetime import datetime
 
 from sqlalchemy import (
+    TIMESTAMP,
     CheckConstraint,
     ForeignKey,
     Index,
     Integer,
     String,
-    TIMESTAMP,
     Text,
 )
 from sqlalchemy.orm import Mapped, mapped_column
