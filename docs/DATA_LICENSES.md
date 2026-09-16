@@ -31,17 +31,33 @@ Fraud Radar trains and evaluates on datasets it does not own. This file records 
 | **Used for** | The v1 baseline model currently served by the API |
 | **Caveat** | Features were designed alongside the generator, so its numbers measure learnability of the generator, not detectability of fraud. This is the closed loop Phase 5 exists to break. |
 
-### Sparkov — external synthetic benchmark (planned, 5B)
+### Sparkov — external synthetic benchmark (adapter shipped, 5B)
+
+**This is simulated data.** It must never be described as real card transactions. Its value is that someone else's generator produced it, so it tests whether features and rules designed against this project's own simulator transfer at all.
 
 | | |
 |---|---|
-| **Origin** | Synthetic, generated independently with Brandon Harris's Sparkov tool |
-| **Source** | Kaggle `kartik2112/fraud-detection` |
-| **Licence** | Listed as CC0 on the dataset card — **to be confirmed at retrieval** |
-| **Citation** | Kartik Shenoy, "Credit Card Transactions Fraud Detection Dataset", Kaggle; generated with Sparkov Data Generation (Brandon Harris) |
-| **Label** | `is_fraud` |
-| **Used for** | Training, evaluation, temporal-drift experiment, rules audit |
+| **Origin** | Synthetic. Kaggle's own subtitle: "Simulated Credit Card Transactions generated using Sparkov" |
+| **Source** | Kaggle `kartik2112/fraud-detection`, published 2020-08-05 by Kartik Shenoy |
+| **Licence** | **CC0: Public Domain**, confirmed 2026-09-16 via the Kaggle dataset API (`licenseName`) |
+| **Generator** | [Sparkov Data Generation](https://github.com/namebrandon/Sparkov_Data_Generation) by Brandon Harris — **MIT**, confirmed 2026-09-16 via the GitHub API |
+| **Citation** | Kartik Shenoy, "Credit Card Transactions Fraud Detection Dataset", Kaggle, 2020. Generated with Sparkov Data Generation (Brandon Harris). |
+| **Files** | `fraudTrain.csv` (351,238,196 bytes) and `fraudTest.csv` (150,354,339 bytes), sizes from the Kaggle files API |
+| **Coverage** | 1 Jan 2019 – 31 Dec 2020, 1,000 cards, 800 merchants (Kaggle description) |
+| **Schema** | 23 columns: an unnamed index plus the 22 named columns listed in `ml/datasets/sparkov.py` |
+| **Label** | `is_fraud`; 1 = a transaction the generator produced as fraudulent |
+| **Used for** | Training, evaluation, temporal-drift experiment, rules audit (5C onward) |
 | **Derived and committed** | Quality report, metrics, model card, feature-importance summaries |
+
+**Reported but not independently verified** (the corpus has not been retrieved here, so these come from secondary sources and are recomputed at load time rather than trusted): row counts of 1,296,675 and 555,719, fraud prevalence of roughly 0.58% and 0.39%, and the exact boundary date between the two files. The adapter computes all counts from the bytes it reads, and the loader refuses to run if the header does not match the expected schema.
+
+**Preprocessing applied by the adapter**, each recorded in `DatasetProvenance.preprocessing`:
+
+- Card numbers, merchant names and transaction numbers are hashed to UUIDs (`uuid5`); no card-like value is stored or logged.
+- The generator prefixes every merchant name with `fraud_`, on legitimate and fraudulent rows alike. It is stripped: it carries no signal, and leaving a token spelling "fraud" in a merchant name invites a future text model to latch onto it.
+- The 14 source categories are folded onto this project's 12-category taxonomy. `health_fitness` has no equivalent and is placed in the closest medium-risk bucket — a judgment call, recorded as such in the field inventory.
+- Cardholder name, address, coordinates, job and date of birth are dropped: no canonical field, and no reason to carry personal-looking detail.
+- Risk tier and account age have no source equivalent and are filled with inert constants rather than plausible-looking values. Deriving an account age from the birth date would invent signal.
 
 ### ULB Credit Card Fraud — real-world benchmark (planned, 5E)
 

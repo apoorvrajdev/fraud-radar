@@ -320,6 +320,24 @@ The training run writes `model.json`, `feature_list.json`, `threshold.json`, `me
 
 `ml.analyze` then adds `segment_metrics.json`, `calibration_metrics.json`, `feature_importance.json`, plus `calibration_curve.png`, `global_shap_beeswarm.png`, and `global_shap_bar.png`, and rewrites [`backend/ml/MODEL_CARD.md`](backend/ml/MODEL_CARD.md) with the current numbers. JSON outputs are committed; the PNGs are gitignored.
 
+### External Benchmark (Sparkov)
+
+The Sparkov corpus is **simulated** data from an independent generator — not real card transactions. It is never committed; acquire it locally:
+
+```bash
+cd backend
+uv run python -m ml.datasets.download --dataset sparkov              # Kaggle CLI, or printed manual steps
+uv run python -m ml.datasets.download --dataset sparkov --pin-hashes # first retrieval: pin the SHA-256s
+```
+
+Verification is identical whichever route you take, and a hash mismatch refuses to proceed rather than warning. Then load it into the canonical representation and write a quality report:
+
+```bash
+uv run python -m ml.datasets.sparkov --max-cards 200 --report
+```
+
+`--max-cards` subsamples whole card histories, never individual rows: dropping part of a card's past would corrupt every velocity feature computed from it. The report lands in `ml/artifacts/runs/<run-name>/quality_report.json` with row accounting, per-category fraud rates, every exclusion and its reason, and the canonical fields that are constant on this corpus — four v1 inputs are inert on Sparkov, which is context any metric from it needs. Licence and provenance: [`docs/DATA_LICENSES.md`](docs/DATA_LICENSES.md).
+
 ### Tests
 
 ```bash
@@ -327,7 +345,7 @@ cd backend
 uv run pytest -v
 ```
 
-Runs 357 test cases covering the dataset contracts and run records (canonical invariants, provenance round-trip, adapter registry, offline layout), the featureset registry pin, the chronological splitter, evaluation metrics, artifact round-trip, SHAP additivity, force / waterfall plot rendering, segment routing, calibration math (including positive-class variants), the six-rule engine (hour and high-risk-country boundaries parametrised), Stripe-pattern idempotency (hash determinism, replay path, 409 conflict, 422 paths), the scoring orchestrator (decision matrix, audit-log writes, hard-block short-circuit), the feature extractor's pre-loaded-history parity contract, the simulator payload builder, the dashboard stats service (24h window edges, hourly bucket fill, decimal quantisation, top-10 cap), and the `/explain`, `/transactions`, and `/stats/*` endpoints via `TestClient`.
+Runs 452 test cases covering the dataset contracts and run records (canonical invariants, provenance round-trip, adapter registry, offline layout), the Sparkov adapter on CSV fixtures (schema drift, id derivation, label separation, explicit exclusions, entity subsampling, manifest verification) and its quality report, the featureset registry pin, the chronological splitter, evaluation metrics, artifact round-trip, SHAP additivity, force / waterfall plot rendering, segment routing, calibration math (including positive-class variants), the six-rule engine (hour and high-risk-country boundaries parametrised), Stripe-pattern idempotency (hash determinism, replay path, 409 conflict, 422 paths), the scoring orchestrator (decision matrix, audit-log writes, hard-block short-circuit), the feature extractor's pre-loaded-history parity contract, the simulator payload builder, the dashboard stats service (24h window edges, hourly bucket fill, decimal quantisation, top-10 cap), and the `/explain`, `/transactions`, and `/stats/*` endpoints via `TestClient`.
 
 [`.github/workflows/ci.yml`](.github/workflows/ci.yml) runs the same suite on every push to `main` and every pull request, alongside `ruff`, strict `mypy`, and the frontend's `tsc` + production build. The integration tests that load a real model would otherwise skip in CI — `backend/ml/artifacts/model.json` is gitignored — so the workflow trains a deliberately tiny model first (3,000 rows, two search iterations, about a minute) to keep them running for real rather than green-by-skip. Those CI numbers are throwaway; the published metrics come from the full training run above.
 
@@ -426,7 +444,7 @@ npm run preview
 Today's headline metrics come from data produced by this repository's own generator, which measures whether that generator is learnable rather than whether fraud is detectable. Phase 5 breaks that loop with externally generated and real-world benchmarks, and reports the drop honestly rather than quietly keeping the friendlier number.
 
 - [x] **5A** — Data and benchmark architecture ([`docs/adr/PHASE_5A_DESIGN.md`](docs/adr/PHASE_5A_DESIGN.md)): canonical dataset contract over the production ORM types with labels held outside the objects, load-time invariant validation, name-resolved adapter protocol, provenance record carrying licence and per-file hashes, four-stage offline layout (raw / cache / run outputs / promoted artifacts), per-run reproducibility record, and a versioned featureset registry with v1 frozen and pinned by test. Licensing policy in [`docs/DATA_LICENSES.md`](docs/DATA_LICENSES.md). No scoring, threshold, feature, schema, simulator or demo behaviour changed
-- [ ] **5B** — Download script with SHA-256 manifest verification; external synthetic adapter (column mapping, deterministic id hashing, category taxonomy, entity subsampling) and its quality report
+- [x] **5B** — Acquisition and adapter for the [Sparkov benchmark](https://www.kaggle.com/datasets/kartik2112/fraud-detection) (CC0, **simulated** data generated with Brandon Harris's Sparkov tool — not real card transactions): manifest-verified download with SHA-256 pinning, `uuid5` id derivation so no card-like value is stored, 14→12 category mapping, entity-level subsampling that keeps whole card histories, labels held outside the transaction objects, and a quality report that counts every excluded row and names the canonical fields that are constant on this corpus. The corpus itself is not committed and has not been retrieved here, so its hashes are unpinned until someone downloads it — see [`docs/DATA_LICENSES.md`](docs/DATA_LICENSES.md)
 - [ ] **5C** — Batch feature builder on the production extractor, with a golden parity test against the serving path
 - [ ] **5D** — Training, evaluation, temporal-drift experiment, rules audit and regenerated model card on external data, with promotion
 - [ ] **5E** — Real-world benchmark track (ULB), never promoted to the serving API
