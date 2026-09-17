@@ -407,13 +407,14 @@ def test_unix_time_disagreement_is_reported_not_enforced(
     assert result.dataset.n_rows == 2
 
 
-def test_a_uniform_unix_time_offset_is_recognised_as_a_timezone(
+def test_a_uniform_unix_time_offset_is_recognised(
     tmp_path: Path, adapter: SparkovAdapter
 ) -> None:
-    """Every row off by the same amount is the generator's local clock.
+    """Every row off by the same amount is reported as one uniform offset.
 
-    The generator derives its epoch from a naive datetime, so the offset is
-    whichever timezone produced the corpus — a provenance fact, not a defect.
+    Recognising the shape says nothing about what the offset means. On the
+    published files `unix_time` is not a timezone offset but a whole-day shift,
+    and it stays a diagnostic either way (Phase 5D decision 17).
     """
     root = tmp_path / "raw" / "offset"
     root.mkdir(parents=True)

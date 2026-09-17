@@ -1,6 +1,6 @@
 # Phase 5D — Benchmark Methodology
 
-**Status:** accepted · **Date:** 2026-09-16 · **Milestone:** Phase 5D / M4 · **Scope:** `backend/ml/train.py`, `backend/ml/analyze.py`, `backend/ml/promote.py`, `backend/ml/experiments/`
+**Status:** accepted · **Date:** 2026-09-16 · **Amended:** 2026-09-17 (decision 17) · **Milestone:** Phase 5D / M4 · **Scope:** `backend/ml/train.py`, `backend/ml/analyze.py`, `backend/ml/promote.py`, `backend/ml/experiments/`
 
 ---
 
@@ -132,13 +132,34 @@ The reason is specific to how the runs relate. The 200 dev cards are a subset of
 
 `sparkov_v1_full` uses exactly the dev run's tuning procedure. If memory or runtime makes that infeasible, work stops and the constraint is reported before any part of the procedure changes. A reduced procedure is a deviation under decision 15.
 
+### 17. On Sparkov, `trans_date_trans_time` is the only clock
+
+*Added 2026-09-17, after the corpus was acquired and before any feature was built from it, on the evidence recorded under [The `unix_time` offset](#the-unix_time-offset).*
+
+For Sparkov, `trans_date_trans_time` is the authoritative transaction timestamp. `unix_time` is not used for:
+
+- feature extraction;
+- chronological ordering;
+- train, validation and test splitting;
+- customer history windows;
+- temporal drift analysis;
+- any other temporal modelling.
+
+`unix_time` is kept only as a quality and provenance diagnostic: the offset fields of the quality report, and the data-quality row the run card derives from them.
+
+`unix_time` is not reconstructed or corrected with an inferred offset — seven years, a whole number of days, or a leap-day rule. The observed whole-day shift is reason enough not to treat it as a clock. A correction would rest on a guess about how the corpus was produced, and nothing in the benchmark needs one.
+
+Two properties of the wall clock are therefore recorded, not corrected, since correcting either would mean reconstructing time from `unix_time`: the date 2019-02-28 holds rows from two `unix_time` dates, and 2020-02-29 holds no rows.
+
+The adapter already derives every transaction timestamp from `trans_date_trans_time` alone, so this decision fixes existing behaviour as method rather than changing code. It settles the clock question that [`PHASE_5C_FEATURE_PARITY.md`](PHASE_5C_FEATURE_PARITY.md) left open as a gate on the first real Sparkov run.
+
 ---
 
 ## Frozen protocol
 
 "Existing" refers to the code at the commit of this record.
 
-**Data.** The existing Sparkov adapter: `trans_date_trans_time` as the authoritative clock, interpreted as UTC; the 14 → 12 category map; counted exclusions; manifest hash verification. Dev: 200 cards with whole histories, subsample seed 42. Final: the full corpus.
+**Data.** The existing Sparkov adapter: `trans_date_trans_time` as the authoritative clock, interpreted as UTC, with `unix_time` a diagnostic only (decision 17); the 14 → 12 category map; counted exclusions; manifest hash verification. Dev: 200 cards with whole histories, subsample seed 42. Final: the full corpus.
 
 **Features.** Featureset `v1` from the batch builder — the production `FeatureExtractor.extract()` with the 180-day serving window — read through the fingerprinted feature cache.
 
@@ -192,9 +213,24 @@ These are unknown, not undecided. Each is recorded from the data when it arrives
 
 ### The `unix_time` offset
 
-No interpretation of how `unix_time` relates to `trans_date_trans_time` is assumed in advance — neither that a non-uniform offset is benign nor that it is an error. On first acquisition the complete observed distribution of offsets is inspected and recorded, and that evidence decides what the offset means.
+**Before acquisition (2026-09-16).** No interpretation of how `unix_time` relates to `trans_date_trans_time` was assumed in advance — neither that a non-uniform offset is benign nor that it is an error. On first acquisition the complete observed distribution of offsets was to be inspected and recorded, and that evidence would decide what the offset means.
 
-The account in [`DATA_LICENSES.md`](../DATA_LICENSES.md), that the epoch carries the generating machine's timezone, is derived from the generator's source code and has not been checked against the published files. `trans_date_trans_time` remains the authoritative clock; if the observed distribution calls that into question, it is reported before any feature matrix is built from the real corpus.
+The account then given in [`DATA_LICENSES.md`](../DATA_LICENSES.md), that the epoch carries the generating machine's timezone, was derived from the generator's source code and had not been checked against the published files. `trans_date_trans_time` remained the authoritative clock; anything in the observed distribution that called that into question was to be reported before any feature matrix was built from the real corpus.
+
+**Observed on the published files (2026-09-17).** Inspected after acquisition and before any feature build, over all 1,852,394 rows of both files. Every row has a numeric `unix_time`, and the observed offsets fit well inside the 50-entry listing, so nothing is truncated.
+
+| Offset (wall clock minus `unix_time`) | Rows | Wall-clock dates it covers |
+|---|---|---|
+| 220,924,800 s = 2,557 days | 928,083 | 2019-01-01 – 2019-02-27; on 2019-02-28, the 1,282 rows whose `unix_time` date is 2012-02-28; 2020-03-01 – 2020-12-31 |
+| 220,838,400 s = 2,556 days | 924,311 | on 2019-02-28, the 1,859 rows whose `unix_time` date is 2012-02-29; 2019-03-01 – 2020-02-28 |
+
+- Every offset is a whole number of days; none has an hours, minutes or seconds component. Read as UTC datetimes, the `unix_time` values run from 2012-01-01 00:00:18 to 2013-12-31 23:59:34, the same times of day as the wall-clock range 2019-01-01 00:00:18 to 2020-12-31 23:59:34.
+- `fraudTrain.csv` holds both offsets (924,311 rows at 2,556 days, 372,364 at 2,557); `fraudTest.csv` holds only 2,557 days.
+- Wall-clock 2019-02-28 holds 3,141 rows from two `unix_time` dates, 2012-02-28 and 2012-02-29, interleaved through the day. Wall-clock 2020-02-29 holds no rows: 2020-02-28 carries `unix_time` date 2013-02-28, and 2020-03-01 carries 2013-03-01. Every other date from 2019-01-01 to 2020-12-31 has rows.
+- `fraudTrain.csv` is stored in `unix_time` order. Its wall clock steps backwards exactly once, by 86,226 seconds at row 100,532, where the offset changes on 2019-02-28. `fraudTest.csv` is in wall-clock order.
+- `unix_time_offset_is_uniform` is therefore false on the real corpus.
+
+**What the observation rules out.** A timezone offset is a matter of hours. The observed offsets are whole days, about seven years, and differ between rows, so the published files do not support the timezone account. That account is kept in [`DATA_LICENSES.md`](../DATA_LICENSES.md), labelled as the earlier interpretation, next to the observation. What produced the shift is not established here and does not need to be: decision 17 follows from the shift itself.
 
 The quality report records the distribution under `extra.unix_time_offset_distribution`. A row's offset is its parsed `trans_date_trans_time`, in UTC epoch seconds, minus its `unix_time`; the field states that definition as `offset_definition`. It carries:
 

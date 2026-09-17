@@ -11,14 +11,13 @@ What this adapter does *not* do is as important as what it does. It does not
 touch scoring, it does not invent fields the source lacks, and it does not
 quietly drop rows: every exclusion is counted, reasoned, and reported.
 
-**Which clock is authoritative.** `trans_date_trans_time` is, and `unix_time`
-is advisory. The generator samples an hour-of-day from a shopping daypart,
-builds a naive `datetime`, and derives the epoch from it with `.timestamp()`
-(`profile_weights.py`) — which resolves a naive datetime against the local
-timezone of whatever machine ran the generator. The wall clock is therefore
-the quantity the simulation actually modelled, and the epoch is a by-product
-carrying that machine's timezone offset. Every temporal feature reads the wall
-clock; the epoch is only cross-checked and reported.
+**Which clock is authoritative.** `trans_date_trans_time`, and only it (Phase
+5D decision 17). Every transaction timestamp — and so every ordering, split,
+history window and temporal feature — reads the wall clock. `unix_time` is a
+diagnostic: its offset from the wall clock is measured and reported, never used
+as time and never corrected. The generator's source suggested that offset
+would be a timezone; on the published files it is a whole 2,556 or 2,557 days,
+so `unix_time` cannot stand in as a clock.
 """
 from __future__ import annotations
 
