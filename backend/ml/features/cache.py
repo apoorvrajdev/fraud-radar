@@ -10,6 +10,12 @@ version, source file digests, subsample record) and the featureset version.
 Change any of those and you get a different file rather than a stale hit, so
 there is no way to silently evaluate new data with an old matrix.
 
+The fingerprint names a matrix's inputs, not the rows an adapter made of them,
+so a hit is also checked against the dataset loaded beside it: the cached rows
+must be that dataset's transactions, in its order, with its row and fraud
+counts. If the adapter's output changed while its inputs did not, the hit is
+refused rather than trusted.
+
 Everything needed to reconstruct the run travels inside the archive: the
 matrix, the labels, the transaction ids, the timestamps, the feature names in
 their frozen order, and the provenance of the dataset they came from. Labels
@@ -232,13 +238,15 @@ def build_or_load(
 ) -> tuple[LabelledDataset, FeatureCacheMetadata, bool]:
     """Return the feature matrix, its metadata, and whether the cache was hit.
 
-    A miss extracts and writes; a hit reads and validates. `refresh` forces
-    a rebuild without requiring anyone to delete files by hand.
+    A miss extracts and writes; a hit reads, validates, and is checked against
+    `dataset`, never rebuilt in its place. `refresh` forces a rebuild without
+    requiring anyone to delete files by hand.
     """
     path = cache_path(dataset.provenance, featureset=featureset, cache_root=cache_root)
 
     if not refresh and path.exists():
         matrix, metadata = load_feature_cache(path, featureset=featureset)
+        _check_matches_dataset(matrix, dataset, path=path)
         log.info("Feature cache hit: %s (%d rows)", path.name, metadata.row_count)
         return matrix, metadata, True
 
@@ -288,6 +296,49 @@ def _validate(
         )
     if len(set(ids)) != len(ids):
         raise FeatureCacheError("Cached transaction ids are not unique; rows cannot be traced.")
+
+
+_STALE_HIT = (
+    "The fingerprint matched, so the dataset's rows changed without its inputs changing; "
+    "find out why before rebuilding the cache."
+)
+
+
+def _check_matches_dataset(
+    matrix: LabelledDataset, dataset: CanonicalDataset, *, path: Path
+) -> None:
+    """Refuse a cached matrix whose rows are not the rows of `dataset`.
+
+    Row count first, then the transaction ids in order, then the fraud count,
+    so each refusal names the first thing that differs.
+    """
+    if matrix.n_rows != dataset.n_rows:
+        raise FeatureCacheError(
+            f"Cache at {path} holds {matrix.n_rows} rows, but the loaded dataset has "
+            f"{dataset.n_rows}. {_STALE_HIT}"
+        )
+
+    loaded_ids = [tx.id for tx in dataset.transactions]
+    if matrix.transaction_ids != loaded_ids:
+        row = next(
+            index
+            for index, (cached, loaded) in enumerate(
+                zip(matrix.transaction_ids, loaded_ids, strict=True)
+            )
+            if cached != loaded
+        )
+        raise FeatureCacheError(
+            f"Cache at {path} does not hold the loaded dataset's transactions in its order: "
+            f"row {row} is {matrix.transaction_ids[row]!r} in the cache and "
+            f"{loaded_ids[row]!r} in the dataset. {_STALE_HIT}"
+        )
+
+    cached_frauds = int(matrix.y.sum())
+    if cached_frauds != dataset.fraud_count:
+        raise FeatureCacheError(
+            f"Cache at {path} holds {cached_frauds} frauds, but the loaded dataset has "
+            f"{dataset.fraud_count}. {_STALE_HIT}"
+        )
 
 
 def _timestamps_to_epoch_us(timestamps: np.ndarray) -> np.ndarray:

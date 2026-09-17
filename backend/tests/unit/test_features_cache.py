@@ -7,6 +7,7 @@ So every mismatch below is a refusal, not a warning.
 from __future__ import annotations
 
 import json
+from dataclasses import replace
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from pathlib import Path
@@ -355,6 +356,86 @@ def test_different_source_bytes_do_not_hit_the_same_cache(tmp_path: Path) -> Non
     assert hit is False
     assert len(list(tmp_path.glob("*.npz"))) == 2
     assert metadata.dataset_files == {"data.csv": "e" * 64}
+
+
+# ---------------------------------------------------------------------------
+# A hit must hold the rows of the dataset loaded beside it
+#
+# Each refusal keeps the fingerprint and changes only the rows the dataset
+# holds, as an adapter whose output changed under unchanged inputs would.
+# ---------------------------------------------------------------------------
+
+
+def _refused_hit(tmp_path: Path, loaded: CanonicalDataset, *, match: str) -> None:
+    built = _dataset()
+    build_or_load(built, cache_root=tmp_path)
+    path = cache_path(built.provenance, cache_root=tmp_path)
+    written = path.read_bytes()
+    assert cache_path(loaded.provenance, cache_root=tmp_path) == path, "fingerprint must match"
+
+    with pytest.raises(FeatureCacheError, match=match):
+        build_or_load(loaded, cache_root=tmp_path)
+
+    assert list(tmp_path.glob("*.npz")) == [path]
+    assert path.read_bytes() == written, "a refused hit must not rebuild or rewrite the cache"
+
+
+def test_a_hit_for_the_same_rows_loaded_again_is_reused(tmp_path: Path) -> None:
+    """Objects built afresh, as a later process loads them, still hit."""
+    built, _, _ = build_or_load(_dataset(), cache_root=tmp_path)
+
+    loaded, metadata, hit = build_or_load(_dataset(), cache_root=tmp_path)
+
+    assert hit is True
+    assert metadata.row_count == loaded.n_rows == 6
+    assert loaded.transaction_ids == built.transaction_ids
+    np.testing.assert_array_equal(loaded.X, built.X)
+    np.testing.assert_array_equal(loaded.y, built.y)
+
+
+def test_a_hit_with_another_row_count_is_refused(tmp_path: Path) -> None:
+    _refused_hit(
+        tmp_path, _dataset(rows=5), match="holds 6 rows, but the loaded dataset has 5"
+    )
+
+
+def test_a_hit_holding_the_same_transactions_in_another_order_is_refused(
+    tmp_path: Path,
+) -> None:
+    loaded = _dataset()
+    earlier, later = loaded.transactions[1], loaded.transactions[2]
+    earlier.created_at, later.created_at = later.created_at, earlier.created_at
+    reordered = replace(
+        loaded, transactions=sorted(loaded.transactions, key=lambda tx: tx.created_at)
+    ).validate()
+    assert {tx.id for tx in reordered.transactions} == set(loaded.labels)
+
+    _refused_hit(
+        tmp_path, reordered, match="row 1 is 'tx-1' in the cache and 'tx-2' in the dataset"
+    )
+
+
+def test_a_hit_holding_other_transactions_is_refused(tmp_path: Path) -> None:
+    loaded = _dataset()
+    renamed = loaded.transactions[4]
+    labels = dict(loaded.labels)
+    labels["tx-renamed"] = labels.pop(renamed.id)
+    renamed.id = "tx-renamed"
+    changed = replace(loaded, labels=labels).validate()
+
+    _refused_hit(
+        tmp_path, changed, match="row 4 is 'tx-4' in the cache and 'tx-renamed' in the dataset"
+    )
+
+
+def test_a_hit_with_another_fraud_count_is_refused(tmp_path: Path) -> None:
+    loaded = _dataset()
+    assert loaded.fraud_count == 1
+    relabelled = replace(loaded, labels=dict.fromkeys(loaded.labels, 0)).validate()
+
+    _refused_hit(
+        tmp_path, relabelled, match="holds 1 frauds, but the loaded dataset has 0"
+    )
 
 
 def _rewrite(path: Path, **replacements: np.ndarray) -> None:
