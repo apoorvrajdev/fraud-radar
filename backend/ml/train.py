@@ -71,7 +71,13 @@ from ml.paths import (
     validate_run_name,
 )
 from ml.reporting import LiveFeatures, live_features
-from ml.runs import RunMetadata, current_git_commit, save_run_metadata, split_periods
+from ml.runs import (
+    RunMetadata,
+    current_git_commit,
+    identify_test_fold,
+    save_run_metadata,
+    split_periods,
+)
 from ml.splits import SplitIndices, assert_no_temporal_leakage, chronological_split
 from ml.tuning import TuningResult, compute_scale_pos_weight, tune_hyperparameters
 
@@ -511,7 +517,8 @@ def write_run(
     The run record is assembled before anything is written, so an invalid
     name, provenance or fold period refuses the run instead of leaving a
     partial directory behind. Its seed comes from the dataset's subsample
-    record; the model's random state is written with the fit.
+    record; the model's random state is written with the fit. The test fold is
+    identified by its transaction ids in fold order, the order it was scored in.
     """
     record = RunMetadata(
         run_name=run_name,
@@ -520,6 +527,7 @@ def write_run(
         code_version=current_git_commit(),
         library_versions=collect_library_versions(),
         splits=split_periods(ds.timestamps, outcome.splits),
+        test_fold_identity=identify_test_fold(ds.transaction_ids, outcome.splits),
         notes=notes,
     )
     directory = run_dir(run_name, runs_root=runs_root)

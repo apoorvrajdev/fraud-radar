@@ -26,9 +26,10 @@ import pytest
 from app.fraud.feature_spec import FEATURESETS
 from ml import loading, train
 from ml.data import LabelledDataset
+from ml.datasets.sparkov import transaction_id_for
 from ml.features.cache import load_feature_cache
 from ml.reporting import LABEL_DELAY_NOTE
-from ml.runs import RUN_METADATA_FILENAME, load_run_metadata, split_periods
+from ml.runs import RUN_METADATA_FILENAME, FoldIdentity, load_run_metadata, split_periods
 from ml.splits import chronological_split
 from ml.tuning import TuningResult
 from tests.unit.test_dataset_sparkov import _row, _write_csv, fixture_adapter
@@ -173,6 +174,20 @@ def test_the_run_record_carries_provenance_featureset_seed_and_fold_periods(
         ("val", _at(70), _at(84)),
         ("test", _at(85), _at(99)),
     ]
+
+
+def test_the_run_record_identifies_the_test_fold_by_its_transaction_ids(
+    workspace: Path, sparkov_root: Path, tuner_calls: list[dict[str, Any]]
+) -> None:
+    """The last fifteen corpus rows, t85 to t99, in the order the test fold holds them."""
+    run = _train_sparkov(workspace, sparkov_root)
+
+    record = load_run_metadata("sparkov-fixture", runs_root=workspace / "runs")
+    expected = [transaction_id_for(f"t{index}") for index in range(85, 100)]
+
+    assert record.test_fold_identity == FoldIdentity.of("test", expected)
+    assert _read(run, RUN_METADATA_FILENAME)["metadata_version"] == "3"
+    assert _read(run, RUN_METADATA_FILENAME)["test_fold_identity"]["transaction_count"] == 15
 
 
 def test_the_subsample_seed_and_the_model_random_state_are_recorded_apart(
@@ -420,6 +435,24 @@ def test_a_named_synthetic_run_records_the_label_csv_and_keeps_its_targets(
 
     metrics = _read(run, "metrics.json")
     assert set(metrics) == OBSERVED_METRICS | set(train.SYNTHETIC_TARGETS)
+
+
+def test_a_named_synthetic_run_identifies_its_test_fold_in_time_order(
+    workspace: Path, synthetic_loader: LabelledDataset, tuner_calls: list[dict[str, Any]]
+) -> None:
+    """The fixture's timestamps are shuffled against row order; its test fold is in time order."""
+    labels = workspace / "synthetic_transactions.csv"
+    labels.write_text("id,is_fraud\ntx0,False\n", encoding="utf-8")
+
+    train.main(["--run-name", "synthetic-fixture", "--csv-path", str(labels), "--n-iter", "3"])
+
+    ds = synthetic_loader
+    test_rows = chronological_split(ds.timestamps).test
+    record = load_run_metadata("synthetic-fixture", runs_root=workspace / "runs")
+    assert record.test_fold_identity == FoldIdentity.of(
+        "test", [ds.transaction_ids[row] for row in test_rows]
+    )
+    assert list(test_rows) != sorted(test_rows), "the fixture no longer shuffles its rows"
 
 
 def test_the_unnamed_synthetic_default_writes_no_run_record(

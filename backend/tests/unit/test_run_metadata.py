@@ -7,6 +7,7 @@ version survive a write/read cycle intact.
 """
 from __future__ import annotations
 
+import hashlib
 import json
 from dataclasses import replace
 from datetime import UTC, datetime, timedelta
@@ -21,17 +22,22 @@ from ml.paths import InvalidRunNameError, ensure_dir, run_dir, validate_run_name
 from ml.runs import (
     RUN_METADATA_FILENAME,
     RUN_METADATA_VERSION,
+    TRANSACTION_IDS_DIGEST_DEFINITION,
+    FoldIdentity,
     RunMetadata,
     SplitPeriod,
     current_git_commit,
+    identify_test_fold,
     load_run_metadata,
     save_run_metadata,
     split_periods,
+    transaction_ids_digest,
 )
 from ml.splits import SplitIndices, chronological_split
 
 ANCHOR = datetime(2026, 3, 1, 12, 0, tzinfo=UTC)
 DIGEST = "b" * 64
+TEST_IDS = ("tx-8", "tx-9", "tx-10")
 
 
 def _provenance() -> DatasetProvenance:
@@ -67,6 +73,7 @@ def _metadata(**overrides: object) -> RunMetadata:
             SplitPeriod("val", ANCHOR - timedelta(days=30), ANCHOR - timedelta(days=15)),
             SplitPeriod("test", ANCHOR - timedelta(days=15), ANCHOR),
         ),
+        "test_fold_identity": FoldIdentity.of("test", TEST_IDS),
     }
     payload.update(overrides)
     return RunMetadata(**payload)  # type: ignore[arg-type]
@@ -154,6 +161,7 @@ def test_saved_payload_records_every_reproducibility_field(tmp_path: Path) -> No
         "code_version",
         "library_versions",
         "splits",
+        "test_fold_identity",
         "notes",
     }
     assert payload["metadata_version"] == RUN_METADATA_VERSION
@@ -216,7 +224,7 @@ def test_a_version_1_record_reads_its_seed_from_the_subsample_record(
 
     record = load_run_metadata("fixture-run", runs_root=tmp_path)
 
-    assert RUN_METADATA_VERSION == "2"
+    assert RUN_METADATA_VERSION == "3"
     assert record.metadata_version == "1"
     assert record.seed == expected_seed
 
@@ -347,3 +355,156 @@ def test_code_version_is_optional(tmp_path: Path) -> None:
 def test_current_git_commit_returns_a_sha_or_none() -> None:
     commit = current_git_commit()
     assert commit is None or (len(commit) == 40 and all(c in "0123456789abcdef" for c in commit))
+
+
+# ---------------------------------------------------------------------------
+# Test fold identity (version 3)
+# ---------------------------------------------------------------------------
+
+
+def test_the_ids_digest_is_the_sha256_of_the_documented_encoding() -> None:
+    """Recomputable from the stated definition alone, without this code."""
+    ids = ["tx-1", "tx-2", "tx-3"]
+
+    expected = hashlib.sha256(b'["tx-1","tx-2","tx-3"]').hexdigest()
+
+    assert transaction_ids_digest(ids) == expected
+    assert "JSON array" in TRANSACTION_IDS_DIGEST_DEFINITION
+    assert "in fold order" in TRANSACTION_IDS_DIGEST_DEFINITION
+
+
+def test_the_ids_digest_is_deterministic() -> None:
+    ids = [f"tx-{index}" for index in range(50)]
+
+    assert transaction_ids_digest(ids) == transaction_ids_digest(list(ids))
+    assert transaction_ids_digest(ids) == transaction_ids_digest(tuple(ids))
+    assert FoldIdentity.of("test", ids) == FoldIdentity.of("test", list(ids))
+
+
+def test_a_changed_id_changes_the_digest() -> None:
+    ids = ["tx-1", "tx-2", "tx-3"]
+
+    assert transaction_ids_digest(ids) != transaction_ids_digest(["tx-1", "tx-2", "tx-4"])
+
+
+def test_a_changed_order_changes_the_digest() -> None:
+    ids = ["tx-1", "tx-2", "tx-3"]
+
+    assert transaction_ids_digest(ids) != transaction_ids_digest(["tx-1", "tx-3", "tx-2"])
+
+
+@pytest.mark.parametrize(
+    ("first", "second"),
+    [
+        pytest.param(["a,b"], ["a", "b"], id="comma-inside-an-id"),
+        pytest.param(["a\nb"], ["a", "b"], id="newline-inside-an-id"),
+        pytest.param(["ab"], ["a", "b"], id="concatenation"),
+    ],
+)
+def test_different_id_sequences_never_encode_alike(first: list[str], second: list[str]) -> None:
+    assert transaction_ids_digest(first) != transaction_ids_digest(second)
+
+
+def test_a_fold_identity_counts_the_ids_it_digests() -> None:
+    identity = FoldIdentity.of("test", TEST_IDS)
+
+    assert identity.fold == "test"
+    assert identity.transaction_count == len(TEST_IDS)
+    assert identity.transaction_ids_sha256 == transaction_ids_digest(TEST_IDS)
+
+
+def test_the_test_fold_is_identified_in_fold_order() -> None:
+    """Rows stored out of time order are identified in the order the fold holds them."""
+    hours = [19, 3, 11, 0, 7, 15, 2, 18, 9, 13, 5, 16, 1, 10, 17, 6, 12, 4, 14, 8]
+    timestamps = _timestamps(hours)
+    ids = [f"tx-at-{hour}" for hour in hours]
+    splits = chronological_split(timestamps)
+
+    identity = identify_test_fold(ids, splits)
+
+    assert identity == FoldIdentity.of("test", ["tx-at-17", "tx-at-18", "tx-at-19"])
+
+
+@pytest.mark.parametrize(
+    ("field", "value", "match"),
+    [
+        pytest.param("fold", "", "must be non-empty", id="no-fold"),
+        pytest.param("transaction_count", 0, "at least one transaction", id="empty"),
+        pytest.param("transaction_ids_sha256", "abc", "64-character hex", id="short-digest"),
+        pytest.param("transaction_ids_sha256", "B" * 64, "64-character hex", id="uppercase"),
+    ],
+)
+def test_a_malformed_fold_identity_is_refused(field: str, value: object, match: str) -> None:
+    with pytest.raises(DatasetContractError, match=match):
+        replace(FoldIdentity.of("test", TEST_IDS), **{field: value})
+
+
+def test_a_version_3_record_round_trips_its_test_fold_identity(tmp_path: Path) -> None:
+    original = _metadata()
+    save_run_metadata(original, runs_root=tmp_path)
+    payload = json.loads((tmp_path / "fixture-run" / RUN_METADATA_FILENAME).read_text("utf-8"))
+
+    assert payload["metadata_version"] == "3"
+    assert payload["test_fold_identity"] == {
+        "fold": "test",
+        "transaction_count": 3,
+        "transaction_ids_sha256": transaction_ids_digest(TEST_IDS),
+        "digest_definition": TRANSACTION_IDS_DIGEST_DEFINITION,
+    }
+    reloaded = load_run_metadata("fixture-run", runs_root=tmp_path)
+    assert reloaded.test_fold_identity == FoldIdentity.of("test", TEST_IDS)
+    assert reloaded == original
+
+
+def test_a_version_3_record_with_a_test_fold_must_identify_it() -> None:
+    with pytest.raises(DatasetContractError, match="must identify the fold's transactions"):
+        _metadata(test_fold_identity=None)
+
+
+def test_a_version_3_record_on_disk_without_the_identity_is_refused(tmp_path: Path) -> None:
+    payload = _metadata().to_dict()
+    payload.pop("test_fold_identity")
+    target = ensure_dir(tmp_path / "fixture-run") / RUN_METADATA_FILENAME
+    target.write_text(json.dumps(payload), encoding="utf-8")
+
+    with pytest.raises(DatasetContractError, match="must identify the fold's transactions"):
+        load_run_metadata("fixture-run", runs_root=tmp_path)
+
+
+def test_a_record_without_folds_needs_no_identity() -> None:
+    """A feature-build record chooses no folds, so there is no test fold to identify."""
+    record = _metadata(splits=(), test_fold_identity=None)
+
+    assert record.test_fold_identity is None
+    assert record.to_dict()["test_fold_identity"] is None
+
+
+@pytest.mark.parametrize("version", ["1", "2"])
+def test_an_earlier_record_reads_back_without_a_test_fold_identity(
+    tmp_path: Path, version: str
+) -> None:
+    """Older records are still read, and say plainly that they identify no test fold."""
+    payload = _metadata().to_dict()
+    payload.pop("test_fold_identity")
+    payload["metadata_version"] = version
+    target = ensure_dir(tmp_path / "fixture-run") / RUN_METADATA_FILENAME
+    target.write_text(json.dumps(payload), encoding="utf-8")
+
+    record = load_run_metadata("fixture-run", runs_root=tmp_path)
+
+    assert record.metadata_version == version
+    assert record.test_fold_identity is None
+    assert record.split("test") is not None
+
+
+def test_an_identity_for_another_fold_is_refused() -> None:
+    with pytest.raises(DatasetContractError, match="describes fold 'val'"):
+        _metadata(test_fold_identity=FoldIdentity.of("val", TEST_IDS))
+
+
+def test_an_identity_digested_some_other_way_is_refused() -> None:
+    payload = FoldIdentity.of("test", TEST_IDS).to_dict()
+    payload["digest_definition"] = "SHA-256 of the ids joined by newlines"
+
+    with pytest.raises(DatasetContractError, match="cannot be checked"):
+        FoldIdentity.from_dict(payload)

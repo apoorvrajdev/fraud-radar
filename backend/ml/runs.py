@@ -2,8 +2,8 @@
 
 `run.json` answers "what would I have to hold fixed to get this number again?"
 — which dataset bytes, which slice of them and the seed that drew it, which
-feature contract, which code, which libraries. It is written per run
-directory, next to that run's metrics.
+feature contract, which code, which libraries, which rows each fold covers. It
+is written per run directory, next to that run's metrics.
 
 This is deliberately separate from `training_metadata.json` (see
 `ml/artifacts.py`), which records the *model fit*: fold sizes, fraud rates,
@@ -13,9 +13,10 @@ and neither has to grow the other's fields.
 """
 from __future__ import annotations
 
+import hashlib
 import json
 import subprocess
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from itertools import pairwise
@@ -36,12 +37,27 @@ RUN_METADATA_FILENAME = "run.json"
 #   "1"  seed was the subsample seed, or the model random state when the
 #        dataset had no subsample record.
 #   "2"  seed is only ever the subsample seed, and null without a subsample.
-RUN_METADATA_VERSION = "2"
+#   "3"  a record that records a test fold also identifies its transactions.
+RUN_METADATA_VERSION = "3"
+
+# Versions written before a record identified its test fold's transactions.
+# Such a record is still read, but its test fold cannot be identified from it.
+_VERSIONS_WITHOUT_FOLD_IDENTITY = frozenset({"1", "2"})
 
 # Names the chronological folds are recorded under, in time order.
 TRAIN_SPLIT = "train"
 VAL_SPLIT = "val"
 TEST_SPLIT = "test"
+
+# How a fold's transaction ids are digested. The record states it beside the
+# digest, so the digest can be recomputed without reading this code.
+TRANSACTION_IDS_DIGEST_DEFINITION = (
+    "SHA-256 of the fold's transaction ids, in fold order, encoded as a JSON array of "
+    "strings with no whitespace, in UTF-8"
+)
+
+_SHA256_HEX_LENGTH = 64
+_HEX_DIGITS = frozenset("0123456789abcdef")
 
 _GIT_TIMEOUT_SECONDS = 5
 
@@ -115,9 +131,92 @@ def split_periods(timestamps: np.ndarray, splits: SplitIndices) -> tuple[SplitPe
     return tuple(periods)
 
 
+def transaction_ids_digest(transaction_ids: Sequence[str]) -> str:
+    """The SHA-256 of `transaction_ids` in the given order.
+
+    Computed as `TRANSACTION_IDS_DIGEST_DEFINITION` states. A JSON array keeps
+    the encoding unambiguous: no id can be mistaken for a separator, so two
+    different id sequences never encode to the same bytes.
+    """
+    encoded = json.dumps(list(transaction_ids), ensure_ascii=False, separators=(",", ":"))
+    return hashlib.sha256(encoded.encode("utf-8")).hexdigest()
+
+
+@dataclass(frozen=True)
+class FoldIdentity:
+    """Exactly which transactions a fold holds, and in what order.
+
+    A fold period says when a fold starts and ends, and a size says how many
+    rows it holds; neither says which rows. Two loads can agree on both and
+    still hold different transactions, so the ids themselves are recorded, as
+    a count and a digest of the ordered sequence.
+    """
+
+    fold: str
+    transaction_count: int
+    transaction_ids_sha256: str
+
+    def __post_init__(self) -> None:
+        if not self.fold:
+            raise DatasetContractError("FoldIdentity.fold must be non-empty.")
+        if self.transaction_count <= 0:
+            raise DatasetContractError(
+                f"FoldIdentity for fold {self.fold!r} must count at least one transaction, "
+                f"got {self.transaction_count}."
+            )
+        digest = self.transaction_ids_sha256
+        if len(digest) != _SHA256_HEX_LENGTH or not set(digest) <= _HEX_DIGITS:
+            raise DatasetContractError(
+                f"FoldIdentity for fold {self.fold!r} must carry a lowercase 64-character hex "
+                f"SHA-256 digest, got {digest!r}."
+            )
+
+    @classmethod
+    def of(cls, fold: str, transaction_ids: Sequence[str]) -> FoldIdentity:
+        """The identity of a fold holding `transaction_ids`, in that order."""
+        return cls(
+            fold=fold,
+            transaction_count=len(transaction_ids),
+            transaction_ids_sha256=transaction_ids_digest(transaction_ids),
+        )
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "fold": self.fold,
+            "transaction_count": self.transaction_count,
+            "transaction_ids_sha256": self.transaction_ids_sha256,
+            "digest_definition": TRANSACTION_IDS_DIGEST_DEFINITION,
+        }
+
+    @classmethod
+    def from_dict(cls, payload: Mapping[str, Any]) -> FoldIdentity:
+        """Inverse of `to_dict`, refusing a digest computed some other way."""
+        definition = payload.get("digest_definition")
+        if definition != TRANSACTION_IDS_DIGEST_DEFINITION:
+            raise DatasetContractError(
+                f"Fold identity digest was computed as {definition!r}, not as "
+                f"{TRANSACTION_IDS_DIGEST_DEFINITION!r}, so it cannot be checked."
+            )
+        return cls(
+            fold=str(payload["fold"]),
+            transaction_count=int(payload["transaction_count"]),
+            transaction_ids_sha256=str(payload["transaction_ids_sha256"]),
+        )
+
+
+def identify_test_fold(transaction_ids: Sequence[str], splits: SplitIndices) -> FoldIdentity:
+    """The identity of the test fold `splits` selects from `transaction_ids`, in fold order."""
+    return FoldIdentity.of(TEST_SPLIT, [transaction_ids[index] for index in splits.test])
+
+
 @dataclass(frozen=True)
 class RunMetadata:
-    """Everything needed to reproduce a benchmark run's inputs."""
+    """Everything needed to reproduce a benchmark run's inputs.
+
+    `test_fold_identity` names the test fold's transactions. From version 3, a
+    record that records a test fold period must carry it; records of earlier
+    versions have none, and their test fold cannot be identified from them.
+    """
 
     run_name: str
     dataset: DatasetProvenance
@@ -126,6 +225,7 @@ class RunMetadata:
     code_version: str | None = None
     library_versions: Mapping[str, str] = field(default_factory=dict)
     splits: tuple[SplitPeriod, ...] = ()
+    test_fold_identity: FoldIdentity | None = None
     notes: str = ""
     metadata_version: str = RUN_METADATA_VERSION
 
@@ -136,6 +236,21 @@ class RunMetadata:
         names = [split.name for split in self.splits]
         if len(set(names)) != len(names):
             raise DatasetContractError(f"Duplicate split names in run {self.run_name!r}: {names}.")
+        identity = self.test_fold_identity
+        if identity is not None and identity.fold != TEST_SPLIT:
+            raise DatasetContractError(
+                f"Run {self.run_name!r}: test_fold_identity describes fold {identity.fold!r}, "
+                f"not {TEST_SPLIT!r}."
+            )
+        if (
+            identity is None
+            and TEST_SPLIT in names
+            and self.metadata_version not in _VERSIONS_WITHOUT_FOLD_IDENTITY
+        ):
+            raise DatasetContractError(
+                f"Run {self.run_name!r}: a version {self.metadata_version} record that records a "
+                "test fold must identify the fold's transactions."
+            )
         object.__setattr__(self, "library_versions", MappingProxyType(dict(self.library_versions)))
         object.__setattr__(self, "splits", tuple(self.splits))
 
@@ -164,6 +279,9 @@ class RunMetadata:
             "code_version": self.code_version,
             "library_versions": dict(self.library_versions),
             "splits": [split.to_dict() for split in self.splits],
+            "test_fold_identity": (
+                None if self.test_fold_identity is None else self.test_fold_identity.to_dict()
+            ),
             "notes": self.notes,
         }
 
@@ -173,8 +291,10 @@ class RunMetadata:
 
         That also reads version 1 records correctly: where one stored the model
         random state as its seed, the dataset had no subsample record, and the
-        seed reads back as None.
+        seed reads back as None. Records before version 3 carry no test fold
+        identity, and read back without one.
         """
+        identity = payload.get("test_fold_identity")
         return cls(
             run_name=str(payload["run_name"]),
             dataset=DatasetProvenance.from_dict(payload["dataset"]),
@@ -183,6 +303,7 @@ class RunMetadata:
             code_version=_opt_str(payload.get("code_version")),
             library_versions=dict(payload.get("library_versions") or {}),
             splits=tuple(SplitPeriod.from_dict(s) for s in payload.get("splits") or ()),
+            test_fold_identity=None if identity is None else FoldIdentity.from_dict(identity),
             notes=str(payload.get("notes", "")),
             metadata_version=str(payload.get("metadata_version", RUN_METADATA_VERSION)),
         )
