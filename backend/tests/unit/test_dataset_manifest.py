@@ -8,7 +8,12 @@ from __future__ import annotations
 
 import hashlib
 import json
+import logging
+import shutil
+import subprocess
+from collections.abc import Callable
 from pathlib import Path
+from typing import Any
 
 import pytest
 
@@ -304,6 +309,70 @@ def test_pinning_a_missing_file_is_refused(manifest_path: Path, tmp_path: Path) 
 # ---------------------------------------------------------------------------
 
 
+LISTING = "name,size,creationDate\ndata.csv,36,2020-08-05 15:21:00.483000\n"
+
+Responder = Callable[[list[str]], subprocess.CompletedProcess[str]]
+
+
+class _RecordingRun:
+    """Stands in for `subprocess.run`: records each call, answers via `respond`."""
+
+    def __init__(self, respond: Responder) -> None:
+        self.respond = respond
+        self.calls: list[tuple[list[str], dict[str, Any]]] = []
+
+    def __call__(self, command: list[str], **kwargs: Any) -> subprocess.CompletedProcess[str]:
+        self.calls.append((list(command), kwargs))
+        return self.respond(list(command))
+
+    @property
+    def subcommands(self) -> list[str]:
+        return [command[2] for command, _ in self.calls]
+
+
+def _completed(returncode: int = 0, stdout: str = "", stderr: str = "") -> Responder:
+    def respond(command: list[str]) -> subprocess.CompletedProcess[str]:
+        return subprocess.CompletedProcess(command, returncode, stdout=stdout, stderr=stderr)
+
+    return respond
+
+
+def _raising(exc: BaseException) -> Responder:
+    def respond(command: list[str]) -> subprocess.CompletedProcess[str]:
+        raise exc
+
+    return respond
+
+
+def _fail_if_called(command: list[str]) -> subprocess.CompletedProcess[str]:
+    raise AssertionError(f"the Kaggle CLI must not be run here: {command}")
+
+
+def _listing_then_download(content: bytes | None) -> Responder:
+    """A CLI that lists the fixture, then 'downloads' `content` (None: writes nothing)."""
+
+    def respond(command: list[str]) -> subprocess.CompletedProcess[str]:
+        if command[2] == "files":
+            return subprocess.CompletedProcess(command, 0, stdout=LISTING, stderr="")
+        if content is not None:
+            destination = Path(command[command.index("-p") + 1])
+            (destination / "data.csv").write_bytes(content)
+        return subprocess.CompletedProcess(command, 0, stdout="", stderr="")
+
+    return respond
+
+
+def _main_args(manifest_path: Path, raw_root: Path) -> list[str]:
+    return [
+        "--dataset",
+        "fixture",
+        "--manifest",
+        str(manifest_path),
+        "--raw-root",
+        str(raw_root),
+    ]
+
+
 def test_dataset_root_is_namespaced_per_dataset(tmp_path: Path) -> None:
     assert download.dataset_root("sparkov", raw_root=tmp_path) == tmp_path / "sparkov"
 
@@ -350,9 +419,14 @@ def test_verify_only_fails_when_bytes_differ(
 
 
 def test_missing_files_without_kaggle_cli_print_manual_instructions(
-    manifest_path: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    manifest_path: Path,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
 ) -> None:
-    monkeypatch.setattr(download, "kaggle_cli_available", lambda: False)
+    caplog.set_level(logging.INFO, logger="ml.datasets.download")
+    monkeypatch.setattr(download, "find_kaggle_cli", lambda: None)
+    monkeypatch.setattr(subprocess, "run", _RecordingRun(_fail_if_called))
     exit_code = download.main(
         [
             "--dataset",
@@ -364,6 +438,8 @@ def test_missing_files_without_kaggle_cli_print_manual_instructions(
         ]
     )
     assert exit_code == download.EXIT_MANUAL_DOWNLOAD_REQUIRED
+    assert "Kaggle CLI not found on PATH" in caplog.text
+    assert "Manual download required" in caplog.text
 
 
 def test_manual_instructions_name_the_files_licence_and_destination(
@@ -385,7 +461,8 @@ def test_present_files_are_not_redownloaded(
         raise AssertionError("files are present; download must be skipped")
 
     monkeypatch.setattr(download, "download_with_kaggle_cli", fail)
-    monkeypatch.setattr(download, "kaggle_cli_available", lambda: True)
+    monkeypatch.setattr(download, "find_kaggle_cli", lambda: "/opt/kaggle")
+    monkeypatch.setattr(subprocess, "run", _RecordingRun(_fail_if_called))
 
     exit_code = download.main(
         [
@@ -410,4 +487,238 @@ def test_non_kaggle_source_refuses_automatic_download(
     entry = load_manifest_entry("fixture", path=path)
 
     with pytest.raises(ManifestError, match="supports kaggle only"):
-        download.download_with_kaggle_cli(entry, tmp_path / "dest")
+        download.download_with_kaggle_cli(entry, tmp_path / "dest", executable="/opt/kaggle")
+
+
+# ---------------------------------------------------------------------------
+# Kaggle CLI integration (subprocess faked; nothing is downloaded)
+# ---------------------------------------------------------------------------
+
+def test_find_kaggle_cli_returns_the_resolved_executable_path(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The full path is executed, so a Windows `.exe`/`.cmd` shim still runs."""
+    monkeypatch.setattr(shutil, "which", lambda name: f"C:/tools/{name}.exe")
+    assert download.find_kaggle_cli() == "C:/tools/kaggle.exe"
+
+
+def test_access_check_lists_the_dataset_non_interactively(
+    manifest_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    fake = _RecordingRun(_completed(stdout=LISTING))
+    monkeypatch.setattr(subprocess, "run", fake)
+    entry = load_manifest_entry("fixture", path=manifest_path)
+
+    assert download.kaggle_access_problem(entry, "/opt/kaggle") is None
+
+    [(command, kwargs)] = fake.calls
+    assert command == ["/opt/kaggle", "datasets", "files", "someone/fixture", "-v"]
+    assert kwargs["stdin"] is subprocess.DEVNULL
+    assert kwargs["capture_output"] is True
+    assert kwargs["timeout"] > 0
+
+
+@pytest.mark.parametrize(
+    "stdout",
+    [
+        pytest.param("", id="exits-zero-listing-nothing"),
+        pytest.param("name,size,creationDate\nother.csv,1,x\n", id="expected-file-absent"),
+    ],
+)
+def test_access_check_trusts_the_listing_not_the_exit_code(
+    manifest_path: Path, monkeypatch: pytest.MonkeyPatch, stdout: str
+) -> None:
+    """Exit 0 alone shows nothing: a launcher that fails silently also exits 0."""
+    monkeypatch.setattr(subprocess, "run", _RecordingRun(_completed(stdout=stdout)))
+    entry = load_manifest_entry("fixture", path=manifest_path)
+
+    problem = download.kaggle_access_problem(entry, "/opt/kaggle")
+
+    assert problem is not None
+    assert "did not list data.csv" in problem
+    assert "kaggle auth login" in problem
+
+
+def test_access_check_reports_a_failing_cli_without_echoing_its_output(
+    manifest_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    secret = "key-sentinel-7f3a"
+    monkeypatch.setattr(
+        subprocess,
+        "run",
+        _RecordingRun(_completed(returncode=1, stdout=secret, stderr=f"401 token={secret}")),
+    )
+    entry = load_manifest_entry("fixture", path=manifest_path)
+
+    problem = download.kaggle_access_problem(entry, "/opt/kaggle")
+
+    assert problem is not None
+    assert "exited 1" in problem
+    assert secret not in problem
+
+
+@pytest.mark.parametrize(
+    ("exc", "expected"),
+    [
+        (subprocess.TimeoutExpired(["kaggle"], 120), "did not list someone/fixture within"),
+        (FileNotFoundError("gone"), "could not be run (FileNotFoundError)"),
+    ],
+)
+def test_access_check_reports_a_hung_or_unrunnable_cli(
+    manifest_path: Path, monkeypatch: pytest.MonkeyPatch, exc: BaseException, expected: str
+) -> None:
+    monkeypatch.setattr(subprocess, "run", _RecordingRun(_raising(exc)))
+    entry = load_manifest_entry("fixture", path=manifest_path)
+
+    problem = download.kaggle_access_problem(entry, "/opt/kaggle")
+
+    assert problem is not None
+    assert expected in problem
+
+
+def test_access_check_refuses_a_non_kaggle_source_without_running_the_cli(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    payload = _manifest_payload()
+    payload["datasets"]["fixture"]["source"] = "http"  # type: ignore[index]
+    path = tmp_path / "other.json"
+    path.write_text(json.dumps(payload), encoding="utf-8")
+    monkeypatch.setattr(subprocess, "run", _RecordingRun(_fail_if_called))
+
+    problem = download.kaggle_access_problem(
+        load_manifest_entry("fixture", path=path), "/opt/kaggle"
+    )
+
+    assert problem is not None
+    assert "not a Kaggle dataset" in problem
+
+
+def test_missing_files_are_downloaded_by_the_cli_then_verified_without_pinning(
+    manifest_path: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Acquisition checks access, downloads, verifies — and never touches the manifest."""
+    raw_root = tmp_path / "raw"
+    fake = _RecordingRun(_listing_then_download(CONTENT))
+    monkeypatch.setattr(download, "find_kaggle_cli", lambda: "/opt/kaggle")
+    monkeypatch.setattr(subprocess, "run", fake)
+    manifest_before = manifest_path.read_bytes()
+
+    exit_code = download.main(_main_args(manifest_path, raw_root))
+
+    assert exit_code == download.EXIT_OK
+    assert fake.subcommands == ["files", "download"]
+    download_command, download_kwargs = fake.calls[1]
+    assert download_command == [
+        "/opt/kaggle",
+        "datasets",
+        "download",
+        "someone/fixture",
+        "-p",
+        str(raw_root / "fixture"),
+        "--unzip",
+    ]
+    assert download_kwargs["stdin"] is subprocess.DEVNULL
+    assert "capture_output" not in download_kwargs
+    assert manifest_path.read_bytes() == manifest_before
+    assert load_manifest_entry("fixture", path=manifest_path).file("data.csv").sha256 is None
+
+
+def test_downloaded_bytes_are_still_verified_against_a_pinned_digest(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A successful CLI download is not verification: different bytes still fail."""
+    path = tmp_path / "manifest.json"
+    path.write_text(json.dumps(_manifest_payload(sha256=DIGEST)), encoding="utf-8")
+    monkeypatch.setattr(download, "find_kaggle_cli", lambda: "/opt/kaggle")
+    monkeypatch.setattr(
+        subprocess, "run", _RecordingRun(_listing_then_download(b"other bytes\n"))
+    )
+
+    exit_code = download.main(_main_args(path, tmp_path / "raw"))
+
+    assert exit_code == download.EXIT_VERIFICATION_FAILED
+
+
+def test_cli_without_access_falls_back_to_manual_instructions(
+    manifest_path: Path,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    caplog.set_level(logging.INFO, logger="ml.datasets.download")
+    fake = _RecordingRun(_completed(stdout=""))
+    monkeypatch.setattr(download, "find_kaggle_cli", lambda: "/opt/kaggle")
+    monkeypatch.setattr(subprocess, "run", fake)
+
+    exit_code = download.main(_main_args(manifest_path, tmp_path / "raw"))
+
+    assert exit_code == download.EXIT_MANUAL_DOWNLOAD_REQUIRED
+    assert fake.subcommands == ["files"]
+    assert "Automatic download unavailable" in caplog.text
+    assert "Manual download required" in caplog.text
+    assert not (tmp_path / "raw" / "fixture").exists()
+
+
+@pytest.mark.parametrize(
+    "respond_to_download",
+    [
+        pytest.param(_completed(returncode=1), id="cli-exits-nonzero"),
+        pytest.param(_completed(returncode=0), id="cli-exits-zero-without-files"),
+        pytest.param(_raising(subprocess.TimeoutExpired(["kaggle"], 3600)), id="timeout"),
+    ],
+)
+def test_failed_download_falls_back_to_manual_instructions(
+    manifest_path: Path,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+    respond_to_download: Responder,
+) -> None:
+    caplog.set_level(logging.INFO, logger="ml.datasets.download")
+
+    def respond(command: list[str]) -> subprocess.CompletedProcess[str]:
+        if command[2] == "files":
+            return subprocess.CompletedProcess(command, 0, stdout=LISTING, stderr="")
+        return respond_to_download(command)
+
+    monkeypatch.setattr(download, "find_kaggle_cli", lambda: "/opt/kaggle")
+    monkeypatch.setattr(subprocess, "run", _RecordingRun(respond))
+
+    exit_code = download.main(_main_args(manifest_path, tmp_path / "raw"))
+
+    assert exit_code == download.EXIT_MANUAL_DOWNLOAD_REQUIRED
+    assert "Automatic download failed" in caplog.text
+    assert "Manual download required" in caplog.text
+
+
+def test_download_that_exits_zero_without_the_files_is_refused(
+    manifest_path: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(subprocess, "run", _RecordingRun(_completed()))
+    entry = load_manifest_entry("fixture", path=manifest_path)
+
+    with pytest.raises(ManifestError, match=r"exited 0 but these files are not in .*data\.csv"):
+        download.download_with_kaggle_cli(entry, tmp_path / "dest", executable="/opt/kaggle")
+
+
+def test_credentials_never_reach_the_log(
+    manifest_path: Path,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """Neither the environment's credentials nor anything the CLI prints is logged."""
+    caplog.set_level(logging.DEBUG)
+    monkeypatch.setenv("KAGGLE_USERNAME", "user-sentinel-7f3a")
+    monkeypatch.setenv("KAGGLE_KEY", "key-sentinel-7f3a")
+    monkeypatch.setattr(download, "find_kaggle_cli", lambda: "/opt/kaggle")
+    monkeypatch.setattr(
+        subprocess,
+        "run",
+        _RecordingRun(_completed(returncode=1, stderr="401 key=key-sentinel-7f3a")),
+    )
+
+    exit_code = download.main(_main_args(manifest_path, tmp_path / "raw"))
+
+    assert exit_code == download.EXIT_MANUAL_DOWNLOAD_REQUIRED
+    assert "sentinel-7f3a" not in caplog.text
