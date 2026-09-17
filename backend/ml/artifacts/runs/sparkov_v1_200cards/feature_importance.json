@@ -1,0 +1,92 @@
+{
+  "features": [
+    {
+      "feature": "log_amount",
+      "mean_abs_shap": 3.2264876811851075,
+      "rank": 1
+    },
+    {
+      "feature": "log_amount_sum_24h",
+      "mean_abs_shap": 1.622191179508473,
+      "rank": 2
+    },
+    {
+      "feature": "hour_of_day",
+      "mean_abs_shap": 1.2238183937334401,
+      "rank": 3
+    },
+    {
+      "feature": "tx_count_24h",
+      "mean_abs_shap": 1.1424090783288208,
+      "rank": 4
+    },
+    {
+      "feature": "avg_amount_30d",
+      "mean_abs_shap": 0.3973097124426825,
+      "rank": 5
+    },
+    {
+      "feature": "amount_zscore_30d",
+      "mean_abs_shap": 0.2862682376865286,
+      "rank": 6
+    },
+    {
+      "feature": "is_card_present",
+      "mean_abs_shap": 0.24673589707497753,
+      "rank": 7
+    },
+    {
+      "feature": "merchant_risk_encoded",
+      "mean_abs_shap": 0.14337619972461102,
+      "rank": 8
+    },
+    {
+      "feature": "tx_count_1h",
+      "mean_abs_shap": 0.05998609674800698,
+      "rank": 9
+    },
+    {
+      "feature": "is_weekend",
+      "mean_abs_shap": 0.03569100119920998,
+      "rank": 10
+    },
+    {
+      "feature": "is_off_hours",
+      "mean_abs_shap": 0.025914420848334358,
+      "rank": 11
+    },
+    {
+      "feature": "days_since_last_tx",
+      "mean_abs_shap": 0.020101945687237967,
+      "rank": 12
+    },
+    {
+      "feature": "country_mismatch_customer",
+      "mean_abs_shap": 0.0,
+      "rank": 13
+    },
+    {
+      "feature": "country_mismatch_merchant",
+      "mean_abs_shap": 0.0,
+      "rank": 14
+    },
+    {
+      "feature": "customer_account_age_days",
+      "mean_abs_shap": 0.0,
+      "rank": 15
+    },
+    {
+      "feature": "customer_risk_tier_encoded",
+      "mean_abs_shap": 0.0,
+      "rank": 16
+    },
+    {
+      "feature": "is_high_risk_category",
+      "mean_abs_shap": 0.0,
+      "rank": 17
+    }
+  ],
+  "method": "mean absolute SHAP value over test set",
+  "n_test_samples": 53922,
+  "units": "log-odds"
+}

@@ -1,0 +1,50 @@
+{
+  "best_hyperparameters": {
+    "colsample_bytree": 0.9,
+    "learning_rate": 0.03,
+    "max_depth": 5,
+    "min_child_weight": 5,
+    "n_estimators": 800,
+    "reg_alpha": 0.1,
+    "reg_lambda": 1.0,
+    "subsample": 0.7
+  },
+  "best_iteration": 384,
+  "constant_features": [
+    "country_mismatch_customer",
+    "country_mismatch_merchant",
+    "customer_account_age_days",
+    "customer_risk_tier_encoded",
+    "is_high_risk_category"
+  ],
+  "constant_features_whole_matrix": [
+    "country_mismatch_customer",
+    "country_mismatch_merchant",
+    "customer_account_age_days",
+    "customer_risk_tier_encoded",
+    "is_high_risk_category"
+  ],
+  "dataset_size": 359472,
+  "early_stopping_rounds": 50,
+  "library_versions": {
+    "numpy": "2.4.6",
+    "platform": "Windows-11-10.0.26200-SP0",
+    "python": "3.13.14",
+    "scikit-learn": "1.8.0",
+    "xgboost": "3.2.0"
+  },
+  "live_feature_count": 12,
+  "live_feature_count_whole_matrix": 12,
+  "model_sha256": "9f81a9d0aa39bac1cab2ffb9f6ede421f49bd63ed70eeee6419a4d91f21600e9",
+  "random_state": 42,
+  "scale_pos_weight": 160.50834403080873,
+  "test_fraud_rate": 0.002948703683097808,
+  "test_size": 53922,
+  "train_fraud_rate": 0.006191630568692127,
+  "train_size": 251630,
+  "trained_at_utc": "2026-09-17T11:44:53+00:00",
+  "tuning_cv_folds": 4,
+  "tuning_iterations": 25,
+  "val_fraud_rate": 0.0043026706231454005,
+  "val_size": 53920
+}

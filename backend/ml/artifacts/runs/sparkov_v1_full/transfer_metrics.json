@@ -1,0 +1,326 @@
+{
+  "at_source_threshold": {
+    "f1": 0.005743427241669555,
+    "false_negatives": 866,
+    "false_positives": 19215,
+    "note": "Measured at the source run's own threshold, unchanged. The FPR ceiling it was selected for applied to the source run's val fold; the FPR it realises on the target test fold is measured here, not guaranteed by that ceiling.",
+    "precision": 0.0030093913765371245,
+    "realised_fpr_on_target_test": 0.06938426206777017,
+    "recall": 0.06277056277056277,
+    "threshold": 0.7431091070175171,
+    "threshold_source": "source_run_threshold",
+    "true_negatives": 257721,
+    "true_positives": 58
+  },
+  "context": {
+    "label_delay_note": "The chronological split treats every training label as known at the val boundary, whereas real fraud labels arrive days to months later through chargebacks and investigations, so the results are optimistic in a way this benchmark does not measure.",
+    "realised_fpr_on_target_test_at_source_threshold": 0.06938426206777017,
+    "source_threshold_fallback_used": false,
+    "source_train_fraud_count": 561,
+    "source_val_fraud_count": 106,
+    "target_fold_periods": [
+      {
+        "end": "2020-06-21T12:13:37+00:00",
+        "name": "train",
+        "start": "2019-01-01T00:00:18+00:00"
+      },
+      {
+        "end": "2020-10-03T00:58:23+00:00",
+        "name": "val",
+        "start": "2020-06-21T12:14:25+00:00"
+      },
+      {
+        "end": "2020-12-31T23:59:34+00:00",
+        "name": "test",
+        "start": "2020-10-03T00:59:48+00:00"
+      }
+    ],
+    "target_test_fraud_count": 924,
+    "target_test_prevalence": 0.00332541567695962,
+    "target_test_rows": 277860,
+    "target_test_transaction_count": 277860,
+    "target_test_transaction_ids_digest_definition": "SHA-256 of the fold's transaction ids, in fold order, encoded as a JSON array of strings with no whitespace, in UTF-8",
+    "target_test_transaction_ids_sha256": "e879b792419a42d8c2fc7a64e30638c88b168064e76a98db7707a5553cfed883"
+  },
+  "features": {
+    "by_feature": [
+      {
+        "constant_in_source_training_fold": false,
+        "constant_in_target_test_fold": false,
+        "feature": "log_amount",
+        "source_training_fold_max": 9.210440366976517,
+        "source_training_fold_min": 0.4700036292457356,
+        "target_test_fold_max": 10.03316007177654,
+        "target_test_fold_min": 0.6931471805599453,
+        "target_test_rows_outside_source_training_range": 8
+      },
+      {
+        "constant_in_source_training_fold": false,
+        "constant_in_target_test_fold": false,
+        "feature": "hour_of_day",
+        "source_training_fold_max": 23.0,
+        "source_training_fold_min": 0.0,
+        "target_test_fold_max": 23.0,
+        "target_test_fold_min": 0.0,
+        "target_test_rows_outside_source_training_range": 0
+      },
+      {
+        "constant_in_source_training_fold": false,
+        "constant_in_target_test_fold": false,
+        "feature": "is_weekend",
+        "source_training_fold_max": 1.0,
+        "source_training_fold_min": 0.0,
+        "target_test_fold_max": 1.0,
+        "target_test_fold_min": 0.0,
+        "target_test_rows_outside_source_training_range": 0
+      },
+      {
+        "constant_in_source_training_fold": false,
+        "constant_in_target_test_fold": false,
+        "feature": "is_off_hours",
+        "source_training_fold_max": 1.0,
+        "source_training_fold_min": 0.0,
+        "target_test_fold_max": 1.0,
+        "target_test_fold_min": 0.0,
+        "target_test_rows_outside_source_training_range": 0
+      },
+      {
+        "constant_in_source_training_fold": false,
+        "constant_in_target_test_fold": false,
+        "feature": "is_card_present",
+        "source_training_fold_max": 1.0,
+        "source_training_fold_min": 0.0,
+        "target_test_fold_max": 1.0,
+        "target_test_fold_min": 0.0,
+        "target_test_rows_outside_source_training_range": 0
+      },
+      {
+        "constant_in_source_training_fold": false,
+        "constant_in_target_test_fold": true,
+        "feature": "country_mismatch_customer",
+        "source_training_fold_max": 1.0,
+        "source_training_fold_min": 0.0,
+        "target_test_fold_max": 0.0,
+        "target_test_fold_min": 0.0,
+        "target_test_rows_outside_source_training_range": 0
+      },
+      {
+        "constant_in_source_training_fold": false,
+        "constant_in_target_test_fold": true,
+        "feature": "country_mismatch_merchant",
+        "source_training_fold_max": 1.0,
+        "source_training_fold_min": 0.0,
+        "target_test_fold_max": 0.0,
+        "target_test_fold_min": 0.0,
+        "target_test_rows_outside_source_training_range": 0
+      },
+      {
+        "constant_in_source_training_fold": false,
+        "constant_in_target_test_fold": false,
+        "feature": "tx_count_1h",
+        "source_training_fold_max": 10.0,
+        "source_training_fold_min": 0.0,
+        "target_test_fold_max": 8.0,
+        "target_test_fold_min": 0.0,
+        "target_test_rows_outside_source_training_range": 0
+      },
+      {
+        "constant_in_source_training_fold": false,
+        "constant_in_target_test_fold": false,
+        "feature": "tx_count_24h",
+        "source_training_fold_max": 46.0,
+        "source_training_fold_min": 0.0,
+        "target_test_fold_max": 35.0,
+        "target_test_fold_min": 0.0,
+        "target_test_rows_outside_source_training_range": 0
+      },
+      {
+        "constant_in_source_training_fold": false,
+        "constant_in_target_test_fold": false,
+        "feature": "log_amount_sum_24h",
+        "source_training_fold_max": 9.493591894018577,
+        "source_training_fold_min": 0.0,
+        "target_test_fold_max": 10.0492194652104,
+        "target_test_fold_min": 0.0,
+        "target_test_rows_outside_source_training_range": 20
+      },
+      {
+        "constant_in_source_training_fold": false,
+        "constant_in_target_test_fold": true,
+        "feature": "customer_account_age_days",
+        "source_training_fold_max": 1544.0,
+        "source_training_fold_min": 13.0,
+        "target_test_fold_max": 0.0,
+        "target_test_fold_min": 0.0,
+        "target_test_rows_outside_source_training_range": 277860
+      },
+      {
+        "constant_in_source_training_fold": false,
+        "constant_in_target_test_fold": true,
+        "feature": "customer_risk_tier_encoded",
+        "source_training_fold_max": 2.0,
+        "source_training_fold_min": 0.0,
+        "target_test_fold_max": 0.0,
+        "target_test_fold_min": 0.0,
+        "target_test_rows_outside_source_training_range": 0
+      },
+      {
+        "constant_in_source_training_fold": false,
+        "constant_in_target_test_fold": false,
+        "feature": "avg_amount_30d",
+        "source_training_fold_max": 4046.33,
+        "source_training_fold_min": 0.0,
+        "target_test_fold_max": 934.686,
+        "target_test_fold_min": 0.0,
+        "target_test_rows_outside_source_training_range": 0
+      },
+      {
+        "constant_in_source_training_fold": false,
+        "constant_in_target_test_fold": false,
+        "feature": "amount_zscore_30d",
+        "source_training_fold_max": 8120.875000000174,
+        "source_training_fold_min": -113.85657370517971,
+        "target_test_fold_max": 1428.8043478261504,
+        "target_test_fold_min": -3.1221746632806058,
+        "target_test_rows_outside_source_training_range": 0
+      },
+      {
+        "constant_in_source_training_fold": false,
+        "constant_in_target_test_fold": false,
+        "feature": "days_since_last_tx",
+        "source_training_fold_max": 999.0,
+        "source_training_fold_min": 0.0,
+        "target_test_fold_max": 999.0,
+        "target_test_fold_min": 0.0,
+        "target_test_rows_outside_source_training_range": 0
+      },
+      {
+        "constant_in_source_training_fold": false,
+        "constant_in_target_test_fold": false,
+        "feature": "merchant_risk_encoded",
+        "source_training_fold_max": 2.0,
+        "source_training_fold_min": 0.0,
+        "target_test_fold_max": 1.0,
+        "target_test_fold_min": 0.0,
+        "target_test_rows_outside_source_training_range": 0
+      },
+      {
+        "constant_in_source_training_fold": false,
+        "constant_in_target_test_fold": true,
+        "feature": "is_high_risk_category",
+        "source_training_fold_max": 1.0,
+        "source_training_fold_min": 0.0,
+        "target_test_fold_max": 0.0,
+        "target_test_fold_min": 0.0,
+        "target_test_rows_outside_source_training_range": 0
+      }
+    ],
+    "constant_in_source_training_fold": [],
+    "constant_in_target_test_fold": [
+      "country_mismatch_customer",
+      "country_mismatch_merchant",
+      "customer_account_age_days",
+      "customer_risk_tier_encoded",
+      "is_high_risk_category"
+    ],
+    "featureset_version": "v1",
+    "note": "Context only. The source model receives every column listed, in this order, whatever values they take on the target; no column is dropped or remapped because it is constant or outside the source training range.",
+    "scored_columns": [
+      "log_amount",
+      "hour_of_day",
+      "is_weekend",
+      "is_off_hours",
+      "is_card_present",
+      "country_mismatch_customer",
+      "country_mismatch_merchant",
+      "tx_count_1h",
+      "tx_count_24h",
+      "log_amount_sum_24h",
+      "customer_account_age_days",
+      "customer_risk_tier_encoded",
+      "avg_amount_30d",
+      "amount_zscore_30d",
+      "days_since_last_tx",
+      "merchant_risk_encoded",
+      "is_high_risk_category"
+    ]
+  },
+  "method_note": "The source run's saved model and threshold are applied unchanged to the target run's test fold. Nothing is selected, fitted, calibrated or tuned on any row of the target dataset, and every feature of the source featureset is given to the model.",
+  "provenance": {
+    "code_version": "b48cfa6e11bcbcaac97bd52e323b5ceae868dd44",
+    "generated_at_utc": "2026-09-17T15:36:36+00:00",
+    "library_versions": {
+      "numpy": "2.4.6",
+      "platform": "Windows-11-10.0.26200-SP0",
+      "python": "3.13.14",
+      "scikit-learn": "1.8.0",
+      "xgboost": "3.2.0"
+    },
+    "source_code_version": "e5b67419b1183aea6ab44c679a559b9d58b24378",
+    "target_code_version": "b48cfa6e11bcbcaac97bd52e323b5ceae868dd44"
+  },
+  "source_dataset": {
+    "files": {
+      "synthetic_transactions.csv": "f24feb0a1ce1f7c9ac8084acebb4548f0822aff0d5f03337fd140d2e0b743a47"
+    },
+    "name": "synthetic",
+    "origin": "synthetic",
+    "subsample": null,
+    "version": "v1"
+  },
+  "source_featureset": "v1",
+  "source_model_sha256": "9e4f3627e2ac76997d302a731a08c060d494279715e467ad3cd99833372202ab",
+  "source_run": "synthetic_v1",
+  "source_threshold": {
+    "fallback_used": false,
+    "fpr_ceiling_on_source_val": 0.01,
+    "realised_fpr_on_source_val": 0.0074374577417173765,
+    "recorded_in": "threshold.json of source run 'synthetic_v1'",
+    "selected_on": "the val fold of source run 'synthetic_v1'",
+    "selection_method": "the highest score threshold whose FPR on the source run's val fold is at most the source run's FPR ceiling, chosen before the source run's test fold was scored",
+    "value": 0.7431091070175171
+  },
+  "target_dataset": {
+    "files": {
+      "fraudTest.csv": "12d553ab19440c752d2531ee1af44bb64f12cc3d3839f1649f19e81c230545f0",
+      "fraudTrain.csv": "fd7139200dbfcbed0b6742bbe05a4f1abce532c4fef20918228a651647a3e75d"
+    },
+    "name": "sparkov",
+    "origin": "synthetic",
+    "subsample": {
+      "max_entities": null,
+      "seed": 42,
+      "selected_entities": 999,
+      "strategy": "none"
+    },
+    "version": "kaggle-2020-08-05"
+  },
+  "target_featureset": "v1",
+  "target_run": "sparkov_v1_full",
+  "threshold_free": {
+    "note": "PR-AUC and ROC-AUC use no threshold; read PR-AUC against the target test prevalence. Each recall at a fixed FPR is read at a threshold found on the target test fold itself, so it is a point on the target test ROC curve, not a result at an operating threshold.",
+    "pr_auc": 0.008736340150426097,
+    "recall_at_1pct_fpr": 0.03896103896103896,
+    "recall_at_5pct_fpr": 0.05303030303030303,
+    "roc_auc": 0.7353951088703884,
+    "threshold_source": {
+      "recall_at_1pct_fpr": "target_test_roc_curve",
+      "recall_at_5pct_fpr": "target_test_roc_curve"
+    }
+  },
+  "transfer_metrics_version": "1",
+  "verification": {
+    "source": {
+      "metrics_reproduced": true,
+      "model_digest_verified": true,
+      "run": "synthetic_v1",
+      "test_fold_identity_verified": true
+    },
+    "target": {
+      "metrics_reproduced": true,
+      "model_digest_verified": true,
+      "run": "sparkov_v1_full",
+      "test_fold_identity_verified": true
+    }
+  }
+}

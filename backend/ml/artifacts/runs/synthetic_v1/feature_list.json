@@ -1,0 +1,21 @@
+{
+  "features": [
+    "log_amount",
+    "hour_of_day",
+    "is_weekend",
+    "is_off_hours",
+    "is_card_present",
+    "country_mismatch_customer",
+    "country_mismatch_merchant",
+    "tx_count_1h",
+    "tx_count_24h",
+    "log_amount_sum_24h",
+    "customer_account_age_days",
+    "customer_risk_tier_encoded",
+    "avg_amount_30d",
+    "amount_zscore_30d",
+    "days_since_last_tx",
+    "merchant_risk_encoded",
+    "is_high_risk_category"
+  ]
+}

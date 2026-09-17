@@ -1,0 +1,142 @@
+{
+  "context": {
+    "definition": "That customer's transactions in the 180 days before the row, newest first, excluding the row itself: the context app.services.scoring builds for a transaction it scores.",
+    "history_drawn_from": "every row of the run's dataset",
+    "history_window_days": 180
+  },
+  "population": {
+    "dataset": {
+      "files": {
+        "fraudTest.csv": "12d553ab19440c752d2531ee1af44bb64f12cc3d3839f1649f19e81c230545f0",
+        "fraudTrain.csv": "fd7139200dbfcbed0b6742bbe05a4f1abce532c4fef20918228a651647a3e75d"
+      },
+      "name": "sparkov",
+      "row_count": 1852394,
+      "subsample": {
+        "max_entities": null,
+        "seed": 42,
+        "selected_entities": 999,
+        "strategy": "none"
+      },
+      "version": "kaggle-2020-08-05"
+    },
+    "first_timestamp": "2019-01-01T00:00:18+00:00",
+    "fraud_count": 9651,
+    "fraud_rate": 0.005210014716091717,
+    "last_timestamp": "2020-12-31T23:59:34+00:00",
+    "note": "Rule precision depends on prevalence, which differs between a corpus and any fold of it. Every count and rate in this file describes exactly these rows.",
+    "recorded_fold_period": null,
+    "row_count": 1852394,
+    "rows": "all",
+    "run": "sparkov_v1_full",
+    "test_fold_transaction_count": null,
+    "test_fold_transaction_ids_sha256": null
+  },
+  "provenance": {
+    "code_version": "b48cfa6e11bcbcaac97bd52e323b5ceae868dd44",
+    "generated_at_utc": "2026-09-17T16:59:12+00:00",
+    "library_versions": {
+      "numpy": "2.4.6",
+      "platform": "Windows-11-10.0.26200-SP0",
+      "python": "3.13.14",
+      "scikit-learn": "1.8.0",
+      "xgboost": "3.2.0"
+    },
+    "run_code_version": "b48cfa6e11bcbcaac97bd52e323b5ceae868dd44"
+  },
+  "rules": [
+    {
+      "evaluable": true,
+      "fired_on_fraud": 4,
+      "fraud_recall": 0.00041446482229820747,
+      "precision": 0.05555555555555555,
+      "rows_evaluated": 1852394,
+      "rows_fired": 72,
+      "rule": "velocity_burst",
+      "severity": "HARD_BLOCK"
+    },
+    {
+      "evaluable": true,
+      "fired_on_fraud": 0,
+      "fraud_recall": 0.0,
+      "precision": null,
+      "rows_evaluated": 1852394,
+      "rows_fired": 0,
+      "rule": "geo_velocity_impossible",
+      "severity": "HARD_BLOCK"
+    },
+    {
+      "evaluable": true,
+      "fired_on_fraud": 0,
+      "fraud_recall": 0.0,
+      "precision": 0.0,
+      "rows_evaluated": 1852394,
+      "rows_fired": 195,
+      "rule": "amount_ceiling",
+      "severity": "REVIEW"
+    },
+    {
+      "evaluable": true,
+      "fired_on_fraud": 0,
+      "fraud_recall": 0.0,
+      "precision": null,
+      "rows_evaluated": 1852394,
+      "rows_fired": 0,
+      "rule": "high_risk_country",
+      "severity": "REVIEW"
+    },
+    {
+      "evaluable": false,
+      "reason": "not evaluable: no account-open timestamp",
+      "rule": "dormant_account_high_value"
+    },
+    {
+      "evaluable": true,
+      "fired_on_fraud": 262,
+      "fraud_recall": 0.02714744586053259,
+      "precision": 0.19969512195121952,
+      "rows_evaluated": 1852394,
+      "rows_fired": 1312,
+      "rule": "off_hours_high_value",
+      "severity": "REVIEW"
+    }
+  ],
+  "rules_audit_version": "1",
+  "rules_only_outcome": {
+    "by_outcome": {
+      "APPROVE": {
+        "frauds": 9385,
+        "legitimate": 1841430,
+        "rows": 1850815
+      },
+      "DECLINE": {
+        "frauds": 4,
+        "legitimate": 68,
+        "rows": 72
+      },
+      "REVIEW": {
+        "frauds": 262,
+        "legitimate": 1245,
+        "rows": 1507
+      }
+    },
+    "decision_rule": "A triggered hard-block rule gives DECLINE; otherwise a triggered review rule gives REVIEW; otherwise APPROVE.",
+    "note": "Computed from the 5 evaluable rules of 6. Not evaluable: dormant_account_high_value (not evaluable: no account-open timestamp).",
+    "rules_not_evaluable": [
+      "dormant_account_high_value"
+    ],
+    "rules_used": [
+      "velocity_burst",
+      "geo_velocity_impossible",
+      "amount_ceiling",
+      "high_risk_country",
+      "off_hours_high_value"
+    ]
+  },
+  "run": "sparkov_v1_full",
+  "verification": {
+    "metrics_reproduced": true,
+    "model_digest_verified": true,
+    "test_fold_identity_verified": true
+  }
+}

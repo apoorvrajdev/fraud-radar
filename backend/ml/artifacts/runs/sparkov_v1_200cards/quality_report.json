@@ -1,0 +1,472 @@
+{
+  "amounts": {
+    "max": 26544.12,
+    "mean": 69.8903547981484,
+    "p1": 1.25,
+    "p50": 46.31,
+    "p99": 531.6328999999998
+  },
+  "card_present_share": 0.8376730315573953,
+  "categories": {
+    "fraud_rate": {
+      "ENTERTAINMENT": 0.001978678727184623,
+      "GAS_STATION": 0.004051686377573368,
+      "GROCERY": 0.010807057138516958,
+      "RESTAURANT": 0.001306154759548783,
+      "RETAIL": 0.005987992581804466,
+      "TRAVEL": 0.0025920629245620307
+    },
+    "rows": {
+      "ENTERTAINMENT": 49528,
+      "GAS_STATION": 36528,
+      "GROCERY": 46081,
+      "RESTAURANT": 25265,
+      "RETAIL": 190882,
+      "TRAVEL": 11188
+    }
+  },
+  "constant_fields": {
+    "customer.account_age_days": "0",
+    "customer.country": "US",
+    "customer.risk_tier": "LOW",
+    "merchant.country": "US",
+    "transaction.country": "US",
+    "transaction.currency": "USD",
+    "transaction.payment_method": "CARD"
+  },
+  "dataset": "sparkov",
+  "entities": {
+    "customers": 200,
+    "merchants": 697,
+    "transactions_per_customer": {
+      "max": 4392.0,
+      "mean": 1797.36,
+      "p50": 1468.5,
+      "p99": 4386.0599999999995
+    }
+  },
+  "exclusions": [
+    {
+      "count": 0,
+      "examples": [],
+      "reason": "missing_required_field"
+    },
+    {
+      "count": 0,
+      "examples": [],
+      "reason": "non_positive_or_unparsable_amount"
+    },
+    {
+      "count": 0,
+      "examples": [],
+      "reason": "label_not_zero_or_one"
+    },
+    {
+      "count": 0,
+      "examples": [],
+      "reason": "unparsable_timestamp"
+    },
+    {
+      "count": 0,
+      "examples": [],
+      "reason": "duplicate_trans_num"
+    }
+  ],
+  "extra": {
+    "authoritative_clock": "trans_date_trans_time",
+    "multi_category_merchant_names": 4,
+    "unix_time_mismatches": 359472,
+    "unix_time_modal_offset_seconds": 220924800,
+    "unix_time_offset_distribution": {
+      "distinct_offsets": 2,
+      "listing_limit": 50,
+      "max_offset_seconds": 220924800,
+      "min_offset_seconds": 220838400,
+      "offset_definition": "trans_date_trans_time parsed as UTC, in epoch seconds, minus unix_time",
+      "offsets": [
+        {
+          "offset_seconds": 220924800,
+          "rows": 180616
+        },
+        {
+          "offset_seconds": 220838400,
+          "rows": 178856
+        }
+      ],
+      "rows_compared": 359472,
+      "rows_without_unix_time": 0,
+      "truncated": false,
+      "unlisted_offsets": 0,
+      "unlisted_rows": 0
+    },
+    "unix_time_offset_is_uniform": false,
+    "unix_time_rows_at_modal_offset": 180616
+  },
+  "field_notes": [
+    {
+      "detail": "Transaction.created_at, UTC",
+      "field": "trans_date_trans_time",
+      "status": "mapped"
+    },
+    {
+      "detail": "uuid5 -> Customer.id; raw value never stored",
+      "field": "cc_num",
+      "status": "mapped"
+    },
+    {
+      "detail": "uuid5 -> Merchant.id; 'fraud_' prefix stripped",
+      "field": "merchant",
+      "status": "mapped"
+    },
+    {
+      "detail": "Merchant.category via the 14 -> 12 taxonomy map",
+      "field": "category",
+      "status": "mapped"
+    },
+    {
+      "detail": "Transaction.amount, Decimal to 2dp",
+      "field": "amt",
+      "status": "mapped"
+    },
+    {
+      "detail": "uuid5 -> Transaction.id; idempotency_key",
+      "field": "trans_num",
+      "status": "mapped"
+    },
+    {
+      "detail": "labels map, never an attribute of a row",
+      "field": "is_fraud",
+      "status": "mapped"
+    },
+    {
+      "detail": "cross-check against the parsed timestamp only",
+      "field": "unix_time",
+      "status": "derived"
+    },
+    {
+      "detail": "cardholder detail with no canonical field",
+      "field": "first",
+      "status": "dropped"
+    },
+    {
+      "detail": "cardholder detail with no canonical field",
+      "field": "last",
+      "status": "dropped"
+    },
+    {
+      "detail": "cardholder detail with no canonical field",
+      "field": "gender",
+      "status": "dropped"
+    },
+    {
+      "detail": "cardholder detail with no canonical field",
+      "field": "street",
+      "status": "dropped"
+    },
+    {
+      "detail": "cardholder detail with no canonical field",
+      "field": "city",
+      "status": "dropped"
+    },
+    {
+      "detail": "cardholder detail with no canonical field",
+      "field": "zip",
+      "status": "dropped"
+    },
+    {
+      "detail": "cardholder detail with no canonical field",
+      "field": "job",
+      "status": "dropped"
+    },
+    {
+      "detail": "cardholder detail with no canonical field",
+      "field": "dob",
+      "status": "dropped"
+    },
+    {
+      "detail": "superseded by a constant country",
+      "field": "state",
+      "status": "dropped"
+    },
+    {
+      "detail": "no canonical field",
+      "field": "city_pop",
+      "status": "dropped"
+    },
+    {
+      "detail": "no canonical coordinate fields (v3 candidate)",
+      "field": "lat/long",
+      "status": "dropped"
+    },
+    {
+      "detail": "no canonical coordinate fields",
+      "field": "merch_lat/merch_long",
+      "status": "dropped"
+    },
+    {
+      "detail": "constant 'US': the source is US-only, so both country-mismatch features are structurally zero here",
+      "field": "Customer.country / Merchant.country / Transaction.country",
+      "status": "derived"
+    },
+    {
+      "detail": "from the category suffix: _pos -> True, _net -> False, otherwise True by assumption",
+      "field": "Transaction.is_card_present",
+      "status": "derived"
+    },
+    {
+      "detail": "from the mapped category's taxonomy entry \u2014 never from observed fraud rate",
+      "field": "Merchant.risk_rating / mcc",
+      "status": "derived"
+    },
+    {
+      "detail": "constant 'LOW': no equivalent in the source, so the risk-tier feature is constant",
+      "field": "Customer.risk_tier",
+      "status": "unavailable"
+    },
+    {
+      "detail": "constant 0: the source has a birth date, not an account age; deriving one from dob would invent signal",
+      "field": "Customer.account_age_days",
+      "status": "unavailable"
+    },
+    {
+      "detail": "placeholders built from the hashed id; no source identity is carried over",
+      "field": "Customer.email / full_name",
+      "status": "derived"
+    },
+    {
+      "detail": "constants 'USD' / 'CARD' / 'APPROVED'",
+      "field": "Transaction.currency / payment_method / status",
+      "status": "derived"
+    }
+  ],
+  "fraud_distribution": {
+    "by_month": [
+      {
+        "frauds": 96,
+        "month": "2019-01",
+        "rows": 10214
+      },
+      {
+        "frauds": 168,
+        "month": "2019-02",
+        "rows": 9692
+      },
+      {
+        "frauds": 139,
+        "month": "2019-03",
+        "rows": 13683
+      },
+      {
+        "frauds": 49,
+        "month": "2019-04",
+        "rows": 13028
+      },
+      {
+        "frauds": 126,
+        "month": "2019-05",
+        "rows": 14137
+      },
+      {
+        "frauds": 80,
+        "month": "2019-06",
+        "rows": 16661
+      },
+      {
+        "frauds": 112,
+        "month": "2019-07",
+        "rows": 16679
+      },
+      {
+        "frauds": 80,
+        "month": "2019-08",
+        "rows": 16830
+      },
+      {
+        "frauds": 93,
+        "month": "2019-09",
+        "rows": 13756
+      },
+      {
+        "frauds": 101,
+        "month": "2019-10",
+        "rows": 13253
+      },
+      {
+        "frauds": 51,
+        "month": "2019-11",
+        "rows": 13673
+      },
+      {
+        "frauds": 45,
+        "month": "2019-12",
+        "rows": 27373
+      },
+      {
+        "frauds": 42,
+        "month": "2020-01",
+        "rows": 10154
+      },
+      {
+        "frauds": 26,
+        "month": "2020-02",
+        "rows": 9254
+      },
+      {
+        "frauds": 127,
+        "month": "2020-03",
+        "rows": 14212
+      },
+      {
+        "frauds": 51,
+        "month": "2020-04",
+        "rows": 13007
+      },
+      {
+        "frauds": 138,
+        "month": "2020-05",
+        "rows": 14627
+      },
+      {
+        "frauds": 56,
+        "month": "2020-06",
+        "rows": 17084
+      },
+      {
+        "frauds": 76,
+        "month": "2020-07",
+        "rows": 16766
+      },
+      {
+        "frauds": 67,
+        "month": "2020-08",
+        "rows": 17345
+      },
+      {
+        "frauds": 67,
+        "month": "2020-09",
+        "rows": 13564
+      },
+      {
+        "frauds": 57,
+        "month": "2020-10",
+        "rows": 13360
+      },
+      {
+        "frauds": 53,
+        "month": "2020-11",
+        "rows": 14085
+      },
+      {
+        "frauds": 49,
+        "month": "2020-12",
+        "rows": 27035
+      }
+    ],
+    "cards": {
+      "frauds_per_card_with_fraud": {
+        "max": 18.0,
+        "mean": 9.893401015228426,
+        "p50": 10.0,
+        "p99": 16.0
+      },
+      "with_fraud": 197,
+      "with_transactions": 200
+    },
+    "chronological_split": {
+      "available": true,
+      "boundaries": [
+        {
+          "between": [
+            "train",
+            "val"
+          ],
+          "cards_with_fraud_on_both_sides": 0,
+          "earlier_fold_last_timestamp": "2020-06-21T18:14:04+00:00",
+          "frauds_after_on_those_cards": 0,
+          "frauds_before_on_those_cards": 0,
+          "instant_shared": false,
+          "later_fold_first_timestamp": "2020-06-21T18:15:20+00:00",
+          "rows_at_shared_instant": {
+            "earlier_fold": 0,
+            "later_fold": 0
+          }
+        },
+        {
+          "between": [
+            "val",
+            "test"
+          ],
+          "cards_with_fraud_on_both_sides": 0,
+          "earlier_fold_last_timestamp": "2020-10-02T18:51:14+00:00",
+          "frauds_after_on_those_cards": 0,
+          "frauds_before_on_those_cards": 0,
+          "instant_shared": false,
+          "later_fold_first_timestamp": "2020-10-02T19:03:46+00:00",
+          "rows_at_shared_instant": {
+            "earlier_fold": 0,
+            "later_fold": 0
+          }
+        }
+      ],
+      "folds": [
+        {
+          "cards_with_fraud": 161,
+          "first_timestamp": "2019-01-01T00:00:44+00:00",
+          "frauds": 1558,
+          "last_timestamp": "2020-06-21T18:14:04+00:00",
+          "name": "train",
+          "rows": 251630
+        },
+        {
+          "cards_with_fraud": 22,
+          "first_timestamp": "2020-06-21T18:15:20+00:00",
+          "frauds": 232,
+          "last_timestamp": "2020-10-02T18:51:14+00:00",
+          "name": "val",
+          "rows": 53920
+        },
+        {
+          "cards_with_fraud": 14,
+          "first_timestamp": "2020-10-02T19:03:46+00:00",
+          "frauds": 159,
+          "last_timestamp": "2020-12-31T23:57:18+00:00",
+          "name": "test",
+          "rows": 53922
+        }
+      ]
+    },
+    "definitions": {
+      "boundary": "the position between two adjacent folds; rows before it are every row of the earlier folds, rows after it every row of the later folds",
+      "card": "Transaction.customer_id: the entity whose history the features are built from and that subsampling keeps whole; one per source card on Sparkov",
+      "card_with_fraud_on_both_sides": "a card with at least one fraud before the boundary and at least one fraud after it",
+      "folds": "ml.splits.chronological_split of these rows in canonical chronological order: 70/15/15 by row count, the folds a run trained on these rows records in run.json",
+      "month": "the calendar month of a transaction's timestamp in UTC",
+      "shared_instant": "the earlier fold's last timestamp equals the later fold's first, so transactions at that instant fall on both sides of the boundary; recorded, not corrected"
+    }
+  },
+  "generated_at_utc": "2026-09-17T11:10:03+00:00",
+  "label": {
+    "fraud_count": 1949,
+    "fraud_rate": 0.0054218409222415095
+  },
+  "origin": "synthetic",
+  "period": {
+    "end": "2020-12-31T23:57:18+00:00",
+    "start": "2019-01-01T00:00:44+00:00"
+  },
+  "rows": {
+    "excluded": 0,
+    "kept": 359472,
+    "raw": 1852394
+  },
+  "subsample": {
+    "max_entities": 200,
+    "seed": 42,
+    "selected_entities": 200,
+    "strategy": "cards"
+  },
+  "version": "kaggle-2020-08-05",
+  "warnings": [
+    "Constant canonical fields on this dataset: customer.account_age_days=0, customer.country=US, customer.risk_tier=LOW, merchant.country=US, transaction.country=US, transaction.currency=USD, transaction.payment_method=CARD"
+  ]
+}

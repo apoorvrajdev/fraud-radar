@@ -1,0 +1,34 @@
+{
+  "at_operating_threshold": {
+    "f1": 0.7478991596638656,
+    "false_negatives": 4,
+    "false_positives": 56,
+    "precision": 0.6137931034482759,
+    "recall": 0.956989247311828,
+    "threshold": 0.7431091070175171,
+    "true_negatives": 7353,
+    "true_positives": 89
+  },
+  "best_cv_pr_auc": 0.9395682866362163,
+  "context": {
+    "fraud_counts": {
+      "test": 93,
+      "train": 561,
+      "val": 106
+    },
+    "label_delay_note": "The chronological split treats every training label as known at the val boundary, whereas real fraud labels arrive days to months later through chargebacks and investigations, so the results are optimistic in a way this benchmark does not measure.",
+    "realised_fpr_on_test_at_operating_threshold": 0.007558374949385882,
+    "test_prevalence": 0.012396694214876033
+  },
+  "recall_at_1pct_fpr": 0.978494623655914,
+  "recall_at_5pct_fpr": 1.0,
+  "target_pr_auc": 0.75,
+  "target_recall_at_1pct_fpr": 0.6,
+  "test_pr_auc": 0.9326733114784815,
+  "test_roc_auc": 0.9988999139378583,
+  "threshold_source": {
+    "at_operating_threshold": "threshold.json",
+    "recall_at_1pct_fpr": "test_roc_curve",
+    "recall_at_5pct_fpr": "test_roc_curve"
+  }
+}

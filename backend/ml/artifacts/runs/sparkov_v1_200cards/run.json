@@ -1,0 +1,75 @@
+{
+  "code_version": "b48cfa6e11bcbcaac97bd52e323b5ceae868dd44",
+  "created_at_utc": "2026-09-17T11:44:53+00:00",
+  "dataset": {
+    "citation": "Kartik Shenoy, Credit Card Transactions Fraud Detection Dataset, Kaggle, 2020. Generated with Sparkov Data Generation (Brandon Harris, MIT).",
+    "files": {
+      "fraudTest.csv": "12d553ab19440c752d2531ee1af44bb64f12cc3d3839f1649f19e81c230545f0",
+      "fraudTrain.csv": "fd7139200dbfcbed0b6742bbe05a4f1abce532c4fef20918228a651647a3e75d"
+    },
+    "fraud_count": 1949,
+    "fraud_rate": 0.0054218409222415095,
+    "label_definition": "1 = transaction labelled fraudulent by the Sparkov generator that produced it",
+    "label_field": "is_fraud",
+    "license": "CC0: Public Domain (Kaggle dataset card, retrieved 2026-09-16)",
+    "name": "sparkov",
+    "notes": "External synthetic benchmark. Simulated transactions for 1 Jan 2019 - 31 Dec 2020. Kaggle's description advertises 1000 cards and 800 merchants; the published files hold 999 cards and 693 merchant names. Not real card-transaction data.",
+    "origin": "synthetic",
+    "period_end": "2020-12-31T23:57:18+00:00",
+    "period_start": "2019-01-01T00:00:44+00:00",
+    "preprocessing": [
+      "ids derived with uuid5; raw card numbers never stored",
+      "merchant names stripped of the generator's 'fraud_' prefix",
+      "categories mapped onto the 12-category canonical taxonomy",
+      "amounts cast to Decimal at 2dp",
+      "naive timestamps interpreted as UTC",
+      "card-present derived from the category suffix"
+    ],
+    "retrieved_at": "2026-09-17T11:29:30+00:00",
+    "row_count": 359472,
+    "schema_version": "1",
+    "source_url": "https://www.kaggle.com/datasets/kartik2112/fraud-detection",
+    "subsample": {
+      "max_entities": 200,
+      "seed": 42,
+      "selected_entities": 200,
+      "strategy": "cards"
+    },
+    "version": "kaggle-2020-08-05"
+  },
+  "featureset_version": "v1",
+  "library_versions": {
+    "numpy": "2.4.6",
+    "platform": "Windows-11-10.0.26200-SP0",
+    "python": "3.13.14",
+    "scikit-learn": "1.8.0",
+    "xgboost": "3.2.0"
+  },
+  "metadata_version": "3",
+  "notes": "Feature matrix read from cache e2a9c663dc946c27. seed is the entity-subsampling seed; the model random_state is recorded with the fit, in training_metadata.json.",
+  "run_name": "sparkov_v1_200cards",
+  "seed": 42,
+  "splits": [
+    {
+      "end": "2020-06-21T18:14:04+00:00",
+      "name": "train",
+      "start": "2019-01-01T00:00:44+00:00"
+    },
+    {
+      "end": "2020-10-02T18:51:14+00:00",
+      "name": "val",
+      "start": "2020-06-21T18:15:20+00:00"
+    },
+    {
+      "end": "2020-12-31T23:57:18+00:00",
+      "name": "test",
+      "start": "2020-10-02T19:03:46+00:00"
+    }
+  ],
+  "test_fold_identity": {
+    "digest_definition": "SHA-256 of the fold's transaction ids, in fold order, encoded as a JSON array of strings with no whitespace, in UTF-8",
+    "fold": "test",
+    "transaction_count": 53922,
+    "transaction_ids_sha256": "f8d133b9c4e700add2d2c9cd129fd39af80325ba85ce78843f8bac669bf5bbcb"
+  }
+}

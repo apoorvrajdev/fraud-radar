@@ -1,0 +1,66 @@
+{
+  "code_version": "e5b67419b1183aea6ab44c679a559b9d58b24378",
+  "created_at_utc": "2026-09-17T09:11:37+00:00",
+  "dataset": {
+    "citation": "Fraud Radar synthetic generator, backend/ml/synthesis/ in this repository",
+    "files": {
+      "synthetic_transactions.csv": "f24feb0a1ce1f7c9ac8084acebb4548f0822aff0d5f03337fd140d2e0b743a47"
+    },
+    "fraud_count": 760,
+    "fraud_rate": 0.015196960607878424,
+    "label_definition": "1 = transaction produced by one of the generator's fraud-injection patterns",
+    "label_field": "is_fraud",
+    "license": "MIT, with this repository",
+    "name": "synthetic",
+    "notes": "files records the label CSV only. The operational database the features were read from is mutable and untracked, so it has no digest: the same CSV with a different database can yield different features.",
+    "origin": "synthetic",
+    "period_end": "2026-05-20T23:48:20.056032+00:00",
+    "period_start": "2026-04-20T04:28:46.812521+00:00",
+    "preprocessing": [
+      "features extracted from the operational database by the production extractor, over each customer's unbounded history",
+      "labels joined from the label CSV by transaction id; database rows without a label, customer or merchant are skipped",
+      "naive database timestamps interpreted as UTC"
+    ],
+    "retrieved_at": null,
+    "row_count": 50010,
+    "schema_version": "1",
+    "source_url": "",
+    "subsample": null,
+    "version": "v1"
+  },
+  "featureset_version": "v1",
+  "library_versions": {
+    "numpy": "2.4.6",
+    "platform": "Windows-11-10.0.26200-SP0",
+    "python": "3.13.14",
+    "scikit-learn": "1.8.0",
+    "xgboost": "3.2.0"
+  },
+  "metadata_version": "3",
+  "notes": "No subsampling applies to the synthetic dataset, so seed is null. The model random_state is recorded with the fit, in training_metadata.json.",
+  "run_name": "synthetic_v1",
+  "seed": null,
+  "splits": [
+    {
+      "end": "2026-05-11T17:22:52.351325+00:00",
+      "name": "train",
+      "start": "2026-04-20T04:28:46.812521+00:00"
+    },
+    {
+      "end": "2026-05-16T11:11:13.009451+00:00",
+      "name": "val",
+      "start": "2026-05-11T17:22:57.290313+00:00"
+    },
+    {
+      "end": "2026-05-20T23:48:20.056032+00:00",
+      "name": "test",
+      "start": "2026-05-16T11:11:17.068814+00:00"
+    }
+  ],
+  "test_fold_identity": {
+    "digest_definition": "SHA-256 of the fold's transaction ids, in fold order, encoded as a JSON array of strings with no whitespace, in UTF-8",
+    "fold": "test",
+    "transaction_count": 7502,
+    "transaction_ids_sha256": "f4b97ff1cbc76c8478e348f4e987cf147c33a0c4bd7babe4aca6a6828dea59b4"
+  }
+}

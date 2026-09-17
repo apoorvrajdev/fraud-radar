@@ -1,0 +1,7 @@
+{
+  "country_groups": {
+    "US": 53922
+  },
+  "reason": "Every test-fold row falls in the US country group, so a segment breakdown would only repeat the overall result.",
+  "reported": false
+}
