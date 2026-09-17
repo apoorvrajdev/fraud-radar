@@ -170,6 +170,20 @@ def live_features(
     )
 
 
+def constant_features(matrix: np.ndarray, feature_names: Sequence[str]) -> tuple[str, ...]:
+    """Names of the features that never vary over `matrix`'s rows, in feature order.
+
+    The test `live_features` applies to a training fold, for any set of rows —
+    for instance the test fold another run's model is measured on.
+    """
+    if matrix.ndim != 2 or matrix.shape[1] != len(feature_names):
+        raise ValueError(
+            f"The matrix has shape {matrix.shape}, but {len(feature_names)} feature names "
+            "were given."
+        )
+    return _constant_columns(matrix, feature_names)
+
+
 def _constant_columns(matrix: np.ndarray, feature_names: Sequence[str]) -> tuple[str, ...]:
     """Names of the columns holding at most one distinct value.
 

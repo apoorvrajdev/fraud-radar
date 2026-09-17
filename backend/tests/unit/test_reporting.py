@@ -15,7 +15,7 @@ import numpy as np
 import pytest
 
 from ml.evaluation import ConfusionAtThreshold, confusion_at_threshold
-from ml.reporting import LABEL_DELAY_NOTE, live_features, result_context
+from ml.reporting import LABEL_DELAY_NOTE, constant_features, live_features, result_context
 
 METHODOLOGY = (
     Path(__file__).resolve().parents[3] / "docs" / "adr" / "PHASE_5D_BENCHMARK_METHODOLOGY.md"
@@ -220,3 +220,21 @@ def test_a_matrix_that_does_not_match_the_feature_names_is_refused(fold: str) ->
 
     with pytest.raises(ValueError, match="feature names were given"):
         live_features(**matrices, feature_names=NAMES)
+
+
+def test_constant_features_apply_the_liveness_test_to_any_rows() -> None:
+    """The same test as a training fold's, over rows that are not one — a later fold, say."""
+    _, whole = _matrix()
+    later_rows = whole[4:]
+
+    assert constant_features(later_rows, NAMES) == ("constant_everywhere",)
+    assert constant_features(whole[:4], NAMES) == live_features(
+        training_fold=whole[:4], whole_matrix=whole, feature_names=NAMES
+    ).constant
+
+
+def test_constant_features_refuse_a_matrix_that_does_not_match_the_names() -> None:
+    _, whole = _matrix()
+
+    with pytest.raises(ValueError, match="feature names were given"):
+        constant_features(whole[:, :3], NAMES)
