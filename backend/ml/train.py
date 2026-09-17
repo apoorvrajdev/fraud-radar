@@ -211,7 +211,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         "--target-fpr",
         type=float,
         default=0.01,
-        help="Operating-point FPR ceiling (e.g. 0.01 = 1% false-positive rate)",
+        help="Operating-point FPR ceiling (e.g. 0.01 = 1%% false-positive rate)",
     )
 
     benchmark = parser.add_argument_group("registered datasets")

@@ -511,6 +511,26 @@ def test_misleading_combinations_are_refused_before_any_work(
     assert list(workspace.iterdir()) == []
 
 
+def test_help_renders_every_argument_including_its_literal_percentage(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """argparse %-expands help strings, so a literal % has to be escaped.
+
+    Getting that wrong raises only on `--help`, which every other test
+    path skips — the CLI keeps training fine while its documentation is
+    unreachable.
+    """
+    with pytest.raises(SystemExit) as helped:
+        train.main(["--help"])
+
+    assert helped.value.code == 0
+    printed = capsys.readouterr().out
+    assert "--target-fpr" in printed
+    # Not the whole phrase: argparse rewraps help text to the terminal width.
+    assert "1%" in printed
+    assert "1%%" not in printed
+
+
 # ---------------------------------------------------------------------------
 # A recorded run — never trained into again
 # ---------------------------------------------------------------------------
