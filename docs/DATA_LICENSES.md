@@ -2,7 +2,7 @@
 
 Fraud Radar trains and evaluates on datasets it does not own. This file records what each source is, under what terms it is used, and what of it ever enters this repository.
 
-**Status:** Phase 5A. Nothing external has been downloaded yet. Licence rows below are what the source advertises publicly; each is confirmed at retrieval time (Phase 5B) and the confirmed wording, with its retrieval date, is written into the dataset's `DatasetProvenance.license` field and into every run that uses it.
+**Status:** Sparkov retrieved and verified on 2026-09-17; its SHA-256 digests are not yet pinned in the manifest. Nothing else external has been downloaded. Licence rows below are what the source advertises publicly; each is confirmed at retrieval time (Phase 5B) and the confirmed wording, with its retrieval date, is written into the dataset's `DatasetProvenance.license` field and into every run that uses it.
 
 ---
 
@@ -42,14 +42,29 @@ Fraud Radar trains and evaluates on datasets it does not own. This file records 
 | **Licence** | **CC0: Public Domain**, confirmed 2026-09-16 via the Kaggle dataset API (`licenseName`) |
 | **Generator** | [Sparkov Data Generation](https://github.com/namebrandon/Sparkov_Data_Generation) by Brandon Harris — **MIT**, confirmed 2026-09-16 via the GitHub API |
 | **Citation** | Kartik Shenoy, "Credit Card Transactions Fraud Detection Dataset", Kaggle, 2020. Generated with Sparkov Data Generation (Brandon Harris). |
-| **Files** | `fraudTrain.csv` (351,238,196 bytes) and `fraudTest.csv` (150,354,339 bytes), sizes from the Kaggle files API |
-| **Coverage** | 1 Jan 2019 – 31 Dec 2020, 1,000 cards, 800 merchants (Kaggle description) |
-| **Schema** | 23 columns: an unnamed index plus the 22 named columns listed in `ml/datasets/sparkov.py` |
+| **Files** | `fraudTrain.csv` (351,238,196 bytes) and `fraudTest.csv` (150,354,339 bytes), sizes from the Kaggle files API; the retrieved files have exactly these sizes |
+| **Advertised coverage** | Kaggle's dataset description: 1 Jan 2019 – 31 Dec 2020, the cards of 1,000 customers, a pool of 800 merchants. This is the publisher's description of the generated data, not counts observed in the files. |
+| **Observed coverage** | Wall clock 2019-01-01 00:00:18 – 2020-12-31 23:59:34. Across both files: **999 cards** and **693 merchant names**; the adapter builds **697 merchants**, one canonical entity per (name, canonical category). See *Observed on retrieval* below. |
+| **Schema** | 23 columns: an unnamed index plus the 22 named columns listed in `ml/datasets/sparkov.py`, matched exactly in both retrieved files |
 | **Label** | `is_fraud`; 1 = a transaction the generator produced as fraudulent |
 | **Used for** | Training, evaluation, temporal-drift experiment, rules audit (5C onward) |
 | **Derived and committed** | Quality report, metrics, model card, feature-importance summaries |
 
-**Reported but not independently verified** (the corpus has not been retrieved here, so these come from secondary sources and are recomputed at load time rather than trusted): row counts of 1,296,675 and 555,719, fraud prevalence of roughly 0.58% and 0.39%, and the exact boundary date between the two files. The adapter computes all counts from the bytes it reads, and the loader refuses to run if the header does not match the expected schema.
+**Observed on retrieval** (2026-09-17). Computed from the retrieved bytes with the adapter's own reader, timestamp parser, exclusion gate and merchant identity. The adapter recomputes every count from the bytes it reads at each load, and the loader refuses to run if the header does not match the expected schema.
+
+| | `fraudTrain.csv` | `fraudTest.csv` | Both files |
+|---|---|---|---|
+| Rows | 1,296,675 | 555,719 | 1,852,394 |
+| Frauds (rate) | 7,506 (0.579%) | 2,145 (0.386%) | 9,651 (0.521%) |
+| First wall-clock timestamp | 2019-01-01 00:00:18 | 2020-06-21 12:14:25 | 2019-01-01 00:00:18 |
+| Last wall-clock timestamp | 2020-06-21 12:13:37 | 2020-12-31 23:59:34 | 2020-12-31 23:59:34 |
+| Cards | 983 | 924 | 999 |
+| Merchant names | 693 | 693 | 693 |
+
+- **Entity counts.** 999 cards and 693 merchant names are the observed counts across both files. 697 is the adapter-level count of canonical merchants: a merchant is identified by (name, canonical category), and 4 of the 693 names appear under two canonical categories. Kaggle's 1,000 cards and 800 merchants are the publisher's advertised description, not observed counts; neither the data nor the adapter is adjusted to match them.
+- **Where the files meet.** The test file begins 48 seconds after the train file ends. Neither file has a row inside the other's range, and no transaction number appears in both. 908 cards appear in both files, 75 only in train and 16 only in test.
+- **Exclusions.** None: 0 rows under every exclusion reason.
+- The row counts and fraud rates agree with the figures previously known only from secondary sources.
 
 **Preprocessing applied by the adapter**, each recorded in `DatasetProvenance.preprocessing`:
 

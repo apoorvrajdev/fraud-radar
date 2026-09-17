@@ -1,6 +1,6 @@
 # Phase 5D — Benchmark Methodology
 
-**Status:** accepted · **Date:** 2026-09-16 · **Amended:** 2026-09-17 (decision 17) · **Milestone:** Phase 5D / M4 · **Scope:** `backend/ml/train.py`, `backend/ml/analyze.py`, `backend/ml/promote.py`, `backend/ml/experiments/`
+**Status:** accepted · **Date:** 2026-09-16 · **Amended:** 2026-09-17 (decision 17; observed at acquisition) · **Milestone:** Phase 5D / M4 · **Scope:** `backend/ml/train.py`, `backend/ml/analyze.py`, `backend/ml/promote.py`, `backend/ml/experiments/`
 
 ---
 
@@ -210,6 +210,17 @@ These are unknown, not undecided. Each is recorded from the data when it arrives
 | Which of the five evaluable rules fire on Sparkov, and how precisely | The audit result itself | Rules audit |
 | Memory and runtime of the full-corpus load, feature build and tuning | Decision 16 | Full run |
 | Whether the `synthetic_v1` re-run reproduces the committed synthetic metrics | The synthetic path reads the local operational database, which is not versioned; a mismatch is reported before `synthetic_v1` is used as the transfer source | `synthetic_v1` re-run |
+
+### Observed at acquisition (2026-09-17)
+
+What acquisition could answer from the table above, computed from the retrieved bytes with the adapter's own reader, timestamp parser, exclusion gate and merchant identity. No feature matrix, fold or run exists yet; each run's quality report restates these from its own load.
+
+- **Files.** Both sizes equal the manifest's advertised bytes. SHA-256 digests were computed; pinning them in the manifest is a separate, separately authorised step (decision 1).
+- **Rows and frauds.** `fraudTrain.csv`: 1,296,675 rows, 7,506 frauds. `fraudTest.csv`: 555,719 rows, 2,145 frauds. Together: 1,852,394 rows, 9,651 frauds.
+- **Coverage and where the files meet.** On the wall clock, train runs 2019-01-01 00:00:18 → 2020-06-21 12:13:37 and test 2020-06-21 12:14:25 → 2020-12-31 23:59:34. The files meet 48 seconds apart, with no overlap and no transaction number in both.
+- **Rows excluded.** None: 0 under every exclusion reason.
+- **Entity counts.** Observed across both files: 999 cards and 693 merchant names. The adapter identifies a merchant by (name, canonical category); 4 of the names appear under two canonical categories, so it builds 697 canonical merchants. Kaggle's description of 1,000 cards and 800 merchants is the publisher's advertised figure, not an observed count. Neither the data nor the adapter is adjusted to match it.
+- **`unix_time` offsets.** Recorded under [The `unix_time` offset](#the-unix_time-offset); decided by decision 17.
 
 ### The `unix_time` offset
 

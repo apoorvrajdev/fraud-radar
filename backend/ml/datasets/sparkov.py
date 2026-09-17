@@ -1,8 +1,10 @@
 """Sparkov adapter — an external *synthetic* benchmark, into canonical form.
 
 The source is Kaggle `kartik2112/fraud-detection`: simulated card transactions
-generated with Brandon Harris's Sparkov tool, covering 1 Jan 2019 – 31 Dec 2020
-for 1,000 cards and 800 merchants, published CC0. It is **not** real card data,
+generated with Brandon Harris's Sparkov tool for 1 Jan 2019 – 31 Dec 2020,
+published CC0. Kaggle's description advertises 1,000 cards and 800 merchants;
+the published files hold 999 cards and 693 merchant names, which become 697
+merchants keyed by (name, canonical category). It is **not** real card data,
 and nothing here should describe it as such. Its value is that it was generated
 by someone else's simulator, so it tests whether this project's features and
 rules transfer beyond the generator they were designed against.

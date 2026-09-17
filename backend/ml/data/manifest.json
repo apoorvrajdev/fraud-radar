@@ -11,7 +11,7 @@
       "citation": "Kartik Shenoy, Credit Card Transactions Fraud Detection Dataset, Kaggle, 2020. Generated with Sparkov Data Generation (Brandon Harris, MIT).",
       "label_field": "is_fraud",
       "label_definition": "1 = transaction labelled fraudulent by the Sparkov generator that produced it",
-      "notes": "External synthetic benchmark. Simulated transactions for 1 Jan 2019 - 31 Dec 2020 covering 1000 cards and 800 merchants. Not real card-transaction data.",
+      "notes": "External synthetic benchmark. Simulated transactions for 1 Jan 2019 - 31 Dec 2020. Kaggle's description advertises 1000 cards and 800 merchants; the published files hold 999 cards and 693 merchant names. Not real card-transaction data.",
       "files": {
         "fraudTrain.csv": {
           "bytes": 351238196,
