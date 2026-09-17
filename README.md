@@ -358,22 +358,24 @@ Changing the source bytes, the subsample or the featureset changes the fingerpri
 The cross-generator transfer measures one run's model, unchanged, on another run's test fold — the synthetic run's model on the rows a Sparkov run was evaluated on:
 
 ```bash
-uv run python -m ml.experiments.transfer --source-run synthetic_v1 --target-run sparkov_v1_200cards
+uv run python -m ml.experiments.transfer --source-run synthetic_v1 --target-run sparkov_v1_full --target-full-corpus
 ```
 
 Both runs are rebuilt from their records and fully verified first; the source model file must match its recorded digest and the target's test fold its recorded transaction ids. Nothing is chosen on the target's data — no threshold, calibration, feature selection or tuning — and the source model receives every v1 column, constant ones included. `transfer_metrics.json` is written into the target run's directory, beside its untouched `metrics.json`: PR-AUC and ROC-AUC with the target test prevalence, recall at 1% and 5% FPR labelled as points on the target test ROC curve, and the confusion matrix and realised target-test FPR at the source run's own validation-selected threshold, with source and target counts named apart. The method is fixed in [`docs/adr/PHASE_5D_BENCHMARK_METHODOLOGY.md`](docs/adr/PHASE_5D_BENCHMARK_METHODOLOGY.md), decision 8.
 
-Three more pieces of the same method exist as tooling and have not been run on real data:
+The transfer was measured once, against the full-corpus run: it is the result the comparison carries, so the development run's test fold was left alone. The drift experiment and the rules audit were each run once on the full corpus as well; promotion is tooling that has deliberately not been run, because replacing the served model is a decision to take with the numbers in hand:
 
 ```bash
-uv run python -m ml.experiments.temporal_drift --run-name <drift-run> --full-corpus
-uv run python -m ml.experiments.rules_audit --run-name <run> --rows all
-uv run python -m ml.promote <run>
+uv run python -m ml.experiments.temporal_drift --dataset sparkov --full-corpus --run-name sparkov_v1_drift
+uv run python -m ml.experiments.rules_audit --run-name sparkov_v1_full --rows all --full-corpus
+uv run python -m ml.promote <run>   # built and tested; not run for Sparkov
 ```
 
 - **Temporal drift** fits a model through the same procedure on its own calendar periods — search on 2019-01 to 2019-10, early stopping and a single threshold selection on 2019-11 to 2019-12 — and scores each month of 2020 once at that threshold. `drift_metrics.json` reports volume, fraud rate, PR-AUC, recall, precision and realised FPR per month, `null` wherever a month leaves one undefined. It is written to a run directory of its own; a trained run's directory is refused.
 - **The rules audit** verifies a run, then evaluates the production rules on all of its rows or one fold, each row with the 180-day context the scoring service builds. It reports per-rule firings, precision and fraud recall, and the rules-only outcome against the labels. A rule the data cannot support, such as the dormant-account rule without account-open timestamps, is reported as not evaluable rather than run. Every audit states its row population.
 - **Promotion** copies exactly the five model artifacts of a run into the served directory. It refuses a featureset absent from the registry, a feature list out of order, and a model file that differs from its recorded digest.
+
+Every result these produced is laid out together in [`backend/ml/BENCHMARK_CARD.md`](backend/ml/BENCHMARK_CARD.md), regenerated from the run records by `uv run python -m ml.benchmark_card`.
 
 ### Tests
 
