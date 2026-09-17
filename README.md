@@ -98,15 +98,45 @@ This project demonstrates the architectural patterns that real fraud platforms r
                               │  + SHAP Explainer│    └────────────────┘
                               └────────┬─────────┘
                                        │
-                              ┌────────▼─────────┐
-                              │  models/*.joblib │
-                              │  (artifact store)│
-                              └──────────────────┘
+                              ┌────────▼───────────────────┐
+                              │       ml/artifacts/        │
+                              │  model.json + feature_list │
+                              │  + threshold + metrics     │
+                              └────────────────────────────┘
 
                     ┌──────────────────────────────────┐
                     │  Background Transaction Simulator │
                     │  (feeds the ingestion endpoint)   │
                     └──────────────────────────────────┘
+```
+
+The artifacts that box loads are produced by a separate offline pipeline that never runs inside the API process:
+
+```
+  synthetic generator               Sparkov CSVs (gitignored)
+          │                                    │
+          └──────────────────┬─────────────────┘
+                             ▼
+              ┌─────────────────────────────┐
+              │  ml/datasets/  adapters     │ ─▶ CanonicalDataset + provenance
+              └──────────────┬──────────────┘    (labels held outside the objects)
+                             ▼
+              ┌─────────────────────────────┐
+              │  ml/features/  batch build  │ ─▶ the production FeatureExtractor,
+              └──────────────┬──────────────┘    cached as fingerprinted .npz
+                             ▼
+              ┌─────────────────────────────┐
+              │  ml/train.py                │ ─▶ chronological 70/15/15, tuning,
+              └──────────────┬──────────────┘    threshold selected on val only
+                             ▼
+              ┌─────────────────────────────┐
+              │  ml/artifacts/runs/<name>/  │ ─▶ run.json, metrics, model card
+              └──────────────┬──────────────┘    (model.json + PNGs gitignored)
+                             ▼
+     ml.analyze  ·  ml.experiments.{transfer, temporal_drift, rules_audit}
+                             │  additive JSON written back into the run directory
+                             ▼
+              ml.benchmark_card  ─▶  ml/BENCHMARK_CARD.md
 ```
 
 **Why a monolith?** Splitting fraud scoring, ingestion, and persistence into separate services would burn the entire four-day budget on Kubernetes manifests, message bus wiring, and inter-service contracts instead of features the reviewer can actually see and click through. A layered monolith captures the same separation-of-concerns thinking with a tenth of the operational surface area.
@@ -216,58 +246,75 @@ Every accepted transaction now runs the full pipeline synchronously — rules en
 
 ```
 fraud-radar/
-├── backend/                          # FastAPI service + ML pipeline
-│   ├── app/                          # Web/API layer
-│   │   ├── api/v1/                   # Routers — thin orchestration only
-│   │   ├── services/                 # Idempotency cache, scoring orchestrator (rules → features → model → SHAP → decision matrix)
-│   │   ├── repositories/             # SQLAlchemy data access
-│   │   ├── models/                   # SQLAlchemy ORM models (incl. idempotency_keys)
+├── backend/                          # FastAPI service + offline ML pipeline
+│   ├── app/                          # Web/API layer — the only code that serves traffic
+│   │   ├── api/v1/                   # Routers: transactions, alerts, stats — thin orchestration only
+│   │   ├── services/                 # Scoring orchestrator (rules → features → model → SHAP → decision),
+│   │   │                             #   idempotency cache, transaction detail, review, alerts, stats
+│   │   ├── repositories/             # SQLAlchemy data access (transaction, customer, merchant, audit, stats)
+│   │   ├── models/                   # SQLAlchemy ORM models (incl. idempotency_keys, audit_log)
 │   │   ├── schemas/                  # Pydantic v2 request/response schemas
-│   │   ├── fraud/                    # FeatureExtractor, FraudExplainer, plots, rules engine
+│   │   ├── fraud/                    # FeatureExtractor, FraudExplainer, plots, rules engine, decision matrix
 │   │   ├── core/                     # Reserved cross-cutting utilities
 │   │   ├── db/                       # Session, engine
 │   │   └── simulator/                # CLI HTTP client that feeds the live API with synthetic traffic
-│   ├── ml/                           # Training + analysis + artifacts
-│   │   ├── synthesis/                # Synthetic dataset generators
+│   ├── ml/                           # Offline only — datasets, features, training, experiments, artifacts
+│   │   ├── synthesis/                # Synthetic generators (customers, merchants, transactions, fraud injectors)
 │   │   ├── analysis/                 # Segment, calibration, global SHAP
-│   │   ├── data/                     # Generated CSV (gitignored)
-│   │   ├── artifacts/                # Trained model + metrics JSONs
+│   │   ├── datasets/                 # External benchmarks: registry, pinned download, Sparkov adapter, quality report
+│   │   ├── features/                 # Batch builder on the production extractor + fingerprinted cache
+│   │   ├── experiments/              # Cross-generator transfer, temporal drift, rules audit
+│   │   ├── data/                     # raw/ source bytes and cache/ matrices — both gitignored
+│   │   ├── artifacts/                # Served artifacts; model.json and PNGs gitignored
+│   │   │   └── runs/<name>/          # Per-run records: run.json, metrics, threshold, analysis, MODEL_CARD.md
 │   │   ├── notebooks/                # Exploratory notebooks
-│   │   ├── train.py                  # XGBoost training pipeline
+│   │   ├── train.py                  # XGBoost training pipeline — served artifacts, or a named run
 │   │   ├── analyze.py                # Post-training analysis + model card
 │   │   ├── generate_dataset.py       # CLI to seed DB + write labelled CSV
+│   │   ├── benchmark_card.py         # Builds BENCHMARK_CARD.md from the committed run records
+│   │   ├── run_verification.py       # Rebuilds a run and checks it reproduces its own metrics
+│   │   ├── holdout.py                # Re-derives a run's folds from its run.json
+│   │   ├── promote.py                # Copies a run's artifacts into the served directory
+│   │   ├── loading.py                # Dataset + matrix loading shared by training and analysis
 │   │   ├── splits.py                 # Chronological train/val/test split
 │   │   ├── tuning.py                 # RandomizedSearchCV wrapper
 │   │   ├── evaluation.py             # PR-AUC, Recall@FPR, threshold selection
-│   │   ├── data.py                   # Dataset loader (DB rows + CSV labels)
+│   │   ├── data.py                   # Synthetic dataset loader (DB rows + CSV labels)
 │   │   ├── artifacts.py              # Save/load model artifacts (JSON)
+│   │   ├── BENCHMARK_CARD.md         # Generated — Phase 5D results from the run records
 │   │   └── MODEL_CARD.md             # Auto-regenerated from analyze.py
 │   ├── tests/
-│   │   ├── unit/                     # 166 unit tests
-│   │   └── integration/              # 31 integration tests
+│   │   ├── unit/                     # 991 unit tests
+│   │   └── integration/              # 71 integration tests
 │   ├── alembic/                      # DB migrations
-│   │   └── versions/                 # 3 migrations (initial schema + 2 for Phase 3B)
+│   │   └── versions/                 # 4 migrations (initial schema, 2 for Phase 3B, audit-log id type)
 │   └── pyproject.toml                # uv-managed dependencies
-├── frontend/                         # React + TypeScript dashboard (Phase 3E)
+├── frontend/                         # React + TypeScript dashboard
 │   ├── src/
 │   │   ├── components/
-│   │   │   ├── layout/               # AppShell + Sidebar
+│   │   │   ├── layout/               # AppShell, Sidebar, DemoBanner
 │   │   │   ├── ui/                   # Card, Stat (KPI tile primitive)
-│   │   │   └── dashboard/            # KpiTiles, FraudRateChart, VolumeSparkline, CountryBreakdownTable
-│   │   ├── pages/                    # DashboardPage
-│   │   ├── hooks/                    # useStatsOverview, useStatsTimeseries, useStatsBreakdown
-│   │   ├── lib/                      # axios api client, TanStack QueryClient, format helpers, cn
+│   │   │   ├── dashboard/            # KpiTiles, FraudRateChart, VolumeSparkline, CountryBreakdownTable
+│   │   │   ├── transactions/         # Filters, filter chips, table, decision badge
+│   │   │   │   └── detail/           # Header, contributors, features, rules, audit, analyst decision form
+│   │   │   └── alerts/               # Summary strip, filters, queue table, score chip
+│   │   ├── pages/                    # Dashboard, Transactions, TransactionDetail, Alerts
+│   │   ├── hooks/                    # Stats, transactions list + detail, alerts, analyst id + decision mutation
+│   │   ├── lib/                      # axios api client, demo adapter + flag, QueryClient, format helpers, cn
 │   │   ├── types/                    # Hand-mirrored backend Pydantic schemas
 │   │   └── assets/
+│   ├── public/demo-data/             # Generated — the frozen API snapshot the public demo reads
+│   ├── vercel.json                   # Demo build command + SPA rewrite
 │   └── package.json
+├── scripts/
+│   └── export_demo_snapshot.py       # Walks the live API and writes the demo snapshot
 ├── docs/
-│   ├── adr/                          # Architecture decision records
-│   │   ├── PHASE_3_DESIGN.md         # Backend design for Phases 3A–3D
-│   │   ├── PHASE_3C_INTEGRATION.md   # Phase 3C integration decisions
-│   │   ├── PHASE_3E_DESIGN.md        # Dashboard endpoints + frontend foundation
-│   │   ├── PHASE_3F_DESIGN.md        # Transactions list endpoint + frontend plan
-│   │   └── PHASE_3G_DESIGN.md        # Transaction detail + analyst-override design
-│   └── screenshots/
+│   ├── ARCHITECTURE.md               # One-page system mental model (Mermaid)
+│   ├── DATA_LICENSES.md              # Per-source licence, citation and provenance policy
+│   ├── PHASE_5_PLAN.md               # Phase 5 milestone specification
+│   ├── adr/                          # 10 architecture decision records (Phase 3 slices, 4A, 5A, 5C, 5D)
+│   └── screenshots/                  # Capture conventions
+├── .github/workflows/ci.yml          # pytest + ruff + strict mypy + frontend tsc and build
 ├── LICENSE
 └── README.md
 ```
