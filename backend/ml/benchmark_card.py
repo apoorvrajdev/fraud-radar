@@ -280,6 +280,7 @@ def build_benchmark_card(records: BenchmarkRecords) -> str:
         _calibration_section(records),
         _importance_section(records),
         _drift_section(records),
+        _rules_audit_section(records),
     ]
     return "\n\n".join(sections) + "\n"
 
@@ -760,6 +761,79 @@ def _drift_section(records: BenchmarkRecords) -> str:
             f"— marks a metric the month leaves undefined. {drift.get('undefined_metrics_note')}",
             "",
             f"**Label delay.** {delay_line}",
+        ]
+    )
+
+
+def _rules_audit_section(records: BenchmarkRecords) -> str:
+    audit = records.rules_audit
+    rules = [
+        _part(audit, f"rules[{index}]", rule) for index, rule in enumerate(audit.get("rules"))
+    ]
+    rows = []
+    for rule in rules:
+        if not rule.get("evaluable"):
+            not_evaluable = f"no — {rule.get('reason')}"
+            rows.append((f"`{rule.get('rule')}`", "—", not_evaluable, "—", "—", "—", "—"))
+            continue
+        rows.append(
+            (
+                f"`{rule.get('rule')}`",
+                str(rule.get("severity")),
+                "yes",
+                _or_dash(rule.get("rows_fired")),
+                _or_dash(rule.get("fired_on_fraud")),
+                _number(rule.get("precision")),
+                _number(rule.get("fraud_recall")),
+            )
+        )
+
+    outcome = _part(audit, "rules_only_outcome", audit.get("rules_only_outcome"))
+    by_outcome = outcome.get("by_outcome")
+    ordered = [name for name in ("DECLINE", "REVIEW", "APPROVE") if name in by_outcome]
+    ordered += sorted(name for name in by_outcome if name not in ordered)
+    outcome_rows = [
+        (
+            name,
+            _or_dash(by_outcome[name]["rows"]),
+            _or_dash(by_outcome[name]["frauds"]),
+            _or_dash(by_outcome[name]["legitimate"]),
+        )
+        for name in ordered
+    ]
+    population = _part(audit, "population", audit.get("population"))
+    return "\n".join(
+        [
+            "## 7. Rules audit",
+            "",
+            f"The production rules, unmodified, on every row of `{population.get('run')}`: "
+            f"{_or_dash(population.get('row_count'))} rows holding "
+            f"{_or_dash(population.get('fraud_count'))} frauds "
+            f"(rate {_number(population.get('fraud_rate'))}), "
+            f"{population.get('first_timestamp')} to {population.get('last_timestamp')}. "
+            f"{population.get('note')}",
+            "",
+            f"Each row was evaluated on the context the scoring service builds for it: "
+            f"{audit.get('context', 'definition')} The history is drawn from "
+            f"{audit.get('context', 'history_drawn_from')}, over "
+            f"{audit.get('context', 'history_window_days')} days.",
+            "",
+            _table(
+                (
+                    "Rule",
+                    "Severity",
+                    "Evaluable",
+                    "Rows fired",
+                    "Fired on fraud",
+                    "Precision",
+                    "Fraud recall",
+                ),
+                rows,
+            ),
+            "",
+            f"**Rules-only outcome.** {outcome.get('note')} {outcome.get('decision_rule')}",
+            "",
+            _table(("Outcome", "Rows", "Frauds", "Legitimate"), outcome_rows),
         ]
     )
 

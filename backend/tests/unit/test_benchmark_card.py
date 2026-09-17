@@ -1317,3 +1317,95 @@ def test_the_drift_label_delay_note_is_not_repeated_when_it_matches(runs_root: P
 
     assert "**Label delay.** As stated in section 2." in section(text, DRIFT)
     assert text.count(LABEL_DELAY_NOTE) == 1
+
+
+# ---------------------------------------------------------------------------
+# Rendering: rules audit
+# ---------------------------------------------------------------------------
+
+AUDIT = "7. Rules audit"
+
+
+def test_the_audited_population_is_stated_from_the_audit_record(runs_root: Path) -> None:
+    population = rules_audit_record()["population"]
+
+    audit = section(build(runs_root), AUDIT)
+
+    assert f"on every row of `{FULL}`: {population['row_count']:,} rows holding " in audit
+    assert f"{population['fraud_count']:,} frauds (rate {f4(population['fraud_rate'])})" in audit
+    assert f"{population['first_timestamp']} to {population['last_timestamp']}" in audit
+    assert population["note"] in audit
+    assert "over 180 days" in audit
+
+
+@pytest.mark.parametrize(
+    ("rule", "severity", "fired", "on_fraud"),
+    [entry for entry in RULES if entry[1] is not None],
+)
+def test_each_evaluable_rule_is_read_from_the_audit_record(
+    runs_root: Path, rule: str, severity: str, fired: int, on_fraud: int
+) -> None:
+    recorded = next(entry for entry in rules_audit_record()["rules"] if entry["rule"] == rule)
+
+    cells = row(section(build(runs_root), AUDIT), f"`{rule}`")
+
+    assert cells[1:] == [
+        severity,
+        "yes",
+        f"{fired:,}",
+        f"{on_fraud:,}",
+        f4(recorded["precision"]) if recorded["precision"] is not None else "—",
+        f4(recorded["fraud_recall"]),
+    ]
+
+
+def test_a_rule_the_data_cannot_support_is_shown_as_not_evaluable(runs_root: Path) -> None:
+    cells = row(section(build(runs_root), AUDIT), "`dormant_account_high_value`")
+
+    assert cells[1:] == [
+        "—",
+        "no — not evaluable: no account-open timestamp",
+        "—",
+        "—",
+        "—",
+        "—",
+    ]
+
+
+def test_the_rules_only_outcome_is_read_from_the_audit_record(runs_root: Path) -> None:
+    outcome = rules_audit_record()["rules_only_outcome"]
+
+    audit = section(build(runs_root), AUDIT)
+
+    assert outcome["note"] in audit and outcome["decision_rule"] in audit
+    declines = [
+        line.split("|")[1].strip() for line in audit.splitlines() if line.startswith("| DE")
+    ]
+    assert declines == ["DECLINE"]
+    for name, counts in outcome["by_outcome"].items():
+        assert row(audit, name)[1:] == [
+            f"{counts['rows']:,}",
+            f"{counts['frauds']:,}",
+            f"{counts['legitimate']:,}",
+        ]
+
+
+def test_the_outcomes_are_listed_from_the_strictest_down(runs_root: Path) -> None:
+    audit = section(build(runs_root), AUDIT)
+
+    outcomes = [
+        line.split("|")[1].strip()
+        for line in audit.splitlines()
+        if line.startswith("| ") and line.split("|")[1].strip() in {"DECLINE", "REVIEW", "APPROVE"}
+    ]
+    assert outcomes == ["DECLINE", "REVIEW", "APPROVE"]
+
+
+def test_a_rule_entry_missing_a_count_is_refused_by_its_position(runs_root: Path) -> None:
+    edit_json(
+        runs_root / FULL / "rules_audit.json",
+        lambda payload: payload["rules"][0].pop("rows_fired"),
+    )
+
+    with pytest.raises(card.BenchmarkCardError, match=re.escape("rules[0] has no rows_fired")):
+        build(runs_root)
