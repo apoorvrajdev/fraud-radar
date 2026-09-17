@@ -35,10 +35,10 @@ jobs:
       # The ml/ modules are opted in as Phase 5 rewrites them; the older
       # training scripts and the frozen alembic/versions/ stay out for now.
       - name: Lint (ruff)
-        run: uv run ruff check app tests alembic/env.py ml/datasets ml/experiments ml/features ml/holdout.py ml/loading.py ml/paths.py ml/reporting.py ml/run_analysis.py ml/run_card.py ml/run_verification.py ml/runs.py
+        run: uv run ruff check app tests alembic/env.py ml/datasets ml/experiments ml/features ml/holdout.py ml/loading.py ml/paths.py ml/promote.py ml/reporting.py ml/run_analysis.py ml/run_card.py ml/run_verification.py ml/runs.py
 
       - name: Type-check (mypy, strict)
-        run: uv run mypy app ml/datasets ml/experiments ml/features ml/holdout.py ml/loading.py ml/paths.py ml/reporting.py ml/run_analysis.py ml/run_card.py ml/run_verification.py ml/runs.py ml/artifacts.py
+        run: uv run mypy app ml/datasets ml/experiments ml/features ml/holdout.py ml/loading.py ml/paths.py ml/promote.py ml/reporting.py ml/run_analysis.py ml/run_card.py ml/run_verification.py ml/runs.py ml/artifacts.py
 
       # tests/integration/test_scoring_endpoint.py loads the real model from
       # backend/ml/artifacts/, which is gitignored. Train a deliberately tiny
