@@ -1490,3 +1490,58 @@ def test_the_limitations_are_the_ones_every_run_card_states(runs_root: Path) -> 
         assert f"- {limitation}" in limitations
     assert "Label delay, as stated in section 2." in limitations
     assert "PHASE_5D_BENCHMARK_METHODOLOGY.md" in limitations
+
+
+# ---------------------------------------------------------------------------
+# The command line
+# ---------------------------------------------------------------------------
+
+
+def test_the_cli_writes_the_card_it_builds(runs_root: Path, tmp_path: Path) -> None:
+    output = tmp_path / "BENCHMARK_CARD.md"
+
+    assert card.main(["--runs-root", str(runs_root), "--output", str(output)]) == 0
+    assert output.read_text(encoding="utf-8") == build(runs_root)
+
+
+def test_the_cli_writes_lf_line_endings_on_every_platform(runs_root: Path, tmp_path: Path) -> None:
+    output = tmp_path / "BENCHMARK_CARD.md"
+
+    card.main(["--runs-root", str(runs_root), "--output", str(output)])
+
+    assert b"\r\n" not in output.read_bytes()
+
+
+def test_the_cli_defaults_to_the_card_beside_the_served_model_card() -> None:
+    args = card.parse_args([])
+
+    assert args.output == card.BENCHMARK_CARD_PATH == card.ML_ROOT / "BENCHMARK_CARD.md"
+    assert args.runs_root == card.RUNS_ROOT
+
+
+def test_a_refused_benchmark_writes_nothing_and_reports_why(
+    runs_root: Path, tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    (runs_root / FULL / "rules_audit.json").unlink()
+    output = tmp_path / "BENCHMARK_CARD.md"
+    before = {path: path.read_bytes() for path in sorted(runs_root.rglob("*.json"))}
+
+    with caplog.at_level("ERROR", logger="ml.benchmark_card"):
+        code = card.main(["--runs-root", str(runs_root), "--output", str(output)])
+
+    assert code == 1
+    assert not output.exists()
+    assert "rules_audit.json is missing" in caplog.text
+    assert {path: path.read_bytes() for path in sorted(runs_root.rglob("*.json"))} == before
+
+
+def test_the_cli_writes_only_the_card(runs_root: Path, tmp_path: Path) -> None:
+    before = {path: path.read_bytes() for path in sorted(runs_root.rglob("*")) if path.is_file()}
+    output = tmp_path / "BENCHMARK_CARD.md"
+
+    card.main(["--runs-root", str(runs_root), "--output", str(output)])
+
+    after = {path: path.read_bytes() for path in sorted(runs_root.rglob("*")) if path.is_file()}
+    assert after == before
+    written = [path for path in tmp_path.rglob("*") if path.is_file() and path not in before]
+    assert written == [output]

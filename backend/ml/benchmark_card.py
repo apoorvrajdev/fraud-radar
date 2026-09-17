@@ -14,11 +14,17 @@ card changes only when a record does (decision 11).
 Records are identified by a digest of their text with CRLF line endings
 normalised to LF, the form Git stores. A digest of the raw bytes would differ
 between a Windows working copy and a Linux checkout of the same commit.
+
+Usage:
+    cd backend
+    uv run python -m ml.benchmark_card
 """
 from __future__ import annotations
 
+import argparse
 import hashlib
 import json
+import logging
 from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
@@ -26,7 +32,7 @@ from typing import Any
 
 from app.fraud.feature_spec import FEATURESETS
 from ml.datasets.base import DatasetContractError, DatasetProvenance
-from ml.paths import InvalidRunNameError, validate_run_name
+from ml.paths import ML_ROOT, RUNS_ROOT, InvalidRunNameError, validate_run_name
 from ml.run_card import _ACCEPTED_LIMITATIONS, _number, _or_dash, _table
 from ml.runs import RunMetadata
 
@@ -56,7 +62,11 @@ INPUT_DIGEST_DEFINITION = (
     "SHA-256 of the file's text with CRLF line endings normalised to LF, the form Git stores"
 )
 
+BENCHMARK_CARD_PATH = ML_ROOT / "BENCHMARK_CARD.md"
+
 METHODOLOGY_LINK = "../../docs/adr/PHASE_5D_BENCHMARK_METHODOLOGY.md"
+
+log = logging.getLogger("ml.benchmark_card")
 
 # The threshold sources under which a recall at a fixed FPR is a point on the
 # evaluated test fold's ROC curve. The card says so of every such recall, so
@@ -1164,5 +1174,54 @@ def _require_verified(record: RecordFile, *path: str) -> None:
         )
 
 
+def write_benchmark_card(card: str, path: Path = BENCHMARK_CARD_PATH) -> Path:
+    """Write the card with LF line endings, the bytes Git stores on every platform."""
+    path.write_text(card, encoding="utf-8", newline="\n")
+    return path
+
+
 def _reject_constant(value: str) -> float:
     raise ValueError(f"{value} is not a JSON number")
+
+
+# ---------------------------------------------------------------------------
+# Command line
+# ---------------------------------------------------------------------------
+
+
+def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
+    parser = argparse.ArgumentParser(
+        description="Write the Phase 5D benchmark card from the recorded runs"
+    )
+    parser.add_argument(
+        "--runs-root",
+        type=Path,
+        default=RUNS_ROOT,
+        help="Directory holding the benchmark's run directories",
+    )
+    parser.add_argument(
+        "--output",
+        type=Path,
+        default=BENCHMARK_CARD_PATH,
+        help=f"Where to write the card (default: {BENCHMARK_CARD_PATH})",
+    )
+    return parser.parse_args(argv)
+
+
+def main(argv: list[str] | None = None) -> int:
+    """Read the records, build the card, and write it only once all of it is built."""
+    logging.basicConfig(level=logging.INFO, format="%(asctime)s  %(levelname)s  %(message)s")
+    args = parse_args(argv)
+    try:
+        records = load_benchmark(args.runs_root)
+        card = build_benchmark_card(records)
+    except BenchmarkCardError as exc:
+        log.error("The benchmark card was not written: %s", exc)
+        return 1
+    written = write_benchmark_card(card, args.output)
+    log.info("Wrote %s from %d records", written, len(records.files))
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
