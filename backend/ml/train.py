@@ -119,6 +119,19 @@ class FitRecord:
 
 
 @dataclass(frozen=True)
+class OperatingModel:
+    """A model fitted on a training fold, with its operating threshold chosen on a val fold.
+
+    Nothing about any later fold went into it.
+    """
+
+    tuning: TuningResult
+    model: xgb.XGBClassifier
+    fit: FitRecord
+    threshold: ThresholdRecord
+
+
+@dataclass(frozen=True)
 class TrainingOutcome:
     """What one split → tune → fit → threshold → evaluate pass produced.
 
@@ -363,50 +376,21 @@ def train_and_evaluate(
             len(ds.feature_names),
         )
 
-    # ---- Tune -----------------------------------------------------------
-    tuning = tune_hyperparameters(
+    # ---- Tune, fit, and choose the threshold -----------------------------
+    selected = fit_operating_model(
         X_train,
         y_train,
+        X_val,
+        y_val,
         n_iter=n_iter,
-        n_splits=cv_splits,
-        random_state=RANDOM_STATE,
+        cv_splits=cv_splits,
+        target_fpr=target_fpr,
     )
-
-    # ---- Final fit ------------------------------------------------------
-    model = _final_fit(X_train, y_train, X_val, y_val, tuning.best_params)
-    fitted_with = model.get_params()
-    fit = FitRecord(
-        random_state=RANDOM_STATE,
-        tuning_iterations=n_iter,
-        tuning_cv_folds=cv_splits,
-        scale_pos_weight=float(fitted_with["scale_pos_weight"]),
-        early_stopping_rounds=int(fitted_with["early_stopping_rounds"]),
-        best_iteration=int(model.best_iteration),
-    )
-
-    # ---- Threshold selection on val -------------------------------------
-    val_scores = model.predict_proba(X_val)[:, 1]
-    threshold_value = find_threshold_at_fpr(y_val, val_scores, target_fpr)
-    fallback_used = not np.isfinite(threshold_value)
-    if fallback_used:
-        log.warning(
-            "No threshold satisfies target FPR ≤ %.4f on val; falling back to %.2f",
-            target_fpr,
-            FALLBACK_THRESHOLD,
-        )
-        threshold_value = FALLBACK_THRESHOLD
-    realised_val_fpr = float(
-        ((val_scores >= threshold_value) & (y_val == 0)).sum() / max((y_val == 0).sum(), 1)
-    )
-    log.info(
-        "Operating threshold = %.4f (target FPR %.4f, realised on val %.4f)",
-        threshold_value,
-        target_fpr,
-        realised_val_fpr,
-    )
+    tuning = selected.tuning
+    threshold_value = selected.threshold.value
 
     # ---- Evaluate on test -----------------------------------------------
-    test_scores = model.predict_proba(X_test)[:, 1]
+    test_scores = selected.model.predict_proba(X_test)[:, 1]
     evaluation = evaluate_test_fold(
         train_labels=y_train,
         val_labels=y_val,
@@ -455,6 +439,74 @@ def train_and_evaluate(
         splits=splits,
         live_features=live,
         tuning=tuning,
+        model=selected.model,
+        fit=selected.fit,
+        threshold=selected.threshold,
+        test_scores=test_scores,
+        metrics=metrics,
+    )
+
+
+def fit_operating_model(
+    X_train: np.ndarray,
+    y_train: np.ndarray,
+    X_val: np.ndarray,
+    y_val: np.ndarray,
+    *,
+    n_iter: int,
+    cv_splits: int,
+    target_fpr: float,
+) -> OperatingModel:
+    """Tune on train, refit with early stopping against val, and choose the threshold on val.
+
+    The procedure every model in the benchmark is produced by, whatever its
+    folds. It is given the training and val folds only, so no later row can
+    reach a hyperparameter, the early-stopping round or the threshold.
+    """
+    # ---- Tune -----------------------------------------------------------
+    tuning = tune_hyperparameters(
+        X_train,
+        y_train,
+        n_iter=n_iter,
+        n_splits=cv_splits,
+        random_state=RANDOM_STATE,
+    )
+
+    # ---- Final fit ------------------------------------------------------
+    model = _final_fit(X_train, y_train, X_val, y_val, tuning.best_params)
+    fitted_with = model.get_params()
+    fit = FitRecord(
+        random_state=RANDOM_STATE,
+        tuning_iterations=n_iter,
+        tuning_cv_folds=cv_splits,
+        scale_pos_weight=float(fitted_with["scale_pos_weight"]),
+        early_stopping_rounds=int(fitted_with["early_stopping_rounds"]),
+        best_iteration=int(model.best_iteration),
+    )
+
+    # ---- Threshold selection on val -------------------------------------
+    val_scores = model.predict_proba(X_val)[:, 1]
+    threshold_value = find_threshold_at_fpr(y_val, val_scores, target_fpr)
+    fallback_used = not np.isfinite(threshold_value)
+    if fallback_used:
+        log.warning(
+            "No threshold satisfies target FPR ≤ %.4f on val; falling back to %.2f",
+            target_fpr,
+            FALLBACK_THRESHOLD,
+        )
+        threshold_value = FALLBACK_THRESHOLD
+    realised_val_fpr = float(
+        ((val_scores >= threshold_value) & (y_val == 0)).sum() / max((y_val == 0).sum(), 1)
+    )
+    log.info(
+        "Operating threshold = %.4f (target FPR %.4f, realised on val %.4f)",
+        threshold_value,
+        target_fpr,
+        realised_val_fpr,
+    )
+
+    return OperatingModel(
+        tuning=tuning,
         model=model,
         fit=fit,
         threshold=ThresholdRecord(
@@ -463,8 +515,6 @@ def train_and_evaluate(
             realised_fpr_on_val=realised_val_fpr,
             fallback_used=fallback_used,
         ),
-        test_scores=test_scores,
-        metrics=metrics,
     )
 
 
