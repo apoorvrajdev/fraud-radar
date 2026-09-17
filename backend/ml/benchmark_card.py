@@ -27,7 +27,7 @@ from typing import Any
 from app.fraud.feature_spec import FEATURESETS
 from ml.datasets.base import DatasetContractError, DatasetProvenance
 from ml.paths import InvalidRunNameError, validate_run_name
-from ml.run_card import _number, _or_dash, _table
+from ml.run_card import _ACCEPTED_LIMITATIONS, _number, _or_dash, _table
 from ml.runs import RunMetadata
 
 # The benchmark's runs (decision 14), and the drift experiment's own directory,
@@ -281,6 +281,9 @@ def build_benchmark_card(records: BenchmarkRecords) -> str:
         _importance_section(records),
         _drift_section(records),
         _rules_audit_section(records),
+        _quality_section(records),
+        _provenance_section(records),
+        _limitations_section(records),
     ]
     return "\n\n".join(sections) + "\n"
 
@@ -838,6 +841,162 @@ def _rules_audit_section(records: BenchmarkRecords) -> str:
     )
 
 
+def _quality_section(records: BenchmarkRecords) -> str:
+    sparkov = [records.dev, records.full]
+    loads, fraud = [], []
+    for run in sparkov:
+        report = run.quality
+        if report is None:  # pragma: no cover - the Sparkov runs are loaded with their reports
+            raise BenchmarkCardError(f"Run {run.name!r} was read without its quality report.")
+        cards = _part(report, "fraud_distribution.cards", report.get("fraud_distribution", "cards"))
+        loads.append(
+            (
+                f"`{run.name}`",
+                _or_dash(report.get("rows", "raw")),
+                _or_dash(report.get("rows", "kept")),
+                _or_dash(report.get("rows", "excluded")),
+                _or_dash(report.get("entities", "customers")),
+                _or_dash(report.get("entities", "merchants")),
+                _or_dash(report.get("label", "fraud_count")),
+            )
+        )
+        folds = {
+            str(fold["name"]): fold
+            for fold in report.get("fraud_distribution", "chronological_split", "folds")
+        }
+        boundaries = report.get("fraud_distribution", "chronological_split", "boundaries")
+        fraud.append(
+            (
+                f"`{run.name}`",
+                _or_dash(cards.get("with_fraud")),
+                _count(
+                    _part(
+                        report,
+                        "fraud_distribution.cards.frauds_per_card_with_fraud",
+                        cards.get("frauds_per_card_with_fraud"),
+                    ).get("p50")
+                ),
+                *(_or_dash(folds[name]["cards_with_fraud"]) for name in ("train", "val", "test")),
+                "; ".join(
+                    f"{'/'.join(boundary['between'])}: "
+                    f"{_or_dash(boundary['cards_with_fraud_on_both_sides'])}"
+                    for boundary in boundaries
+                ),
+            )
+        )
+    return "\n".join(
+        [
+            "## 8. Data quality — Sparkov runs",
+            "",
+            "Each Sparkov run's quality report, written from its own load of the source files.",
+            "",
+            _table(
+                (
+                    "Run",
+                    "Rows read",
+                    "Rows kept",
+                    "Rows excluded",
+                    "Cards",
+                    "Merchants",
+                    "Frauds kept",
+                ),
+                loads,
+            ),
+            "",
+            "**How fraud is spread.** A card's frauds decide the effective sample size behind a "
+            "fold's result, and fraud on both sides of a fold boundary belongs to one card's "
+            "history.",
+            "",
+            _table(
+                (
+                    "Run",
+                    "Cards with fraud",
+                    "Median frauds per card with fraud",
+                    "Fraud cards, train",
+                    "Fraud cards, val",
+                    "Fraud cards, test",
+                    "Cards with fraud on both sides of a boundary",
+                ),
+                fraud,
+            ),
+        ]
+    )
+
+
+def _provenance_section(records: BenchmarkRecords) -> str:
+    runs = [
+        (
+            f"`{run.name}`",
+            f"`{run.record.code_version}`" if run.record.code_version else "not recorded",
+            f"`{run.record.featureset_version}`",
+            f"`{run.record.dataset.name}` `{run.record.dataset.version}`",
+            _subsample(run),
+            ", ".join(
+                f"{name} {version}" for name, version in sorted(run.record.library_versions.items())
+            ),
+        )
+        for run in _runs(records)
+    ]
+    datasets = []
+    for run in (records.synthetic, records.full):
+        dataset = run.record.dataset
+        files = ", ".join(f"`{name}` `{digest}`" for name, digest in sorted(dataset.files.items()))
+        datasets.append(
+            (
+                f"`{dataset.name}` `{dataset.version}`",
+                dataset.license,
+                dataset.source_url or "in this repository",
+                _or_dash(dataset.row_count),
+                _or_dash(dataset.fraud_count),
+                files,
+            )
+        )
+    return "\n".join(
+        [
+            "## 9. Provenance",
+            "",
+            _table(
+                ("Run", "Code", "Featureset", "Dataset", "Subsample", "Libraries"),
+                runs,
+            ),
+            "",
+            "**Source data.** Raw data is never committed, so these digests are the durable link "
+            "between a result and the bytes it was computed from.",
+            "",
+            _table(
+                ("Dataset", "Licence", "Source", "Rows", "Frauds", "Files (SHA-256)"),
+                datasets,
+            ),
+            "",
+            f"`{records.full.record.dataset.name}`: {records.full.record.dataset.notes}",
+        ]
+    )
+
+
+def _limitations_section(records: BenchmarkRecords) -> str:
+    limitations = [
+        *_ACCEPTED_LIMITATIONS,
+        "Label delay, as stated in section 2.",
+        "Every number on this card was read from a record; what the numbers mean is written in "
+        f"[the decision record]({METHODOLOGY_LINK}), not here.",
+    ]
+    return "\n".join(
+        ["## 10. Accepted limitations", "", *(f"- {limitation}" for limitation in limitations)]
+    )
+
+
+def _subsample(run: RecordedBenchmarkRun) -> str:
+    subsample = run.record.dataset.subsample
+    if subsample is None:
+        return "none"
+    if subsample.strategy == "none":
+        return f"none (seed {subsample.seed}, {_or_dash(subsample.selected_entities)} entities)"
+    return (
+        f"{subsample.strategy}, seed {subsample.seed}, "
+        f"{_or_dash(subsample.selected_entities)} of at most {_or_dash(subsample.max_entities)}"
+    )
+
+
 def _require_test_rows(record: RecordFile, run: RecordedBenchmarkRun) -> None:
     """Refuse an analysis record measured on another number of rows than the run's test fold."""
     if record.get("n_test_samples") != run.fit.get("test_size"):
@@ -861,6 +1020,13 @@ def _part(record: RecordFile, label: str, payload: Any) -> RecordFile:
 
 def _runs(records: BenchmarkRecords) -> tuple[RecordedBenchmarkRun, ...]:
     return (records.synthetic, records.dev, records.full)
+
+
+def _count(value: Any) -> str:
+    """A recorded count, whether it was written as an integer or a whole float."""
+    if isinstance(value, float) and value.is_integer():
+        return f"{int(value):,}"
+    return _or_dash(value) if isinstance(value, int) else _number(value)
 
 
 def _names_or_none(names: Any) -> str:

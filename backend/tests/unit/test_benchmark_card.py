@@ -1409,3 +1409,84 @@ def test_a_rule_entry_missing_a_count_is_refused_by_its_position(runs_root: Path
 
     with pytest.raises(card.BenchmarkCardError, match=re.escape("rules[0] has no rows_fired")):
         build(runs_root)
+
+
+# ---------------------------------------------------------------------------
+# Rendering: data quality, provenance and limitations
+# ---------------------------------------------------------------------------
+
+QUALITY = "8. Data quality — Sparkov runs"
+PROVENANCE = "9. Provenance"
+LIMITATIONS = "10. Accepted limitations"
+
+
+@pytest.mark.parametrize("name", [DEV, FULL])
+def test_each_sparkov_load_is_read_from_its_quality_report(runs_root: Path, name: str) -> None:
+    report = quality_report(name)
+
+    cells = row(section(build(runs_root), QUALITY), f"`{name}`")
+
+    assert cells[1:7] == [
+        f"{report['rows']['raw']:,}",
+        f"{report['rows']['kept']:,}",
+        "0",
+        f"{report['entities']['customers']:,}",
+        f"{report['entities']['merchants']:,}",
+        f"{report['label']['fraud_count']:,}",
+    ]
+
+
+@pytest.mark.parametrize("name", [DEV, FULL])
+def test_fraud_concentration_is_read_from_the_quality_report(runs_root: Path, name: str) -> None:
+    distribution = quality_report(name)["fraud_distribution"]
+    folds = {fold["name"]: fold for fold in distribution["chronological_split"]["folds"]}
+
+    quality = section(build(runs_root), QUALITY)
+    cells = [line for line in quality.splitlines() if line.startswith(f"| `{name}` |")][1]
+
+    assert [cell.strip() for cell in cells.strip("|").split("|")][1:] == [
+        f"{distribution['cards']['with_fraud']:,}",
+        f"{int(distribution['cards']['frauds_per_card_with_fraud']['p50']):,}",
+        f"{folds['train']['cards_with_fraud']:,}",
+        f"{folds['val']['cards_with_fraud']:,}",
+        f"{folds['test']['cards_with_fraud']:,}",
+        "; ".join(
+            f"{'/'.join(boundary['between'])}: {boundary['cards_with_fraud_on_both_sides']}"
+            for boundary in distribution["chronological_split"]["boundaries"]
+        ),
+    ]
+
+
+def test_provenance_names_each_runs_code_featureset_dataset_and_libraries(runs_root: Path) -> None:
+    provenance_section = section(build(runs_root), PROVENANCE)
+
+    assert row(provenance_section, f"`{SYNTHETIC}`")[1:] == [
+        f"`{CODE}`",
+        "`v1`",
+        "`synthetic` `v1`",
+        "none",
+        "numpy 2.4.6, python 3.13.14, scikit-learn 1.8.0, xgboost 3.2.0",
+    ]
+    assert row(provenance_section, f"`{DEV}`")[4] == "cards, seed 42, 200 of at most 200"
+    assert row(provenance_section, f"`{FULL}`")[4] == "none (seed 42, 999 entities)"
+
+
+def test_the_source_files_are_listed_with_their_digests(runs_root: Path) -> None:
+    provenance_section = section(build(runs_root), PROVENANCE)
+
+    cells = row(provenance_section, "`sparkov` `kaggle-2020-08-05`")
+    assert cells[1:5] == ["CC0", "https://example.test/data", f"{values(FULL)['rows']:,}", "104"]
+    for name, digest in sorted(SPARKOV_FILES.items()):
+        assert f"`{name}` `{digest}`" in cells[5]
+    assert f"`sparkov`: {provenance(FULL).notes}" in provenance_section
+
+
+def test_the_limitations_are_the_ones_every_run_card_states(runs_root: Path) -> None:
+    from ml.run_card import _ACCEPTED_LIMITATIONS
+
+    limitations = section(build(runs_root), LIMITATIONS)
+
+    for limitation in _ACCEPTED_LIMITATIONS:
+        assert f"- {limitation}" in limitations
+    assert "Label delay, as stated in section 2." in limitations
+    assert "PHASE_5D_BENCHMARK_METHODOLOGY.md" in limitations
