@@ -2,7 +2,7 @@
 
 Fraud Radar trains and evaluates on datasets it does not own. This file records what each source is, under what terms it is used, and what of it ever enters this repository.
 
-**Status:** Sparkov retrieved and verified on 2026-09-17; its SHA-256 digests are not yet pinned in the manifest. Nothing else external has been downloaded. Licence rows below are what the source advertises publicly; each is confirmed at retrieval time (Phase 5B) and the confirmed wording, with its retrieval date, is written into the dataset's `DatasetProvenance.license` field and into every run that uses it.
+**Status:** Sparkov retrieved and verified on 2026-09-17; the SHA-256 digests of both files are pinned in `backend/ml/data/manifest.json`, so a load of any other bytes is refused. Nothing else external has been downloaded. Licence rows below are what the source advertises publicly; each is confirmed at retrieval time (Phase 5B) and the confirmed wording, with its retrieval date, is written into the dataset's `DatasetProvenance.license` field and into every run that uses it.
 
 ---
 

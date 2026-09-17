@@ -8,7 +8,7 @@
 
 Phase 5C stops at a cached feature matrix. Phase 5D turns it into numbers: a synthetic baseline, a model trained and evaluated on Sparkov, a cross-generator transfer measurement, a temporal drift experiment, and a rules audit.
 
-A benchmark's method has to be fixed before its test data is scored. Once a test fold has been seen, every later adjustment — another threshold rule, a different tuning budget, a dropped feature — is chosen with knowledge of the answer, and the number that comes out is no longer a held-out measurement. This record fixes the method first. Nothing in it has been run: no Sparkov data has been downloaded, no model trained, no metric produced.
+A benchmark's method has to be fixed before its test data is scored. Once a test fold has been seen, every later adjustment — another threshold rule, a different tuning budget, a dropped feature — is chosen with knowledge of the answer, and the number that comes out is no longer a held-out measurement. This record fixes the method first. When it was accepted, nothing in it had been run: no Sparkov data had been downloaded, no model trained, no metric produced. What acquisition later showed is recorded under [Observed at acquisition](#observed-at-acquisition-2026-09-17).
 
 A pre-implementation review of the code against [`PHASE_5_PLAN.md`](../PHASE_5_PLAN.md) found places where the plan cannot be followed as written:
 
@@ -215,7 +215,7 @@ These are unknown, not undecided. Each is recorded from the data when it arrives
 
 What acquisition could answer from the table above, computed from the retrieved bytes with the adapter's own reader, timestamp parser, exclusion gate and merchant identity. No feature matrix, fold or run exists yet; each run's quality report restates these from its own load.
 
-- **Files.** Both sizes equal the manifest's advertised bytes. SHA-256 digests were computed; pinning them in the manifest is a separate, separately authorised step (decision 1).
+- **Files.** Both sizes equal the manifest's advertised bytes. SHA-256 digests were computed, then pinned in the manifest as a separate, separately authorised step (decision 1).
 - **Rows and frauds.** `fraudTrain.csv`: 1,296,675 rows, 7,506 frauds. `fraudTest.csv`: 555,719 rows, 2,145 frauds. Together: 1,852,394 rows, 9,651 frauds.
 - **Coverage and where the files meet.** On the wall clock, train runs 2019-01-01 00:00:18 → 2020-06-21 12:13:37 and test 2020-06-21 12:14:25 → 2020-12-31 23:59:34. The files meet 48 seconds apart, with no overlap and no transaction number in both.
 - **Rows excluded.** None: 0 under every exclusion reason.

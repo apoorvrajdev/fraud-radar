@@ -393,7 +393,7 @@ def field_inventory() -> tuple[FieldNote, ...]:
 
     This inventory is the honest half of an adapter: it is the difference
     between "the model scored X on Sparkov" and "the model scored X on Sparkov
-    with four of its seventeen features held constant".
+    with five of its seventeen features held constant".
     """
     dropped_pii = ("first", "last", "gender", "street", "city", "zip", "job", "dob")
     notes: list[FieldNote] = [
