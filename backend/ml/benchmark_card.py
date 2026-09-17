@@ -279,6 +279,7 @@ def build_benchmark_card(records: BenchmarkRecords) -> str:
         _live_features_section(records),
         _calibration_section(records),
         _importance_section(records),
+        _drift_section(records),
     ]
     return "\n\n".join(sections) + "\n"
 
@@ -658,6 +659,111 @@ def _importance_section(records: BenchmarkRecords) -> str:
     )
 
 
+def _drift_section(records: BenchmarkRecords) -> str:
+    drift = records.drift
+    periods = [
+        (
+            name,
+            str(drift.get("periods", name, "start")),
+            str(drift.get("periods", name, "end")),
+            str(drift.get("periods", name, "interval")),
+            _or_dash(drift.get("periods", name, "rows")),
+            _or_dash(drift.get("periods", name, "fraud_count")),
+        )
+        for name in ("train", "val")
+    ]
+    months = [
+        _part(drift, f"months[{index}]", month) for index, month in enumerate(drift.get("months"))
+    ]
+    names = [str(month.get("name")) for month in months]
+    if names != sorted(set(names)):
+        raise BenchmarkCardError(f"{drift.source}: the months are not in calendar order.")
+    month_rows = [
+        (
+            f"`{month.get('name')}`",
+            str(month.get("interval")),
+            _or_dash(month.get("volume")),
+            _or_dash(month.get("fraud_count")),
+            _number(month.get("fraud_rate")),
+            _number(month.get("pr_auc")),
+            _number(month.get("recall")),
+            _number(month.get("precision")),
+            _number(month.get("realised_fpr")),
+        )
+        for month in months
+    ]
+    chosen = ", ".join(
+        f"`{key}={value}`"
+        for key, value in sorted(drift.get("tuning", "best_hyperparameters").items())
+    )
+    procedure = [
+        (
+            "Hyperparameter search",
+            f"{drift.get('tuning', 'iterations')} iterations over "
+            f"{drift.get('tuning', 'cv_folds')} folds of the train period, random state "
+            f"{drift.get('tuning', 'random_state')}",
+        ),
+        (
+            "Cross-validated PR-AUC",
+            f"{_number(drift.get('tuning', 'best_cv_pr_auc'))} — {drift.get('tuning', 'note')}",
+        ),
+        ("Chosen hyperparameters", chosen),
+        ("scale_pos_weight", _number(drift.get("fit", "scale_pos_weight"))),
+        (
+            "Early stopping",
+            f"after {drift.get('fit', 'early_stopping_rounds')} rounds without improvement on "
+            f"the {drift.get('fit', 'early_stopping_against')}; best round "
+            f"{drift.get('fit', 'best_iteration')}",
+        ),
+        (
+            "Operating threshold",
+            f"{_number(drift.get('threshold', 'value'))}, selected on the "
+            f"{drift.get('threshold', 'selected_on')} for a target FPR of "
+            f"{_number(drift.get('threshold', 'target_fpr'))}, realising "
+            f"{_number(drift.get('threshold', 'realised_fpr_on_val'))} there; fallback used: "
+            f"{_yes_no(drift.get('threshold', 'fallback_used'))}. "
+            f"{drift.get('threshold', 'note')}",
+        ),
+        ("Rows outside every period", _or_dash(drift.get("rows_outside_periods"))),
+    ]
+    stated = {run.metrics.get("context", "label_delay_note") for run in _runs(records)}
+    delay = str(drift.get("label_delay_note"))
+    delay_line = "As stated in section 2." if stated == {delay} else delay
+    return "\n".join(
+        [
+            "## 6. Temporal drift",
+            "",
+            f"A model of its own, run as `{drift.get('run_name')}` on the "
+            f"`{records.full.name}` dataset, is tuned and fitted on the train period, has its "
+            "threshold selected once on the val period, and scores each month after them once at "
+            f"that threshold. {drift.get('note')}",
+            "",
+            _table(("Period", "Start", "End", "Interval", "Rows", "Frauds"), periods),
+            "",
+            _table(("Setting", "Value"), procedure),
+            "",
+            _table(
+                (
+                    "Month",
+                    "Interval",
+                    "Rows",
+                    "Frauds",
+                    "Fraud rate",
+                    "PR-AUC",
+                    "Recall",
+                    "Precision",
+                    "Realised FPR",
+                ),
+                month_rows,
+            ),
+            "",
+            f"— marks a metric the month leaves undefined. {drift.get('undefined_metrics_note')}",
+            "",
+            f"**Label delay.** {delay_line}",
+        ]
+    )
+
+
 def _require_test_rows(record: RecordFile, run: RecordedBenchmarkRun) -> None:
     """Refuse an analysis record measured on another number of rows than the run's test fold."""
     if record.get("n_test_samples") != run.fit.get("test_size"):
@@ -670,6 +776,13 @@ def _require_test_rows(record: RecordFile, run: RecordedBenchmarkRun) -> None:
 # ---------------------------------------------------------------------------
 # Formatting
 # ---------------------------------------------------------------------------
+
+
+def _part(record: RecordFile, label: str, payload: Any) -> RecordFile:
+    """A nested object of `record`, read with the same refusals as the record itself."""
+    if not isinstance(payload, Mapping):
+        raise BenchmarkCardError(f"{record.source}: {label} is not an object.")
+    return RecordFile(source=f"{record.source} {label}", payload=payload, sha256=record.sha256)
 
 
 def _runs(records: BenchmarkRecords) -> tuple[RecordedBenchmarkRun, ...]:

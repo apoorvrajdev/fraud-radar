@@ -494,6 +494,7 @@ def drift_record() -> dict[str, Any]:
                 "name": "train",
                 "start": "2019-01-01T00:00:00+00:00",
                 "end": "2019-11-01T00:00:00+00:00",
+                "interval": "half-open: start <= timestamp < end",
                 "rows": 7001,
                 "fraud_count": 41,
             },
@@ -501,6 +502,7 @@ def drift_record() -> dict[str, Any]:
                 "name": "val",
                 "start": "2019-11-01T00:00:00+00:00",
                 "end": "2020-01-01T00:00:00+00:00",
+                "interval": "half-open: start <= timestamp < end",
                 "rows": 2001,
                 "fraud_count": 11,
             },
@@ -1212,3 +1214,106 @@ def test_feature_importance_in_different_units_is_refused(runs_root: Path) -> No
 
     with pytest.raises(card.BenchmarkCardError, match="use different units"):
         build(runs_root)
+
+
+# ---------------------------------------------------------------------------
+# Rendering: temporal drift
+# ---------------------------------------------------------------------------
+
+DRIFT = "6. Temporal drift"
+
+
+def test_the_drift_periods_are_read_from_the_drift_record(runs_root: Path) -> None:
+    periods = drift_record()["periods"]
+
+    drift = section(build(runs_root), DRIFT)
+
+    for name in ("train", "val"):
+        period = periods[name]
+        assert row(drift, name)[1:] == [
+            period["start"],
+            period["end"],
+            period["interval"],
+            f"{period['rows']:,}",
+            f"{period['fraud_count']:,}",
+        ]
+
+
+def test_the_drift_procedure_is_read_from_the_drift_record(runs_root: Path) -> None:
+    record = drift_record()
+    tuning, fit, threshold = record["tuning"], record["fit"], record["threshold"]
+
+    drift = section(build(runs_root), DRIFT)
+
+    assert row(drift, "Hyperparameter search")[1] == (
+        "25 iterations over 4 folds of the train period, random state 42"
+    )
+    assert row(drift, "Cross-validated PR-AUC")[1] == (
+        f"{f4(tuning['best_cv_pr_auc'])} — {tuning['note']}"
+    )
+    assert row(drift, "Chosen hyperparameters")[1] == "`max_depth=8`, `n_estimators=400`"
+    assert row(drift, "scale_pos_weight")[1] == f4(fit["scale_pos_weight"])
+    assert row(drift, "Early stopping")[1] == (
+        "after 50 rounds without improvement on the val period; best round 397"
+    )
+    assert row(drift, "Operating threshold")[1] == (
+        f"{f4(threshold['value'])}, selected on the val period for a target FPR of 0.0100, "
+        f"realising {f4(threshold['realised_fpr_on_val'])} there; fallback used: no. "
+        f"{threshold['note']}"
+    )
+    assert row(drift, "Rows outside every period")[1] == "0"
+    assert record["note"] in drift
+
+
+def test_every_drift_month_is_read_in_calendar_order(runs_root: Path) -> None:
+    months = drift_record()["months"]
+
+    drift = section(build(runs_root), DRIFT)
+
+    labels = [
+        line.split("|")[1].strip() for line in drift.splitlines() if line.startswith("| `2020")
+    ]
+    assert labels == [f"`{month['name']}`" for month in months]
+    march = months[2]
+    assert row(drift, "`2020-03`")[1:] == [
+        march["interval"],
+        f"{march['volume']:,}",
+        f"{march['fraud_count']:,}",
+        f4(march["fraud_rate"]),
+        f4(march["pr_auc"]),
+        f4(march["recall"]),
+        f4(march["precision"]),
+        f4(march["realised_fpr"]),
+    ]
+
+
+def test_a_month_that_leaves_metrics_undefined_shows_them_as_dashes(runs_root: Path) -> None:
+    december = row(section(build(runs_root), DRIFT), "`2020-12`")
+
+    realised_fpr = f4(drift_record()["months"][11]["realised_fpr"])
+    assert december[3:] == ["0", f4(0.0), "—", "—", "—", realised_fpr]
+    assert "fixture undefined-metrics note" in section(build(runs_root), DRIFT)
+
+
+def test_drift_months_out_of_calendar_order_are_refused(runs_root: Path) -> None:
+    edit_json(
+        runs_root / DRIFT_RECORD,
+        lambda payload: payload.update(months=list(reversed(payload["months"]))),
+    )
+
+    with pytest.raises(card.BenchmarkCardError, match="not in calendar order"):
+        build(runs_root)
+
+
+def test_a_drift_month_missing_a_metric_is_refused_by_its_position(runs_root: Path) -> None:
+    edit_json(runs_root / DRIFT_RECORD, lambda payload: payload["months"][4].pop("recall"))
+
+    with pytest.raises(card.BenchmarkCardError, match=re.escape("months[4] has no recall")):
+        build(runs_root)
+
+
+def test_the_drift_label_delay_note_is_not_repeated_when_it_matches(runs_root: Path) -> None:
+    text = build(runs_root)
+
+    assert "**Label delay.** As stated in section 2." in section(text, DRIFT)
+    assert text.count(LABEL_DELAY_NOTE) == 1
