@@ -26,7 +26,7 @@ from ml.data import (
     load_dataset_with_csv_labels,
     synthetic_provenance,
 )
-from ml.datasets.base import DatasetProvenance
+from ml.datasets.base import CanonicalDataset, DatasetProvenance
 from ml.datasets.registry import get_adapter
 from ml.features.cache import build_or_load
 from ml.paths import FEATURE_CACHE_DIR, RAW_DATA_DIR
@@ -111,7 +111,8 @@ class RunData:
     `provenance` is None only for a synthetic load that did not ask for it.
     `cache_fingerprint` and `cache_hit` describe the feature cache, which only
     registered datasets use. `countries` holds each row's transaction country,
-    in row order, when the load asked for it.
+    in row order, when the load asked for it. `canonical` is the canonical
+    dataset the adapter loaded for the matrix, when the load asked for it.
     """
 
     ds: LabelledDataset
@@ -119,6 +120,7 @@ class RunData:
     cache_fingerprint: str | None = None
     cache_hit: bool | None = None
     countries: tuple[str, ...] | None = None
+    canonical: CanonicalDataset | None = None
 
 
 def load_run_data(
@@ -126,19 +128,29 @@ def load_run_data(
     *,
     with_provenance: bool = True,
     with_countries: bool = False,
+    with_canonical: bool = False,
 ) -> RunData:
     """Load the matrix `request` describes.
 
     `with_provenance=False` skips the synthetic provenance record, which
     hashes the label CSV; a registered dataset's adapter always supplies one.
     `with_countries=True` also returns each row's transaction country, which
-    training never needs.
+    training never needs. `with_canonical=True` also returns the canonical
+    dataset itself, so a caller that needs the transaction objects does not
+    load the corpus a second time; the synthetic dataset has none.
     """
     if request.is_synthetic:
+        if with_canonical:
+            raise ValueError(
+                "The synthetic dataset is read from the operational database; it has no "
+                "canonical dataset to return."
+            )
         return _load_synthetic(
             request, with_provenance=with_provenance, with_countries=with_countries
         )
-    return _load_registered(request, with_countries=with_countries)
+    return _load_registered(
+        request, with_countries=with_countries, with_canonical=with_canonical
+    )
 
 
 def synthetic_countries(csv_path: Path) -> dict[str, str]:
@@ -185,7 +197,9 @@ def _load_synthetic(
     return RunData(ds=ds, provenance=provenance, countries=countries)
 
 
-def _load_registered(request: DataRequest, *, with_countries: bool) -> RunData:
+def _load_registered(
+    request: DataRequest, *, with_countries: bool, with_canonical: bool
+) -> RunData:
     adapter = get_adapter(request.dataset)
     # Adapters that guard against an accidental full-corpus load expose the
     # opt-in as an attribute. Set it only where it exists, as the feature-build
@@ -215,4 +229,5 @@ def _load_registered(request: DataRequest, *, with_countries: bool) -> RunData:
         cache_fingerprint=cache.fingerprint,
         cache_hit=cache_hit,
         countries=countries,
+        canonical=dataset if with_canonical else None,
     )

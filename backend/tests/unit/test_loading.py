@@ -197,6 +197,14 @@ def test_countries_are_not_read_unless_asked_for(
     assert data.countries is None
 
 
+def test_the_synthetic_dataset_has_no_canonical_dataset_to_return(
+    synthetic_loads: list[tuple[str | None, int | None]],
+) -> None:
+    with pytest.raises(ValueError, match="no canonical dataset"):
+        loading.load_run_data(loading.DataRequest(), with_provenance=False, with_canonical=True)
+    assert synthetic_loads == []
+
+
 def test_the_synthetic_dataset_refuses_another_featureset(
     synthetic_loads: list[tuple[str | None, int | None]],
 ) -> None:
@@ -264,6 +272,20 @@ def test_registered_countries_come_from_the_canonical_transactions(
     data = loading.load_run_data(loading.DataRequest(dataset="fixture"), with_countries=True)
 
     assert data.countries == ("CA", "US", "CA", "US", "CA", "US")
+
+
+def test_the_canonical_dataset_is_returned_only_when_asked_for(
+    adapter: tuple[_Adapter, list[dict[str, Any]]],
+) -> None:
+    fixture, _ = adapter
+
+    without = loading.load_run_data(loading.DataRequest(dataset="fixture"))
+    with_it = loading.load_run_data(loading.DataRequest(dataset="fixture"), with_canonical=True)
+
+    assert without.canonical is None
+    assert with_it.canonical is not None
+    assert [tx.id for tx in with_it.canonical.transactions] == [f"tx{i}" for i in range(5, -1, -1)]
+    assert len(fixture.loads) == 2, "each load reads the adapter exactly once"
 
 
 def test_the_full_corpus_opt_in_is_set_only_when_asked(
