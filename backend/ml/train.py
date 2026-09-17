@@ -31,11 +31,16 @@ A named run writes the artifacts plus `run.json` to
 `ml/artifacts/runs/<run-name>/`. Without a name, the synthetic model is written
 to `--artifact-dir` as before. Training never writes a benchmark model over the
 served artifacts; that is promotion's job.
+
+A run is trained once. A named run whose directory already holds a `run.json`
+is refused before anything is loaded, so a recorded run is never replaced. A
+directory holding only the quality report the adapter writes is not yet a run.
 """
 from __future__ import annotations
 
 import argparse
 import logging
+import sys
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -72,6 +77,7 @@ from ml.paths import (
 )
 from ml.reporting import LiveFeatures, live_features
 from ml.runs import (
+    RUN_METADATA_FILENAME,
     RunMetadata,
     current_git_commit,
     identify_test_fold,
@@ -100,6 +106,10 @@ SYNTHETIC_TARGETS: dict[str, float] = {
     "target_pr_auc": 0.75,
     "target_recall_at_1pct_fpr": 0.60,
 }
+
+
+class ExistingRunError(FileExistsError):
+    """A named run already holds a run record, so training into it would replace a recorded run."""
 
 
 @dataclass(frozen=True)
@@ -289,6 +299,23 @@ def _check_arguments(parser: argparse.ArgumentParser, args: argparse.Namespace) 
         parser.error(
             "--limit applies to the synthetic dataset only: truncating rows would cut "
             "entity histories short. Use --max-cards to subsample whole entities."
+        )
+
+
+def refuse_an_existing_run(run_name: str, *, runs_root: Path = RUNS_ROOT) -> None:
+    """Refuse a run name whose directory already holds a `run.json`.
+
+    A run's test fold is scored when the run is trained, and its record says
+    what that score was measured on. Training again under the same name would
+    replace both, so a recorded run is never trained into. Anything else in the
+    directory, such as a quality report written there first, does not make it
+    a run.
+    """
+    record = run_dir(run_name, runs_root=runs_root) / RUN_METADATA_FILENAME
+    if record.exists():
+        raise ExistingRunError(
+            f"Run {run_name!r} already holds {RUN_METADATA_FILENAME} at {record}. Training into "
+            "it would replace a recorded run; use a new run name."
         )
 
 
@@ -564,12 +591,15 @@ def write_run(
 ) -> Path:
     """Write a run's artifacts and its `run.json` into its own run directory.
 
-    The run record is assembled before anything is written, so an invalid
-    name, provenance or fold period refuses the run instead of leaving a
-    partial directory behind. Its seed comes from the dataset's subsample
-    record; the model's random state is written with the fit. The test fold is
-    identified by its transaction ids in fold order, the order it was scored in.
+    A directory that already holds a run record is refused before anything is
+    written, even if it appeared after training started. The run record is
+    assembled before anything is written, so an invalid name, provenance or
+    fold period refuses the run instead of leaving a partial directory behind.
+    Its seed comes from the dataset's subsample record; the model's random
+    state is written with the fit. The test fold is identified by its
+    transaction ids in fold order, the order it was scored in.
     """
+    refuse_an_existing_run(run_name, runs_root=runs_root)
     record = RunMetadata(
         run_name=run_name,
         dataset=dataset,
@@ -643,6 +673,13 @@ def main(argv: list[str] | None = None) -> None:
         format="%(asctime)s  %(levelname)s  %(name)s  %(message)s",
     )
     args = parse_args(argv)
+    if args.run_name is not None:
+        # Before anything is loaded, extracted, tuned or scored.
+        try:
+            refuse_an_existing_run(args.run_name, runs_root=RUNS_ROOT)
+        except ExistingRunError as exc:
+            log.error("Run %s was not trained: %s", args.run_name, exc)
+            sys.exit(1)
     log.info("Fraud Radar training run started — random_state=%d", RANDOM_STATE)
 
     # ---- Load -----------------------------------------------------------

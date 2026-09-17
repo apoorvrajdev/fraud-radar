@@ -25,7 +25,8 @@ import pytest
 
 from app.fraud.feature_spec import FEATURESETS
 from ml import loading, train
-from ml.data import LabelledDataset
+from ml.data import LabelledDataset, synthetic_provenance
+from ml.datasets.quality import QUALITY_REPORT_FILENAME
 from ml.datasets.sparkov import transaction_id_for
 from ml.features.cache import load_feature_cache
 from ml.reporting import LABEL_DELAY_NOTE
@@ -508,3 +509,119 @@ def test_misleading_combinations_are_refused_before_any_work(
     assert loads == []
     assert tuner_calls == []
     assert list(workspace.iterdir()) == []
+
+
+# ---------------------------------------------------------------------------
+# A recorded run — never trained into again
+# ---------------------------------------------------------------------------
+
+
+def _snapshot(directory: Path) -> dict[str, bytes]:
+    return {path.name: path.read_bytes() for path in sorted(directory.iterdir())}
+
+
+def test_a_recorded_benchmark_run_is_refused_before_anything_is_loaded(
+    workspace: Path,
+    sparkov_root: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    tuner_calls: list[dict[str, Any]],
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    run = _train_sparkov(workspace, sparkov_root)
+    recorded = _snapshot(run)
+    cached = _snapshot(workspace / "cache")
+    searches = len(tuner_calls)
+    loads: list[str] = []
+    monkeypatch.setattr(
+        train, "load_run_data", lambda request, **_: loads.append(request.dataset)
+    )
+
+    with pytest.raises(SystemExit) as refused:
+        _train_sparkov(workspace, sparkov_root)
+
+    assert refused.value.code == 1
+    assert "already holds run.json" in caplog.text
+    assert loads == [], "the dataset was loaded, so features could have been built"
+    assert len(tuner_calls) == searches
+    assert _snapshot(run) == recorded
+    assert _snapshot(workspace / "cache") == cached
+
+
+def test_a_recorded_synthetic_run_is_refused_before_anything_is_loaded(
+    workspace: Path, monkeypatch: pytest.MonkeyPatch, tuner_calls: list[dict[str, Any]]
+) -> None:
+    run = workspace / "runs" / "synthetic-fixture"
+    run.mkdir(parents=True)
+    (run / RUN_METADATA_FILENAME).write_text('{"recorded": true}\n', encoding="utf-8")
+    (run / "metrics.json").write_text('{"test_pr_auc": 0.5}\n', encoding="utf-8")
+    recorded = _snapshot(run)
+    loads: list[str] = []
+    monkeypatch.setattr(
+        train, "load_run_data", lambda request, **_: loads.append(request.dataset)
+    )
+
+    with pytest.raises(SystemExit) as refused:
+        train.main(["--run-name", "synthetic-fixture", "--n-iter", "3"])
+
+    assert refused.value.code == 1
+    assert loads == []
+    assert tuner_calls == []
+    assert _snapshot(run) == recorded
+
+
+def test_a_directory_holding_only_a_quality_report_is_trained_into(
+    workspace: Path, sparkov_root: Path, tuner_calls: list[dict[str, Any]]
+) -> None:
+    run = workspace / "runs" / "sparkov-fixture"
+    run.mkdir(parents=True)
+    report = run / QUALITY_REPORT_FILENAME
+    report.write_text('{"written": "before training"}\n', encoding="utf-8")
+    written = report.read_bytes()
+
+    _train_sparkov(workspace, sparkov_root)
+
+    assert sorted(path.name for path in run.iterdir()) == sorted(
+        [*RUN_FILES, QUALITY_REPORT_FILENAME]
+    )
+    assert report.read_bytes() == written
+
+
+def test_writing_a_run_refuses_a_run_record_that_appeared_during_training(
+    tmp_path: Path, tuner_calls: list[dict[str, Any]]
+) -> None:
+    """The late check: a second process finishing under the same name must not replace the first."""
+    ds = synthetic_matrix()
+    outcome = train.train_and_evaluate(ds, n_iter=1, cv_splits=2, target_fpr=0.05)
+    labels = tmp_path / "synthetic_transactions.csv"
+    labels.write_text("id,is_fraud\ntx0,False\n", encoding="utf-8")
+    run = tmp_path / "runs" / "synthetic-fixture"
+    run.mkdir(parents=True)
+    (run / RUN_METADATA_FILENAME).write_text('{"recorded": true}\n', encoding="utf-8")
+    recorded = _snapshot(run)
+
+    with pytest.raises(train.ExistingRunError, match=r"already holds run\.json"):
+        train.write_run(
+            "synthetic-fixture",
+            ds,
+            outcome,
+            dataset=synthetic_provenance(ds, csv_path=labels),
+            featureset="v1",
+            metrics=outcome.metrics,
+            runs_root=tmp_path / "runs",
+        )
+
+    assert _snapshot(run) == recorded
+
+
+def test_the_unnamed_synthetic_default_still_replaces_the_artifacts_it_finds(
+    workspace: Path, synthetic_loader: LabelledDataset, tuner_calls: list[dict[str, Any]]
+) -> None:
+    served = workspace / "served"
+    served.mkdir()
+    (served / "metrics.json").write_text('{"stale": true}\n', encoding="utf-8")
+
+    train.main(["--artifact-dir", str(served), "--n-iter", "3", "--cv-splits", "2"])
+
+    assert sorted(path.name for path in served.iterdir()) == ARTIFACT_FILES
+    assert "stale" not in _read(served, "metrics.json")
+    assert not (workspace / "runs").exists()
