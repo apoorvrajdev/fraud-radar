@@ -1545,3 +1545,21 @@ def test_the_cli_writes_only_the_card(runs_root: Path, tmp_path: Path) -> None:
     assert after == before
     written = [path for path in tmp_path.rglob("*") if path.is_file() and path not in before]
     assert written == [output]
+
+
+# ---------------------------------------------------------------------------
+# The committed card
+# ---------------------------------------------------------------------------
+
+
+def test_the_committed_card_is_what_the_committed_records_produce() -> None:
+    """The card is generated, never hand-edited, so it must match its own records.
+
+    Read as text, so the comparison holds whether the checkout carries LF or
+    CRLF line endings.
+    """
+    records = card.load_benchmark(card.RUNS_ROOT)
+
+    committed = card.BENCHMARK_CARD_PATH.read_text(encoding="utf-8")
+
+    assert committed == card.build_benchmark_card(records)
