@@ -1,6 +1,6 @@
 # Phase 5D — Benchmark Methodology
 
-**Status:** accepted · **Date:** 2026-09-16 · **Amended:** 2026-09-17 (decision 17; observed at acquisition) · **Milestone:** Phase 5D / M4 · **Scope:** `backend/ml/train.py`, `backend/ml/analyze.py`, `backend/ml/promote.py`, `backend/ml/experiments/`
+**Status:** accepted · **Date:** 2026-09-16 · **Amended:** 2026-09-17 (decision 17; observed at acquisition; observed at execution) · **Milestone:** Phase 5D / M4 · **Scope:** `backend/ml/train.py`, `backend/ml/analyze.py`, `backend/ml/promote.py`, `backend/ml/experiments/`
 
 ---
 
@@ -251,6 +251,28 @@ The quality report records the distribution under `extra.unix_time_offset_distri
 - `listing_limit` (50), `truncated`, `unlisted_offsets` and `unlisted_rows` — at most 50 offsets are listed, so the report stays bounded, and a truncated listing states exactly what it left out.
 
 The field records observations and makes no judgement. The existing `unix_time_mismatches`, `unix_time_modal_offset_seconds`, `unix_time_rows_at_modal_offset` and `unix_time_offset_is_uniform` fields are kept for compatibility. `unix_time_offset_is_uniform` is true exactly when `distinct_offsets` is 1: any second offset makes it false, even one second from the first, and so does having no comparable rows. It summarises the distribution; the first acquisition is still inspected from the distribution itself. If the listing is truncated on the real corpus, that is reported before any offset is interpreted.
+
+### Observed at execution (2026-09-17)
+
+What execution answered from the table above, after the runs, the transfer, the drift experiment and the rules audit had all been produced. Results themselves are not restated here: every value lives in the run records and is laid out in the generated [benchmark card](../../backend/ml/BENCHMARK_CARD.md), which is written from those records and never by hand.
+
+- **Whether exactly the five expected features are constant.** Yes. Each Sparkov run records exactly the five features decision 6 expected as constant, in its training fold and over its whole matrix (`training_metadata.json`), and each of them has a mean absolute SHAP value of zero on the test fold (`feature_importance.json`). Twelve of the seventeen are live, counted from the matrices rather than asserted.
+- **Fold boundaries and fraud counts per fold.** Recorded per run: fold periods in `run.json`, fold sizes in `training_metadata.json`, fold fraud counts in the `context` of `metrics.json`. On the full corpus the 70% row cut falls where the published files meet, so the train fold is exactly `fraudTrain.csv` and the val and test folds divide `fraudTest.csv`; no fold boundary lands on a shared instant.
+- **Whether the 200-card test fold holds enough positives.** Its frauds sit on far fewer cards than the full run's do (`quality_report.json`, `cards_with_fraud` per fold), so the development result rests on correspondingly fewer independent fraud episodes. No threshold for "enough" was fixed before the runs, so this is reported rather than judged, and the development row is labelled as the development run wherever it appears.
+- **How fraud is distributed across cards and over time.** Nearly every card in the corpus carries fraud, with a median of about ten frauds each, so a fold's fraud count rests on far fewer independent episodes than rows. A few cards carry fraud on both sides of a fold boundary. The monthly series in each `quality_report.json` shows volume roughly doubling each December while the fraud rate falls; December 2020 is the corpus's lowest-rate month on its highest volume.
+- **2020 months with too few positives for defined drift metrics.** None. Every month of the drift series holds both frauds and legitimate rows, so no monthly metric is null and the series is complete.
+- **Which of the five evaluable rules fire on Sparkov.** `velocity_burst`, `amount_ceiling` and `off_hours_high_value` fire; `geo_velocity_impossible` and `high_risk_country` are evaluable but cannot fire on a corpus where every row is US, and fired on nothing; `dormant_account_high_value` is reported as not evaluable, as decision 4 requires. Firings, precisions and fraud recalls are in `rules_audit.json`.
+- **Memory and runtime of the full-corpus load, feature build and tuning.** Every step ran on one 16 GB machine without exhausting memory, so decision 16 was never triggered and no part of the procedure was reduced. Measured runtimes: the full run's analysis 357 s, the transfer 234 s, the drift experiment 2,413 s including its own hyperparameter search, and the rules audit 1,444 s. The quality-report, feature-build and training commands were run interactively and their runtimes were not recorded.
+- **Whether the `synthetic_v1` re-run reproduces the committed synthetic metrics.** It does, exactly: the run's `metrics.json` and `threshold.json` match the served `backend/ml/artifacts/` records value for value, so the baseline row and the transfer source describe the same model the API serves.
+
+### Execution record
+
+- Every run was produced at commit `b48cfa6`, with the same library versions, and the full run used the development run's procedure unchanged (decision 16).
+- No deviation arose under decision 15: nothing in the method changed between scoring the development test fold and scoring the full one.
+- The drift experiment wrote to a directory of its own, named `sparkov_v1_drift` when it was run. Decision 14 named the three benchmark runs only, so this name is recorded here rather than frozen there.
+- The optional development-run transfer and development-run rules audit were not run. Neither is required: decision 10 permits a development audit to validate tooling, and the transfer tooling was already proven on fixtures.
+- Exploratory analyses made while reviewing the results — cluster bootstrap intervals over cards, a paired comparison of the two Sparkov models on the rows their test folds share, and feature-distribution comparisons — are not benchmark results, were designed after the test folds had been scored, and were not written into any artifact (decision 11).
+- The run records, experiment results and the generated card are committed. Model files, plots, raw data, feature caches and the synthetic database are not, per [`DATA_LICENSES.md`](../DATA_LICENSES.md); the digests in each `run.json` and `training_metadata.json` remain the link to them.
 
 ---
 
