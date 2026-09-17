@@ -15,11 +15,11 @@
       "files": {
         "fraudTrain.csv": {
           "bytes": 351238196,
-          "sha256": null
+          "sha256": "fd7139200dbfcbed0b6742bbe05a4f1abce532c4fef20918228a651647a3e75d"
         },
         "fraudTest.csv": {
           "bytes": 150354339,
-          "sha256": null
+          "sha256": "12d553ab19440c752d2531ee1af44bb64f12cc3d3839f1649f19e81c230545f0"
         }
       }
     }
