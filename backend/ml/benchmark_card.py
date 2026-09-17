@@ -25,9 +25,20 @@ from pathlib import Path
 from typing import Any
 
 from app.fraud.feature_spec import FEATURESETS
-from ml.datasets.base import DatasetContractError
+from ml.datasets.base import DatasetContractError, DatasetProvenance
 from ml.paths import InvalidRunNameError, validate_run_name
 from ml.runs import RunMetadata
+
+# The benchmark's runs (decision 14), and the drift experiment's own directory,
+# named when the drift experiment was run.
+SYNTHETIC_RUN = "synthetic_v1"
+DEV_RUN = "sparkov_v1_200cards"
+FULL_RUN = "sparkov_v1_full"
+DRIFT_RUN = "sparkov_v1_drift"
+
+TRANSFER_FILE = "transfer_metrics.json"
+RULES_AUDIT_FILE = "rules_audit.json"
+DRIFT_FILE = "drift_metrics.json"
 
 RUN_RECORD_FILES: tuple[str, ...] = (
     "run.json",
@@ -101,6 +112,30 @@ class RecordedBenchmarkRun:
             self.importance,
         )
         return files if self.quality is None else (*files, self.quality)
+
+
+@dataclass(frozen=True)
+class BenchmarkRecords:
+    """Every record the card is built from, checked to describe one benchmark."""
+
+    synthetic: RecordedBenchmarkRun
+    dev: RecordedBenchmarkRun
+    full: RecordedBenchmarkRun
+    transfer: RecordFile
+    rules_audit: RecordFile
+    drift: RecordFile
+
+    @property
+    def files(self) -> tuple[RecordFile, ...]:
+        """Every record read, in a fixed order."""
+        return (
+            *self.synthetic.files,
+            *self.dev.files,
+            *self.full.files,
+            self.transfer,
+            self.rules_audit,
+            self.drift,
+        )
 
 
 def normalised_sha256(path: Path) -> str:
@@ -187,6 +222,153 @@ def load_recorded_run(
             read_record(runs_root, f"{name}/{QUALITY_REPORT_FILE}") if with_quality_report else None
         ),
     )
+
+
+def load_benchmark(runs_root: Path) -> BenchmarkRecords:
+    """Read the benchmark's runs and experiment records, refusing any that do not belong.
+
+    The two Sparkov runs must be the development subsample and the full
+    corpus of the same source files. The transfer must measure the synthetic
+    run's own saved model and threshold on exactly the full run's test fold,
+    the rules audit must cover every row of the full run, and the drift
+    experiment must have run on the full run's dataset. Every verification
+    an experiment recorded must have passed.
+    """
+    synthetic = load_recorded_run(
+        runs_root, SYNTHETIC_RUN, dataset="synthetic", with_quality_report=False
+    )
+    dev = load_recorded_run(runs_root, DEV_RUN, dataset="sparkov", with_quality_report=True)
+    full = load_recorded_run(runs_root, FULL_RUN, dataset="sparkov", with_quality_report=True)
+    _check_development_and_full_runs(dev, full)
+
+    transfer = read_record(runs_root, f"{FULL_RUN}/{TRANSFER_FILE}")
+    _check_transfer(transfer, source=synthetic, target=full)
+    rules_audit = read_record(runs_root, f"{FULL_RUN}/{RULES_AUDIT_FILE}")
+    _check_rules_audit(rules_audit, full)
+    drift = read_record(runs_root, f"{DRIFT_RUN}/{DRIFT_FILE}")
+    _check_drift(drift, full)
+
+    return BenchmarkRecords(
+        synthetic=synthetic,
+        dev=dev,
+        full=full,
+        transfer=transfer,
+        rules_audit=rules_audit,
+        drift=drift,
+    )
+
+
+def _check_development_and_full_runs(dev: RecordedBenchmarkRun, full: RecordedBenchmarkRun) -> None:
+    dev_data, full_data = dev.record.dataset, full.record.dataset
+    if (dev_data.version, dict(dev_data.files)) != (full_data.version, dict(full_data.files)):
+        raise BenchmarkCardError(
+            f"{dev.run.source} and {full.run.source} record different source data; the "
+            "development run is a subsample of the full run's corpus."
+        )
+    if dev.record.featureset_version != full.record.featureset_version:
+        raise BenchmarkCardError(
+            f"{dev.run.source} and {full.run.source} record different featuresets."
+        )
+    if dev_data.subsample is None or dev_data.subsample.strategy != "cards":
+        raise BenchmarkCardError(f"{dev.run.source} does not record a card subsample.")
+    if full_data.subsample is not None and full_data.subsample.strategy != "none":
+        raise BenchmarkCardError(
+            f"{full.run.source} records a {full_data.subsample.strategy!r} subsample; the full "
+            "run covers the whole corpus."
+        )
+
+
+def _check_transfer(
+    transfer: RecordFile, *, source: RecordedBenchmarkRun, target: RecordedBenchmarkRun
+) -> None:
+    pairing = (transfer.get("source_run"), transfer.get("target_run"))
+    if pairing != (source.name, target.name):
+        raise BenchmarkCardError(
+            f"{transfer.source} measures {pairing[0]!r} on {pairing[1]!r}; the benchmark's "
+            f"transfer measures {source.name!r} on {target.name!r}."
+        )
+    featuresets = (transfer.get("source_featureset"), transfer.get("target_featureset"))
+    if featuresets != (source.record.featureset_version, target.record.featureset_version):
+        raise BenchmarkCardError(
+            f"{transfer.source} records featuresets {featuresets}, not those of its runs."
+        )
+    if transfer.get("source_model_sha256") != source.fit.get("model_sha256"):
+        raise BenchmarkCardError(
+            f"{transfer.source} scored with a model other than the one {source.fit.source} "
+            "records."
+        )
+    if transfer.get("source_threshold", "value") != source.threshold.get("value"):
+        raise BenchmarkCardError(
+            f"{transfer.source} applied a threshold other than the one {source.threshold.source} "
+            "records."
+        )
+    identity = target.record.test_fold_identity
+    scored = (
+        transfer.get("context", "target_test_transaction_count"),
+        transfer.get("context", "target_test_transaction_ids_sha256"),
+    )
+    if identity is None or scored != (identity.transaction_count, identity.transaction_ids_sha256):
+        raise BenchmarkCardError(
+            f"{transfer.source} did not score exactly the test fold {target.run.source} "
+            "identifies."
+        )
+    for side, run in (("source", source), ("target", target)):
+        if transfer.get("verification", side, "run") != run.name:
+            raise BenchmarkCardError(
+                f"{transfer.source} records the {side} verification of another run."
+            )
+        _require_verified(transfer, "verification", side)
+
+
+def _check_rules_audit(audit: RecordFile, full: RecordedBenchmarkRun) -> None:
+    if (audit.get("run"), audit.get("population", "run")) != (full.name, full.name):
+        raise BenchmarkCardError(f"{audit.source} audits another run, not {full.name!r}.")
+    if audit.get("population", "rows") != "all":
+        raise BenchmarkCardError(
+            f"{audit.source} audits the {audit.get('population', 'rows')!r} rows; the final "
+            "audit covers every row of the full corpus."
+        )
+    if audit.get("population", "row_count") != full.record.dataset.row_count:
+        raise BenchmarkCardError(
+            f"{audit.source} counts {audit.get('population', 'row_count')} rows, but "
+            f"{full.run.source} records {full.record.dataset.row_count}."
+        )
+    _require_verified(audit, "verification")
+
+
+def _check_drift(drift: RecordFile, full: RecordedBenchmarkRun) -> None:
+    if drift.get("run_name") != DRIFT_RUN:
+        raise BenchmarkCardError(
+            f"{drift.source} names run {drift.get('run_name')!r}, not {DRIFT_RUN!r}."
+        )
+    if drift.get("featureset_version") != full.record.featureset_version:
+        raise BenchmarkCardError(
+            f"{drift.source} records another featureset than {full.run.source}."
+        )
+    try:
+        dataset = DatasetProvenance.from_dict(drift.get("dataset"))
+    except (KeyError, TypeError, ValueError, DatasetContractError) as exc:
+        raise BenchmarkCardError(f"{drift.source} has no readable dataset record: {exc}") from exc
+    recorded = {k: v for k, v in dataset.to_dict().items() if k != "retrieved_at"}
+    expected = {k: v for k, v in full.record.dataset.to_dict().items() if k != "retrieved_at"}
+    if recorded != expected:
+        differing = sorted(k for k in expected if recorded.get(k) != expected[k])
+        raise BenchmarkCardError(
+            f"{drift.source} ran on another dataset than {full.run.source} "
+            f"(differs in {', '.join(differing)})."
+        )
+
+
+def _require_verified(record: RecordFile, *path: str) -> None:
+    flags = record.get(*path)
+    if not isinstance(flags, Mapping):
+        raise BenchmarkCardError(f"{record.source}: {'.'.join(path)} is not a set of flags.")
+    unverified = sorted(key for key, value in flags.items() if key != "run" and value is not True)
+    if unverified:
+        raise BenchmarkCardError(
+            f"{record.source}: {'.'.join(path)} does not record these checks as passed: "
+            f"{', '.join(unverified)}."
+        )
 
 
 def _reject_constant(value: str) -> float:

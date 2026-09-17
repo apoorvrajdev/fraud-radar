@@ -285,11 +285,267 @@ def quality_report(name: str) -> dict[str, Any]:
     }
 
 
+def fold_identity(name: str) -> FoldIdentity:
+    return FoldIdentity.of("test", [f"{name}-tx{i}" for i in range(values(name)["test"])])
+
+
+def transfer_record() -> dict[str, Any]:
+    """The transfer of the synthetic run's model onto the full run's test fold."""
+    source, target = values(SYNTHETIC), values(FULL)
+    identity = fold_identity(FULL)
+    confusion = {
+        "threshold": source["threshold"],
+        "precision": 0.0031,
+        "recall": 0.0622,
+        "f1": 0.0055,
+        "true_positives": 5,
+        "false_positives": 1900,
+        "true_negatives": 25000,
+        "false_negatives": 70,
+    }
+    return {
+        "transfer_metrics_version": "1",
+        "source_run": SYNTHETIC,
+        "target_run": FULL,
+        "method_note": "fixture method note",
+        "source_featureset": "v1",
+        "target_featureset": "v1",
+        "source_model_sha256": str(INDEX[SYNTHETIC]) * 64,
+        "source_threshold": {
+            "value": source["threshold"],
+            "selected_on": f"the val fold of source run {SYNTHETIC!r}",
+            "fpr_ceiling_on_source_val": 0.01,
+            "realised_fpr_on_source_val": source["val_fpr"],
+            "fallback_used": False,
+        },
+        "threshold_free": {
+            "pr_auc": 0.0444,
+            "roc_auc": 0.7444,
+            "recall_at_1pct_fpr": 0.0333,
+            "recall_at_5pct_fpr": 0.0555,
+            "threshold_source": {
+                "recall_at_1pct_fpr": "target_test_roc_curve",
+                "recall_at_5pct_fpr": "target_test_roc_curve",
+            },
+            "note": "fixture threshold-free note",
+        },
+        "at_source_threshold": {
+            **confusion,
+            "realised_fpr_on_target_test": 0.0707,
+            "threshold_source": "source_run_threshold",
+            "note": "fixture source-threshold note",
+        },
+        "context": {
+            "target_test_rows": target["test"],
+            "target_test_prevalence": 0.0077,
+            "target_test_fraud_count": target["test_frauds"],
+            "source_train_fraud_count": source["train_frauds"],
+            "source_val_fraud_count": source["val_frauds"],
+            "realised_fpr_on_target_test_at_source_threshold": 0.0707,
+            "source_threshold_fallback_used": False,
+            "label_delay_note": LABEL_DELAY_NOTE,
+            "target_test_transaction_count": identity.transaction_count,
+            "target_test_transaction_ids_sha256": identity.transaction_ids_sha256,
+        },
+        "features": {
+            "featureset_version": "v1",
+            "scored_columns": FEATURES,
+            "constant_in_source_training_fold": [],
+            "constant_in_target_test_fold": SPARKOV_CONSTANT,
+            "by_feature": [
+                {
+                    "feature": feature,
+                    "target_test_rows_outside_source_training_range": (
+                        target["test"] if feature == "customer_account_age_days" else 0
+                    ),
+                }
+                for feature in FEATURES
+            ],
+        },
+        "verification": {
+            side: {
+                "run": run,
+                "metrics_reproduced": True,
+                "model_digest_verified": True,
+                "test_fold_identity_verified": True,
+            }
+            for side, run in (("source", SYNTHETIC), ("target", FULL))
+        },
+    }
+
+
+RULES = (
+    ("velocity_burst", "HARD_BLOCK", 17, 3),
+    ("geo_velocity_impossible", "HARD_BLOCK", 0, 0),
+    ("amount_ceiling", "REVIEW", 19, 0),
+    ("high_risk_country", "REVIEW", 0, 0),
+    ("dormant_account_high_value", None, None, None),
+    ("off_hours_high_value", "REVIEW", 131, 29),
+)
+
+
+def rules_audit_record() -> dict[str, Any]:
+    """The final rules audit over every row of the full run."""
+    full = values(FULL)
+    frauds = full["train_frauds"] + full["val_frauds"] + full["test_frauds"]
+    rules: list[dict[str, Any]] = []
+    for name, severity, fired, on_fraud in RULES:
+        if severity is None:
+            rules.append(
+                {
+                    "rule": name,
+                    "evaluable": False,
+                    "reason": "not evaluable: no account-open timestamp",
+                }
+            )
+            continue
+        rules.append(
+            {
+                "rule": name,
+                "evaluable": True,
+                "severity": severity,
+                "rows_evaluated": full["rows"],
+                "rows_fired": fired,
+                "fired_on_fraud": on_fraud,
+                "precision": on_fraud / fired if fired else None,
+                "fraud_recall": on_fraud / frauds,
+            }
+        )
+    return {
+        "rules_audit_version": "1",
+        "run": FULL,
+        "population": {
+            "run": FULL,
+            "rows": "all",
+            "row_count": full["rows"],
+            "fraud_count": frauds,
+            "fraud_rate": frauds / full["rows"],
+            "first_timestamp": START.isoformat(),
+            "last_timestamp": (START + timedelta(days=100)).isoformat(),
+            "note": "fixture population note",
+        },
+        "context": {
+            "history_window_days": 180,
+            "definition": "fixture context definition",
+            "history_drawn_from": "every row of the run's dataset",
+        },
+        "rules": rules,
+        "rules_only_outcome": {
+            "rules_used": [name for name, severity, _, _ in RULES if severity is not None],
+            "rules_not_evaluable": ["dormant_account_high_value"],
+            "note": "Computed from the 5 evaluable rules of 6. Not evaluable: "
+            "dormant_account_high_value (not evaluable: no account-open timestamp).",
+            "decision_rule": "fixture decision rule",
+            "by_outcome": {
+                "DECLINE": {"rows": 17, "frauds": 3, "legitimate": 14},
+                "REVIEW": {"rows": 150, "frauds": 29, "legitimate": 121},
+                "APPROVE": {
+                    "rows": full["rows"] - 167,
+                    "frauds": frauds - 32,
+                    "legitimate": full["rows"] - 167 - (frauds - 32),
+                },
+            },
+        },
+        "verification": {
+            "metrics_reproduced": True,
+            "model_digest_verified": True,
+            "test_fold_identity_verified": True,
+        },
+    }
+
+
+def drift_record() -> dict[str, Any]:
+    """The drift experiment on the full corpus, with a final month that holds no fraud."""
+    months = []
+    for month in range(1, 13):
+        frauds = 0 if month == 12 else 30 + month
+        months.append(
+            {
+                "name": f"2020-{month:02d}",
+                "start": datetime(2020, month, 1, tzinfo=UTC).isoformat(),
+                "end": (
+                    datetime(2021, 1, 1, tzinfo=UTC)
+                    if month == 12
+                    else datetime(2020, month + 1, 1, tzinfo=UTC)
+                ).isoformat(),
+                "interval": "half-open: start <= timestamp < end",
+                "volume": 5000 + month,
+                "fraud_count": frauds,
+                "fraud_rate": frauds / (5000 + month),
+                "pr_auc": None if month == 12 else 0.8 + month * 0.0101,
+                "recall": None if month == 12 else 0.9 + month * 0.0011,
+                "precision": None if month == 12 else 0.3 + month * 0.0011,
+                "realised_fpr": 0.009 + month * 0.0001,
+                "true_positives": 0 if month == 12 else frauds - 1,
+                "false_positives": 0 if month == 12 else 40 + month,
+                "true_negatives": 5000 + month - frauds - (0 if month == 12 else 40 + month),
+                "false_negatives": 0 if month == 12 else 1,
+            }
+        )
+    return {
+        "drift_metrics_version": "1",
+        "run_name": "sparkov_v1_drift",
+        "note": "fixture drift note",
+        "dataset": provenance(FULL).to_dict(),
+        "featureset_version": "v1",
+        "periods": {
+            "train": {
+                "name": "train",
+                "start": "2019-01-01T00:00:00+00:00",
+                "end": "2019-11-01T00:00:00+00:00",
+                "rows": 7001,
+                "fraud_count": 41,
+            },
+            "val": {
+                "name": "val",
+                "start": "2019-11-01T00:00:00+00:00",
+                "end": "2020-01-01T00:00:00+00:00",
+                "rows": 2001,
+                "fraud_count": 11,
+            },
+        },
+        "rows_outside_periods": 0,
+        "tuning": {
+            "iterations": 25,
+            "cv_folds": 4,
+            "random_state": 42,
+            "best_hyperparameters": {"max_depth": 8, "n_estimators": 400},
+            "best_cv_pr_auc": 0.8999,
+            "note": "fixture tuning note",
+        },
+        "fit": {
+            "scale_pos_weight": 166.25,
+            "early_stopping_rounds": 50,
+            "best_iteration": 397,
+            "early_stopping_against": "val period",
+        },
+        "threshold": {
+            "value": 0.1382,
+            "target_fpr": 0.01,
+            "realised_fpr_on_val": 0.0093,
+            "fallback_used": False,
+            "selected_on": "val period",
+            "note": "fixture threshold note",
+        },
+        "months": months,
+        "undefined_metrics_note": "fixture undefined-metrics note",
+        "label_delay_note": LABEL_DELAY_NOTE,
+    }
+
+
+def write_benchmark(root: Path) -> None:
+    """Every record the benchmark card reads."""
+    for name in (SYNTHETIC, DEV, FULL):
+        write_run(root, name)
+    write_json(root / FULL / "transfer_metrics.json", transfer_record())
+    write_json(root / FULL / "rules_audit.json", rules_audit_record())
+    write_json(root / "sparkov_v1_drift" / "drift_metrics.json", drift_record())
+
+
 @pytest.fixture
 def runs_root(tmp_path: Path) -> Path:
     root = tmp_path / "runs"
-    for name in (SYNTHETIC, DEV, FULL):
-        write_run(root, name)
+    write_benchmark(root)
     return root
 
 
@@ -407,3 +663,192 @@ def test_a_value_a_record_does_not_hold_is_refused_with_its_path(runs_root: Path
     expected = re.escape(f"{FULL}/metrics.json has no context.missing")
     with pytest.raises(card.BenchmarkCardError, match=expected):
         run.metrics.get("context", "missing")
+
+
+# ---------------------------------------------------------------------------
+# Reading the benchmark: every experiment record must belong to its runs
+# ---------------------------------------------------------------------------
+
+DRIFT_RECORD = "sparkov_v1_drift/drift_metrics.json"
+EXPERIMENT_RECORDS = [f"{FULL}/transfer_metrics.json", f"{FULL}/rules_audit.json", DRIFT_RECORD]
+
+
+def test_the_benchmark_is_read_with_its_runs_and_experiment_records(runs_root: Path) -> None:
+    records = card.load_benchmark(runs_root)
+
+    assert (records.synthetic.name, records.dev.name, records.full.name) == (SYNTHETIC, DEV, FULL)
+    assert [f.source for f in records.files[-3:]] == EXPERIMENT_RECORDS
+    assert len({f.source for f in records.files}) == len(records.files)
+
+
+@pytest.mark.parametrize("source", EXPERIMENT_RECORDS)
+def test_a_missing_experiment_record_is_refused_by_name(runs_root: Path, source: str) -> None:
+    (runs_root / source).unlink()
+
+    with pytest.raises(card.BenchmarkCardError, match=re.escape(f"{source} is missing")):
+        card.load_benchmark(runs_root)
+
+
+def test_runs_on_different_source_data_are_refused(runs_root: Path) -> None:
+    edit_json(
+        runs_root / DEV / "run.json",
+        lambda payload: payload["dataset"]["files"].update({"fraudTest.csv": "9" * 64}),
+    )
+
+    with pytest.raises(card.BenchmarkCardError, match="record different source data"):
+        card.load_benchmark(runs_root)
+
+
+def test_a_development_run_without_a_card_subsample_is_refused(runs_root: Path) -> None:
+    edit_json(
+        runs_root / DEV / "run.json", lambda payload: payload["dataset"].update(subsample=None)
+    )
+
+    with pytest.raises(card.BenchmarkCardError, match="does not record a card subsample"):
+        card.load_benchmark(runs_root)
+
+
+def test_a_subsampled_full_run_is_refused(runs_root: Path) -> None:
+    subsample = {"strategy": "cards", "seed": 42, "max_entities": 500, "selected_entities": 500}
+    edit_json(
+        runs_root / FULL / "run.json",
+        lambda payload: payload["dataset"].update(subsample=subsample),
+    )
+
+    with pytest.raises(card.BenchmarkCardError, match="the full run covers the whole corpus"):
+        card.load_benchmark(runs_root)
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [("source_run", DEV), ("target_run", DEV)],
+    ids=["another-source", "another-target"],
+)
+def test_a_transfer_between_other_runs_is_refused(runs_root: Path, field: str, value: str) -> None:
+    edit_json(
+        runs_root / FULL / "transfer_metrics.json", lambda payload: payload.update({field: value})
+    )
+
+    with pytest.raises(card.BenchmarkCardError, match="the benchmark's transfer measures"):
+        card.load_benchmark(runs_root)
+
+
+def test_a_transfer_that_scored_another_model_is_refused(runs_root: Path) -> None:
+    edit_json(
+        runs_root / FULL / "transfer_metrics.json",
+        lambda payload: payload.update(source_model_sha256="f" * 64),
+    )
+
+    with pytest.raises(card.BenchmarkCardError, match="scored with a model other than"):
+        card.load_benchmark(runs_root)
+
+
+def test_a_transfer_at_another_threshold_is_refused(runs_root: Path) -> None:
+    edit_json(
+        runs_root / FULL / "transfer_metrics.json",
+        lambda payload: payload["source_threshold"].update(value=0.5),
+    )
+
+    with pytest.raises(card.BenchmarkCardError, match="applied a threshold other than"):
+        card.load_benchmark(runs_root)
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [("target_test_transaction_count", 1), ("target_test_transaction_ids_sha256", "e" * 64)],
+    ids=["count", "digest"],
+)
+def test_a_transfer_on_other_test_rows_is_refused(runs_root: Path, field: str, value: Any) -> None:
+    edit_json(
+        runs_root / FULL / "transfer_metrics.json",
+        lambda payload: payload["context"].update({field: value}),
+    )
+
+    with pytest.raises(card.BenchmarkCardError, match="did not score exactly the test fold"):
+        card.load_benchmark(runs_root)
+
+
+@pytest.mark.parametrize("side", ["source", "target"])
+@pytest.mark.parametrize(
+    "flag", ["metrics_reproduced", "model_digest_verified", "test_fold_identity_verified"]
+)
+def test_a_transfer_with_a_failed_verification_is_refused(
+    runs_root: Path, side: str, flag: str
+) -> None:
+    edit_json(
+        runs_root / FULL / "transfer_metrics.json",
+        lambda payload: payload["verification"][side].update({flag: False}),
+    )
+
+    with pytest.raises(card.BenchmarkCardError, match=f"checks as passed: {flag}"):
+        card.load_benchmark(runs_root)
+
+
+def test_a_rules_audit_of_another_run_is_refused(runs_root: Path) -> None:
+    edit_json(runs_root / FULL / "rules_audit.json", lambda payload: payload.update(run=DEV))
+
+    with pytest.raises(card.BenchmarkCardError, match="audits another run"):
+        card.load_benchmark(runs_root)
+
+
+def test_a_rules_audit_of_one_fold_is_refused(runs_root: Path) -> None:
+    edit_json(
+        runs_root / FULL / "rules_audit.json",
+        lambda payload: payload["population"].update(rows="test"),
+    )
+
+    with pytest.raises(card.BenchmarkCardError, match="the final audit covers every row"):
+        card.load_benchmark(runs_root)
+
+
+def test_a_rules_audit_of_a_different_row_count_is_refused(runs_root: Path) -> None:
+    edit_json(
+        runs_root / FULL / "rules_audit.json",
+        lambda payload: payload["population"].update(row_count=1),
+    )
+
+    with pytest.raises(card.BenchmarkCardError, match="counts 1 rows"):
+        card.load_benchmark(runs_root)
+
+
+def test_a_rules_audit_with_a_failed_verification_is_refused(runs_root: Path) -> None:
+    edit_json(
+        runs_root / FULL / "rules_audit.json",
+        lambda payload: payload["verification"].update(metrics_reproduced=False),
+    )
+
+    with pytest.raises(card.BenchmarkCardError, match="checks as passed: metrics_reproduced"):
+        card.load_benchmark(runs_root)
+
+
+def test_a_drift_record_of_another_run_is_refused(runs_root: Path) -> None:
+    edit_json(runs_root / DRIFT_RECORD, lambda payload: payload.update(run_name="elsewhere"))
+
+    with pytest.raises(card.BenchmarkCardError, match="names run 'elsewhere'"):
+        card.load_benchmark(runs_root)
+
+
+def test_a_drift_record_on_another_dataset_is_refused(runs_root: Path) -> None:
+    edit_json(
+        runs_root / DRIFT_RECORD,
+        lambda payload: payload["dataset"].update(row_count=payload["dataset"]["row_count"] + 1),
+    )
+
+    with pytest.raises(card.BenchmarkCardError, match=r"ran on another dataset .*row_count"):
+        card.load_benchmark(runs_root)
+
+
+def test_a_drift_record_with_another_featureset_is_refused(runs_root: Path) -> None:
+    edit_json(runs_root / DRIFT_RECORD, lambda payload: payload.update(featureset_version="v2"))
+
+    with pytest.raises(card.BenchmarkCardError, match="records another featureset"):
+        card.load_benchmark(runs_root)
+
+
+def test_a_drift_record_differing_only_in_retrieval_time_is_read(runs_root: Path) -> None:
+    edit_json(
+        runs_root / DRIFT_RECORD,
+        lambda payload: payload["dataset"].update(retrieved_at="2026-09-18T00:00:00+00:00"),
+    )
+
+    assert card.load_benchmark(runs_root).drift.get("run_name") == "sparkov_v1_drift"
