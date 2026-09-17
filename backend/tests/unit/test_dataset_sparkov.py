@@ -694,6 +694,49 @@ def test_the_wall_clock_drives_the_transaction_timestamp(
     assert dataset.transactions[0].created_at == datetime(2019, 4, 5, 23, 45, tzinfo=UTC)
 
 
+def test_unix_time_order_never_orders_transactions(
+    tmp_path: Path, adapter: SparkovAdapter
+) -> None:
+    """The published fraudTrain.csv is stored in `unix_time` order.
+
+    Its whole-day offset changes on 2019-02-28, so the wall clock steps
+    backwards once in file order. Canonical order and every timestamp follow
+    the wall clock, and the shift is only reported (Phase 5D decision 17).
+    """
+    day = 86_400
+    in_file_order = [  # (trans_num, wall clock, whole days unix_time lags it by)
+        ("t0", "2019-02-27 23:00:00", 2_557),
+        ("t1", "2019-02-28 23:30:00", 2_557),
+        ("t2", "2019-02-28 00:30:00", 2_556),
+        ("t3", "2019-03-01 00:10:00", 2_556),
+    ]
+    unix_times = [_epoch(wall) - lag * day for _, wall, lag in in_file_order]
+    assert unix_times == sorted(unix_times), "fixture must be in unix_time order"
+    root = tmp_path / "raw" / "unix-order"
+    root.mkdir(parents=True)
+    _write_csv(
+        root / "fraudTrain.csv",
+        [
+            _row(index, trans_num=trans_num, timestamp=wall, unix_time=str(unix_time))
+            for index, ((trans_num, wall, _), unix_time) in enumerate(
+                zip(in_file_order, unix_times, strict=True)
+            )
+        ],
+    )
+
+    result = adapter.load_detailed(root)
+
+    transactions = result.dataset.transactions
+    assert [tx.idempotency_key for tx in transactions] == ["t0", "t2", "t1", "t3"]
+    walls = {trans_num: wall for trans_num, wall, _ in in_file_order}
+    for tx in transactions:
+        expected = datetime.fromisoformat(walls[tx.idempotency_key]).replace(tzinfo=UTC)
+        assert tx.created_at == expected
+    distribution = result.unix_time.offset_distribution
+    assert distribution.distinct_offsets == 2
+    assert {entry.offset_seconds for entry in distribution.offsets} == {2_556 * day, 2_557 * day}
+
+
 # ---------------------------------------------------------------------------
 # Label separation
 # ---------------------------------------------------------------------------
