@@ -222,6 +222,7 @@ def write_run(root: Path, name: str) -> None:
             "expected_calibration_error": 0.007 + k * 0.0011,
             "positive_class_ece": 0.4 + k * 0.0111,
             "n_test_samples": v["test"],
+            "bin_counts": [v["test"] - 45, *([5] * 9)],
             "worst_positive_bin": {
                 "bin_index": 8,
                 "mean_predicted": 0.85 + k * 0.0011,
@@ -1094,3 +1095,120 @@ def test_every_record_read_is_listed_with_its_digest(runs_root: Path) -> None:
 def test_the_card_is_the_same_bytes_every_time_it_is_built(runs_root: Path) -> None:
     assert build(runs_root) == build(runs_root)
     assert "Generated at" not in build(runs_root)
+
+
+# ---------------------------------------------------------------------------
+# Rendering: live features, calibration and feature importance
+# ---------------------------------------------------------------------------
+
+LIVE = "3. Live features"
+CALIBRATION = "4. Calibration — test folds, no calibrator fitted"
+IMPORTANCE = "5. Global feature importance — test folds"
+
+
+def test_live_features_are_read_from_each_runs_fit_record(runs_root: Path) -> None:
+    live = section(build(runs_root), LIVE)
+
+    assert row(live, f"`{SYNTHETIC}`")[1:] == ["17", "17", "none", "17", "none"]
+    constant = ", ".join(f"`{name}`" for name in SPARKOV_CONSTANT)
+    for name in (DEV, FULL):
+        assert row(live, f"`{name}`")[1:] == ["17", "12", constant, "12", constant]
+
+
+def test_a_changed_live_count_changes_that_count_on_the_card(runs_root: Path) -> None:
+    edit_json(
+        runs_root / DEV / "training_metadata.json",
+        lambda payload: payload.update(live_feature_count=11),
+    )
+
+    assert row(section(build(runs_root), LIVE), f"`{DEV}`")[2] == "11"
+
+
+def test_the_transfer_feature_context_is_read_from_the_transfer_record(runs_root: Path) -> None:
+    live = section(build(runs_root), LIVE)
+
+    assert f"Constant in its training fold: none. Constant in the `{FULL}` test fold: " in live
+    assert ", ".join(f"`{name}`" for name in SPARKOV_CONSTANT) in live.split("**Transfer.**")[1]
+    expected = f"`customer_account_age_days` {values(FULL)['test']:,}."
+    assert f"Target test rows outside the source training range, by feature: {expected}" in live
+
+
+@pytest.mark.parametrize("name", [SYNTHETIC, DEV, FULL])
+def test_calibration_is_read_from_each_runs_calibration_record(runs_root: Path, name: str) -> None:
+    calibration = read_json(runs_root / name / "calibration_metrics.json")
+    worst = calibration["worst_positive_bin"]
+
+    cells = row(section(build(runs_root), CALIBRATION), f"`{name}`")
+
+    assert cells[1:] == [
+        f"{values(name)['test']:,}",
+        f4(calibration["brier_score"]),
+        f4(calibration["positive_class_brier"]),
+        f4(calibration["expected_calibration_error"]),
+        f4(calibration["positive_class_ece"]),
+        f"bin 8: mean score {f4(worst['mean_predicted'])}, fraud rate "
+        f"{f4(worst['mean_observed'])} ({worst['n_samples']} rows, {worst['n_positives']} frauds)",
+    ]
+
+
+def test_the_number_of_calibration_bins_is_read_from_the_records(runs_root: Path) -> None:
+    assert "with 10 equal-width score bins" in section(build(runs_root), CALIBRATION)
+
+
+def test_calibration_records_with_different_bin_counts_are_refused(runs_root: Path) -> None:
+    edit_json(
+        runs_root / DEV / "calibration_metrics.json",
+        lambda payload: payload.update(bin_counts=payload["bin_counts"][:5]),
+    )
+
+    with pytest.raises(card.BenchmarkCardError, match="different numbers of bins"):
+        build(runs_root)
+
+
+def test_a_run_without_a_bin_holding_frauds_shows_no_gap(runs_root: Path) -> None:
+    edit_json(
+        runs_root / DEV / "calibration_metrics.json",
+        lambda payload: payload.update(worst_positive_bin=None),
+    )
+
+    assert row(section(build(runs_root), CALIBRATION), f"`{DEV}`")[-1] == "—"
+
+
+@pytest.mark.parametrize("filename", ["calibration_metrics.json", "feature_importance.json"])
+def test_an_analysis_of_another_number_of_test_rows_is_refused(
+    runs_root: Path, filename: str
+) -> None:
+    edit_json(runs_root / FULL / filename, lambda payload: payload.update(n_test_samples=7))
+
+    with pytest.raises(card.BenchmarkCardError, match="was measured on 7 rows"):
+        build(runs_root)
+
+
+def test_feature_importance_is_ranked_by_each_runs_recorded_rank(runs_root: Path) -> None:
+    importance = section(build(runs_root), IMPORTANCE)
+
+    assert "in log-odds" in importance
+    first = read_json(runs_root / SYNTHETIC / "feature_importance.json")["features"][0]
+    assert row(importance, "1")[1] == f"`{first['feature']}` {f4(first['mean_abs_shap'])}"
+    assert row(importance, "1")[2].startswith(f"`{FEATURES[0]}` ")
+    assert row(importance, "17")[3] == "`is_high_risk_category` 0.0000"
+
+
+def test_feature_importance_ignores_the_order_entries_are_stored_in(runs_root: Path) -> None:
+    before = section(build(runs_root), IMPORTANCE)
+    edit_json(
+        runs_root / DEV / "feature_importance.json",
+        lambda payload: payload.update(features=list(reversed(payload["features"]))),
+    )
+
+    assert section(build(runs_root), IMPORTANCE) == before
+
+
+def test_feature_importance_in_different_units_is_refused(runs_root: Path) -> None:
+    edit_json(
+        runs_root / DEV / "feature_importance.json",
+        lambda payload: payload.update(units="probability"),
+    )
+
+    with pytest.raises(card.BenchmarkCardError, match="use different units"):
+        build(runs_root)

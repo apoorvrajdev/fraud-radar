@@ -276,6 +276,9 @@ def build_benchmark_card(records: BenchmarkRecords) -> str:
         _header(records),
         _results_section(records),
         _operating_threshold_section(records),
+        _live_features_section(records),
+        _calibration_section(records),
+        _importance_section(records),
     ]
     return "\n\n".join(sections) + "\n"
 
@@ -520,9 +523,161 @@ def _transfer_threshold_row(transfer: RecordFile) -> tuple[str, ...]:
     )
 
 
+def _live_features_section(records: BenchmarkRecords) -> str:
+    rows = [
+        (
+            f"`{run.name}`",
+            _or_dash(len(run.feature_list.get("features"))),
+            _or_dash(run.fit.get("live_feature_count")),
+            _names_or_none(run.fit.get("constant_features")),
+            _or_dash(run.fit.get("live_feature_count_whole_matrix")),
+            _names_or_none(run.fit.get("constant_features_whole_matrix")),
+        )
+        for run in _runs(records)
+    ]
+    features = records.transfer
+    outside = [
+        f"`{entry['feature']}` {_or_dash(entry['target_test_rows_outside_source_training_range'])}"
+        for entry in features.get("features", "by_feature")
+        if entry.get("target_test_rows_outside_source_training_range")
+    ]
+    return "\n".join(
+        [
+            "## 3. Live features",
+            "",
+            "A feature is live in a run when it takes more than one distinct value in that run's "
+            "training fold. Each count is taken from the run's own feature matrix.",
+            "",
+            _table(
+                (
+                    "Run",
+                    "Registered features",
+                    "Live in training fold",
+                    "Constant in training fold",
+                    "Live over the whole matrix",
+                    "Constant over the whole matrix",
+                ),
+                rows,
+            ),
+            "",
+            f"**Transfer.** The `{records.synthetic.name}` model scored every column of featureset "
+            f"`{features.get('features', 'featureset_version')}`. Constant in its training fold: "
+            f"{_names_or_none(features.get('features', 'constant_in_source_training_fold'))}. "
+            f"Constant in the `{records.full.name}` test fold: "
+            f"{_names_or_none(features.get('features', 'constant_in_target_test_fold'))}. "
+            "Target test rows outside the source training range, by feature: "
+            f"{', '.join(outside) if outside else 'none'}.",
+        ]
+    )
+
+
+def _calibration_section(records: BenchmarkRecords) -> str:
+    rows = []
+    bins = set()
+    for run in _runs(records):
+        calibration = run.calibration
+        _require_test_rows(calibration, run)
+        bins.add(len(calibration.get("bin_counts")))
+        worst = calibration.get("worst_positive_bin")
+        rows.append(
+            (
+                f"`{run.name}`",
+                _or_dash(calibration.get("n_test_samples")),
+                _number(calibration.get("brier_score")),
+                _number(calibration.get("positive_class_brier")),
+                _number(calibration.get("expected_calibration_error")),
+                _number(calibration.get("positive_class_ece")),
+                "—"
+                if worst is None
+                else (
+                    f"bin {worst['bin_index']}: mean score {_number(worst['mean_predicted'])}, "
+                    f"fraud rate {_number(worst['mean_observed'])} "
+                    f"({_or_dash(worst['n_samples'])} rows, "
+                    f"{_or_dash(worst['n_positives'])} frauds)"
+                ),
+            )
+        )
+    if len(bins) != 1:
+        raise BenchmarkCardError(
+            f"The calibration records use different numbers of bins: {sorted(bins)}."
+        )
+    return "\n".join(
+        [
+            "## 4. Calibration — test folds, no calibrator fitted",
+            "",
+            f"Measured on each run's test fold with {bins.pop()} equal-width score bins. The "
+            "positive-class Brier score is computed on fraud rows only; the positive-class ECE "
+            "averages the calibration gap uniformly over the bins that hold at least one fraud.",
+            "",
+            _table(
+                (
+                    "Run",
+                    "Test rows",
+                    "Brier score",
+                    "Positive-class Brier",
+                    "Expected calibration error",
+                    "Positive-class ECE",
+                    "Largest gap in a bin holding frauds",
+                ),
+                rows,
+            ),
+        ]
+    )
+
+
+def _importance_section(records: BenchmarkRecords) -> str:
+    runs = _runs(records)
+    rankings = []
+    units = set()
+    for run in runs:
+        importance = run.importance
+        _require_test_rows(importance, run)
+        units.add(str(importance.get("units")))
+        ranked = sorted(importance.get("features"), key=lambda entry: int(entry["rank"]))
+        rankings.append(
+            [f"`{entry['feature']}` {_number(entry['mean_abs_shap'])}" for entry in ranked]
+        )
+    if len(units) != 1:
+        raise BenchmarkCardError(
+            f"The feature importance records use different units: {', '.join(sorted(units))}."
+        )
+    depth = max(len(ranking) for ranking in rankings)
+    rows = [
+        (str(rank + 1), *(ranking[rank] if rank < len(ranking) else "—" for ranking in rankings))
+        for rank in range(depth)
+    ]
+    return "\n".join(
+        [
+            "## 5. Global feature importance — test folds",
+            "",
+            f"Mean absolute SHAP value of each feature over each run's test rows, in "
+            f"{units.pop()}. Each column ranks one model on its own test fold.",
+            "",
+            _table(("Rank", *(f"`{run.name}`" for run in runs)), rows),
+        ]
+    )
+
+
+def _require_test_rows(record: RecordFile, run: RecordedBenchmarkRun) -> None:
+    """Refuse an analysis record measured on another number of rows than the run's test fold."""
+    if record.get("n_test_samples") != run.fit.get("test_size"):
+        raise BenchmarkCardError(
+            f"{record.source} was measured on {record.get('n_test_samples')} rows, but "
+            f"{run.fit.source} records a test fold of {run.fit.get('test_size')}."
+        )
+
+
 # ---------------------------------------------------------------------------
 # Formatting
 # ---------------------------------------------------------------------------
+
+
+def _runs(records: BenchmarkRecords) -> tuple[RecordedBenchmarkRun, ...]:
+    return (records.synthetic, records.dev, records.full)
+
+
+def _names_or_none(names: Any) -> str:
+    return ", ".join(f"`{name}`" for name in names) if names else "none"
 
 
 def _cards(run: RecordedBenchmarkRun) -> str:
