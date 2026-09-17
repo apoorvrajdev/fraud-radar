@@ -9,7 +9,7 @@
   <img src="https://img.shields.io/badge/status-in%20development-yellow?style=flat-square" alt="Status: In Development" />
   <img src="https://img.shields.io/badge/python-3.11+-3776AB?style=flat-square&logo=python&logoColor=white" alt="Python 3.11+" />
   <img src="https://img.shields.io/badge/FastAPI-009688?style=flat-square&logo=fastapi&logoColor=white" alt="FastAPI" />
-  <img src="https://img.shields.io/badge/React-18-61DAFB?style=flat-square&logo=react&logoColor=black" alt="React 18" />
+  <img src="https://img.shields.io/badge/React-19-61DAFB?style=flat-square&logo=react&logoColor=black" alt="React 19" />
   <img src="https://img.shields.io/badge/TypeScript-strict-3178C6?style=flat-square&logo=typescript&logoColor=white" alt="TypeScript" />
   <img src="https://img.shields.io/badge/XGBoost-tabular-EB6F2D?style=flat-square" alt="XGBoost" />
   <img src="https://img.shields.io/badge/license-MIT-blue?style=flat-square" alt="License: MIT" />
@@ -65,7 +65,7 @@ This project demonstrates the architectural patterns that real fraud platforms r
 - **Model explainability** with **SHAP** values surfaced for every decision the model makes.
 - **Realistic synthetic dataset** built on top of `Faker` and modeling six distinct real-world fraud patterns.
 - **SQLAlchemy 2.0** typed ORM with **Alembic** migrations and Postgres-compatible schemas.
-- **React 18 + TypeScript + Tailwind** dashboard with TanStack Query for server state.
+- **React 19 + TypeScript + Tailwind** dashboard with TanStack Query for server state.
 - **Append-only audit log** that demonstrates compliance and observability awareness from day one.
 - **Decimal-precision money handling** — no `float` arithmetic anywhere near a monetary value.
 - **Clean Git workflow** with Conventional Commits and small, reviewable changesets.
@@ -254,9 +254,9 @@ Every accepted transaction now runs the full pipeline synchronously — rules en
 | ------------ | --------------------------------------------------------------------- |
 | **Backend**  | Python 3.11+, FastAPI, SQLAlchemy 2.0, Pydantic v2, Alembic, uv       |
 | **ML**       | scikit-learn, XGBoost, SHAP, pandas, numpy, Faker                     |
-| **Frontend** | React 18, TypeScript (strict), Vite, Tailwind CSS, TanStack Query, Recharts |
+| **Frontend** | React 19, TypeScript (strict), Vite, Tailwind CSS, TanStack Query, React Router, Recharts |
 | **Database** | SQLite (dev), Postgres-compatible schemas via SQLAlchemy              |
-| **Tooling**  | ruff, mypy (strict), pytest, ESLint                                   |
+| **Tooling**  | ruff, mypy (strict), pytest, ESLint, GitHub Actions CI                |
 | **Infra**    | Vercel (frontend, static-snapshot demo); local-first backend          |
 
 ---
@@ -571,6 +571,7 @@ Today's headline metrics come from data produced by this repository's own genera
 ## 📑 Documentation
 
 - [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) — one-page system mental model: live vs demo runtime topology, end-to-end scoring sequence, analyst-review loop with cache wiring, layered code structure (all Mermaid, renders natively on GitHub).
+- [`docs/PHASE_5_PLAN.md`](docs/PHASE_5_PLAN.md) — the Phase 5 implementation specification the benchmark work is built against: goals, explicit non-goals, the target architecture, leakage prevention, the ULB and FX tracks, and the milestone sequence.
 - [`docs/adr/PHASE_3_DESIGN.md`](docs/adr/PHASE_3_DESIGN.md) — backend design for Phases 3A–3D (rules engine, ingestion endpoint, idempotency, scoring pipeline, simulator).
 - [`docs/adr/PHASE_3C_INTEGRATION.md`](docs/adr/PHASE_3C_INTEGRATION.md) — implementation decisions for the integration phase.
 - [`docs/adr/PHASE_3E_DESIGN.md`](docs/adr/PHASE_3E_DESIGN.md) — design for the dashboard slice (aggregate endpoints, CORS posture, frontend foundation).
