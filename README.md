@@ -322,6 +322,8 @@ The training run writes `model.json`, `feature_list.json`, `threshold.json`, `me
 
 A named run, trained with `uv run python -m ml.train --run-name <name>`, is analysed with `uv run python -m ml.analyze --run-name <name>`. The run is verified first: its data is rebuilt from its `run.json`, and its saved model must reproduce its `metrics.json` exactly on the re-derived test fold, or the analysis stops and says why. The same analysis JSONs and plots, and a `MODEL_CARD.md` for that run, are then written into `backend/ml/artifacts/runs/<name>/` only. Calibration is measured on the test fold with no calibrator fitted, and the served artifacts and `backend/ml/MODEL_CARD.md` are left untouched.
 
+A named run's `run.json` also identifies its test fold by the count and SHA-256 of its transaction ids in fold order, and its `training_metadata.json` carries the SHA-256 of the `model.json` saved beside it. Verification refuses a run whose re-derived test fold holds other transactions, or the same ones in another order, and one whose model file is not byte-for-byte the one it saved — the latter before any data is loaded. Records written before these fields existed still verify, and say that the check was not made.
+
 ### External Benchmark (Sparkov)
 
 The Sparkov corpus is **simulated** data from an independent generator — not real card transactions. It is never committed; acquire it locally:
@@ -348,6 +350,14 @@ uv run python -m ml.features.build --dataset sparkov --max-cards 200 --run-name 
 
 Changing the source bytes, the subsample or the featureset changes the fingerprint, so a stale matrix can never answer for new data. The parity guarantee and cache format are in [`docs/adr/PHASE_5C_FEATURE_PARITY.md`](docs/adr/PHASE_5C_FEATURE_PARITY.md).
 
+The cross-generator transfer measures one run's model, unchanged, on another run's test fold — the synthetic run's model on the rows a Sparkov run was evaluated on:
+
+```bash
+uv run python -m ml.experiments.transfer --source-run synthetic_v1 --target-run sparkov_v1_200cards
+```
+
+Both runs are rebuilt from their records and fully verified first; the source model file must match its recorded digest and the target's test fold its recorded transaction ids. Nothing is chosen on the target's data — no threshold, calibration, feature selection or tuning — and the source model receives every v1 column, constant ones included. `transfer_metrics.json` is written into the target run's directory, beside its untouched `metrics.json`: PR-AUC and ROC-AUC with the target test prevalence, recall at 1% and 5% FPR labelled as points on the target test ROC curve, and the confusion matrix and realised target-test FPR at the source run's own validation-selected threshold, with source and target counts named apart. The method is fixed in [`docs/adr/PHASE_5D_BENCHMARK_METHODOLOGY.md`](docs/adr/PHASE_5D_BENCHMARK_METHODOLOGY.md), decision 8.
+
 ### Tests
 
 ```bash
@@ -355,7 +365,7 @@ cd backend
 uv run pytest -v
 ```
 
-Runs 749 test cases covering the dataset contracts and run records (canonical invariants, provenance round-trip, adapter registry, offline layout), the data loader training and analysis share, run verification and named-run analysis with its model card, the Sparkov adapter on CSV fixtures (schema drift, id derivation, label separation, explicit exclusions, entity subsampling, manifest verification) and its quality report, the batch feature builder's element-by-element parity with the live scoring path (including the future-information and window-eviction cases) and the feature cache's round-trip and refusal rules, the featureset registry pin, the chronological splitter, evaluation metrics, artifact round-trip, SHAP additivity, force / waterfall plot rendering, segment routing, calibration math (including positive-class variants), the six-rule engine (hour and high-risk-country boundaries parametrised), Stripe-pattern idempotency (hash determinism, replay path, 409 conflict, 422 paths), the scoring orchestrator (decision matrix, audit-log writes, hard-block short-circuit), the feature extractor's pre-loaded-history parity contract, the simulator payload builder, the dashboard stats service (24h window edges, hourly bucket fill, decimal quantisation, top-10 cap), and the `/explain`, `/transactions`, and `/stats/*` endpoints via `TestClient`.
+Runs 828 test cases covering the dataset contracts and run records (canonical invariants, provenance round-trip, adapter registry, offline layout, test-fold transaction identity), the data loader training and analysis share, run verification (including model file digests) and named-run analysis with its model card, the cross-generator transfer measurement (run pairing refusals, exactly which rows each model scores, source-threshold provenance and result labelling), the Sparkov adapter on CSV fixtures (schema drift, id derivation, label separation, explicit exclusions, entity subsampling, manifest verification) and its quality report, the batch feature builder's element-by-element parity with the live scoring path (including the future-information and window-eviction cases) and the feature cache's round-trip and refusal rules, the featureset registry pin, the chronological splitter, evaluation metrics, artifact round-trip, SHAP additivity, force / waterfall plot rendering, segment routing, calibration math (including positive-class variants), the six-rule engine (hour and high-risk-country boundaries parametrised), Stripe-pattern idempotency (hash determinism, replay path, 409 conflict, 422 paths), the scoring orchestrator (decision matrix, audit-log writes, hard-block short-circuit), the feature extractor's pre-loaded-history parity contract, the simulator payload builder, the dashboard stats service (24h window edges, hourly bucket fill, decimal quantisation, top-10 cap), and the `/explain`, `/transactions`, and `/stats/*` endpoints via `TestClient`.
 
 [`.github/workflows/ci.yml`](.github/workflows/ci.yml) runs the same suite on every push to `main` and every pull request, alongside `ruff`, strict `mypy`, and the frontend's `tsc` + production build. The integration tests that load a real model would otherwise skip in CI — `backend/ml/artifacts/model.json` is gitignored — so the workflow trains a deliberately tiny model first (3,000 rows, two search iterations, about a minute) to keep them running for real rather than green-by-skip. Those CI numbers are throwaway; the published metrics come from the full training run above.
 
