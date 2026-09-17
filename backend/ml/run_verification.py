@@ -16,6 +16,11 @@ claims to be.
 Only the test fold is scored. The timestamps and labels of every fold are
 read, to check fold periods, sizes and fraud counts, but no train or val row
 is ever given to the model.
+
+A run record of version 3 also identifies its test fold's transactions, and
+the loaded fold must hold exactly those, in the same order. Older records
+carry no identity; they still verify, and `VerifiedRun` says the identity was
+not checked rather than implying it was.
 """
 from __future__ import annotations
 
@@ -41,7 +46,13 @@ from ml.datasets.base import DatasetContractError
 from ml.holdout import evaluate_test_fold
 from ml.loading import RunData
 from ml.paths import RUNS_ROOT, run_dir
-from ml.runs import RUN_METADATA_FILENAME, RunMetadata, SplitPeriod, split_periods
+from ml.runs import (
+    RUN_METADATA_FILENAME,
+    RunMetadata,
+    SplitPeriod,
+    identify_test_fold,
+    split_periods,
+)
 from ml.splits import SplitIndices, assert_no_temporal_leakage, chronological_split
 
 MODEL_FILENAME = "model.json"
@@ -102,6 +113,17 @@ class VerifiedRun:
     splits: SplitIndices
     test_scores: np.ndarray
 
+    @property
+    def test_fold_identity_verified(self) -> bool:
+        """Whether the test fold's transaction ids were checked against the run record.
+
+        `verify_run` checks them whenever the record identifies the fold, so
+        this is False only for a record written before identities were
+        recorded, whose test fold is then known by period, size and fraud
+        count alone.
+        """
+        return self.recorded.record.test_fold_identity is not None
+
 
 def read_recorded_run(run_name: str, *, runs_root: Path = RUNS_ROOT) -> RecordedRun:
     """Read a run directory's records, refusing one that is missing any of them."""
@@ -135,7 +157,8 @@ def read_recorded_run(run_name: str, *, runs_root: Path = RUNS_ROOT) -> Recorded
 
 
 def check_recorded_run(recorded: RecordedRun) -> None:
-    """Checks that need no data: environment, featureset, fit record and model file."""
+    """Checks that need no data: name, environment, featureset, fit record and model file."""
+    _check_run_name(recorded)
     _check_environment(recorded)
     _check_featureset(recorded)
     _check_fit_record(recorded)
@@ -154,6 +177,7 @@ def verify_run(recorded: RecordedRun, data: RunData, explainer: FraudExplainer) 
     _check_provenance(recorded, data)
     _check_loaded_features(recorded, ds, explainer)
     splits = _check_folds(recorded, ds)
+    _check_test_fold_identity(recorded, ds, splits)
 
     test_scores = explainer.predict_proba_batch(ds.X[splits.test])
     _check_metrics_reproduced(recorded, ds, splits, test_scores)
@@ -163,6 +187,14 @@ def verify_run(recorded: RecordedRun, data: RunData, explainer: FraudExplainer) 
 # ---------------------------------------------------------------------------
 # Checks on the record alone
 # ---------------------------------------------------------------------------
+
+
+def _check_run_name(recorded: RecordedRun) -> None:
+    if recorded.record.run_name != recorded.name:
+        raise RunVerificationError(
+            f"Run {recorded.name!r}: {RUN_METADATA_FILENAME} names run "
+            f"{recorded.record.run_name!r}, so it is the record of another run."
+        )
 
 
 def _check_environment(recorded: RecordedRun) -> None:
@@ -348,6 +380,29 @@ def _check_folds(recorded: RecordedRun, ds: LabelledDataset) -> SplitIndices:
                 f"metrics.json records {recorded_counts.get(name)}."
             )
     return splits
+
+
+def _check_test_fold_identity(
+    recorded: RecordedRun, ds: LabelledDataset, splits: SplitIndices
+) -> None:
+    identity = recorded.record.test_fold_identity
+    if identity is None:
+        # A record written before identities were; RunMetadata refuses a later one without it.
+        return
+    loaded = identify_test_fold(ds.transaction_ids, splits)
+    if loaded.transaction_count != identity.transaction_count:
+        raise RunVerificationError(
+            f"Run {recorded.name!r}: the loaded test fold holds {loaded.transaction_count} "
+            f"transactions, but {RUN_METADATA_FILENAME} identifies "
+            f"{identity.transaction_count}."
+        )
+    if loaded.transaction_ids_sha256 != identity.transaction_ids_sha256:
+        raise RunVerificationError(
+            f"Run {recorded.name!r}: the loaded test fold's transaction ids, in fold order, "
+            f"digest to {loaded.transaction_ids_sha256}, but {RUN_METADATA_FILENAME} records "
+            f"{identity.transaction_ids_sha256}. These are not the rows, or not the order, "
+            "the run was evaluated on."
+        )
 
 
 def _check_metrics_reproduced(

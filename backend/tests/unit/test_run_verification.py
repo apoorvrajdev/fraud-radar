@@ -35,6 +35,7 @@ from ml.run_verification import (
     read_recorded_run,
     verify_run,
 )
+from ml.runs import transaction_ids_digest
 from ml.tuning import TuningResult
 from tests.unit.test_train_pipeline import _dataset as pipeline_matrix
 
@@ -210,6 +211,12 @@ def test_a_missing_run_is_refused(run: TrainedRun) -> None:
         read_recorded_run("no-such-run", runs_root=run.runs_root)
 
 
+def test_a_run_record_naming_another_run_is_refused(run: TrainedRun) -> None:
+    run.edit("run.json", lambda record: record.update(run_name="another-run"))
+
+    _refused(run, "names run 'another-run', so it is the record of another run")
+
+
 def test_a_run_without_a_run_record_is_refused(run: TrainedRun) -> None:
     (run.directory / "run.json").unlink()
 
@@ -372,6 +379,106 @@ def test_a_test_fraud_count_other_than_the_recorded_one_is_refused(run: TrainedR
     )
 
     _refused(run, f"test fold holds {recorded_test_frauds} frauds")
+
+
+# ---------------------------------------------------------------------------
+# The test fold's transaction identity
+# ---------------------------------------------------------------------------
+
+
+def _test_ids(run: TrainedRun) -> list[str]:
+    return [run.ds.transaction_ids[row] for row in run.outcome.splits.test]
+
+
+def _with_ids(run: TrainedRun, transaction_ids: list[str]) -> RunData:
+    """The run's data with other transaction ids, and nothing else changed."""
+    changed = replace(run.ds, transaction_ids=transaction_ids)
+    return RunData(ds=changed, provenance=synthetic_provenance(changed, csv_path=run.labels_csv))
+
+
+def test_a_run_verifies_the_transaction_ids_of_its_test_fold(run: TrainedRun) -> None:
+    record = json.loads((run.directory / "run.json").read_text(encoding="utf-8"))
+
+    verified = _verify(run)
+
+    assert record["metadata_version"] == "3"
+    assert record["test_fold_identity"]["transaction_count"] == len(_test_ids(run)) == 60
+    assert record["test_fold_identity"]["transaction_ids_sha256"] == transaction_ids_digest(
+        _test_ids(run)
+    )
+    assert verified.test_fold_identity_verified is True
+
+
+def test_a_changed_test_transaction_id_is_refused(run: TrainedRun) -> None:
+    """Same periods, sizes, labels, features and scores: only the id tells the rows apart."""
+    ids = list(run.ds.transaction_ids)
+    ids[int(run.outcome.splits.test[7])] = "tx-from-elsewhere"
+
+    _refused(run, "not the rows, or not the order", data=_with_ids(run, ids))
+
+
+def test_a_reordered_test_fold_is_refused(run: TrainedRun) -> None:
+    ids = list(run.ds.transaction_ids)
+    first, second = (int(row) for row in run.outcome.splits.test[:2])
+    ids[first], ids[second] = ids[second], ids[first]
+
+    _refused(run, "not the rows, or not the order", data=_with_ids(run, ids))
+
+
+def test_a_test_fold_count_other_than_the_identified_one_is_refused(run: TrainedRun) -> None:
+    run.edit(
+        "run.json",
+        lambda record: record["test_fold_identity"].update(transaction_count=61),
+    )
+
+    _refused(run, r"test fold holds 60 transactions, but run\.json identifies 61")
+
+
+def test_a_recorded_digest_other_than_the_loaded_one_is_refused(run: TrainedRun) -> None:
+    other = transaction_ids_digest([*_test_ids(run)[1:], "tx-extra"])
+    run.edit(
+        "run.json",
+        lambda record: record["test_fold_identity"].update(transaction_ids_sha256=other),
+    )
+
+    _refused(run, rf"but run\.json records {other}")
+
+
+def test_a_version_3_record_without_a_test_fold_identity_is_refused(run: TrainedRun) -> None:
+    run.edit("run.json", lambda record: record.pop("test_fold_identity"))
+
+    _refused(run, "malformed record: .*must identify the fold's transactions")
+
+
+def test_a_version_2_run_verifies_without_claiming_its_test_fold_was_identified(
+    run: TrainedRun,
+) -> None:
+    """An older record is still verified by period, size, fraud count and metrics."""
+
+    def as_version_2(record: dict[str, Any]) -> None:
+        record.pop("test_fold_identity")
+        record["metadata_version"] = "2"
+
+    run.edit("run.json", as_version_2)
+
+    verified = _verify(run)
+
+    assert verified.recorded.record.metadata_version == "2"
+    assert verified.test_fold_identity_verified is False
+    np.testing.assert_array_equal(verified.test_scores, run.outcome.test_scores)
+
+
+def test_a_version_2_run_still_refuses_folds_other_than_the_recorded_ones(
+    run: TrainedRun,
+) -> None:
+    def as_version_2(record: dict[str, Any]) -> None:
+        record.pop("test_fold_identity")
+        record["metadata_version"] = "2"
+
+    run.edit("run.json", as_version_2)
+    run.edit("training_metadata.json", lambda metadata: metadata.update(test_size=61, val_size=59))
+
+    _refused(run, r"hold \(280, 60, 60\) rows")
 
 
 # ---------------------------------------------------------------------------
