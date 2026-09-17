@@ -290,6 +290,28 @@ What execution answered from the table above, after the runs, the transfer, the 
 
 ---
 
+## Interpretation of the results
+
+Every value referred to here is in the generated [benchmark card](../../backend/ml/BENCHMARK_CARD.md). This section says what the values mean, and says plainly where a cause is not established.
+
+**The three results answer three questions.** The synthetic baseline measures how learnable this project's own generator is. The Sparkov runs measure how the same pipeline behaves on a corpus someone else generated. The transfer measures what the synthetic-trained model does on Sparkov rows it never saw. They are not a ranking of models, and decision 7 keeps them apart for that reason: each is read against its own test prevalence, and the development run is labelled as such wherever it appears.
+
+**What the transfer number means.** Measured: the synthetic-trained model ranks Sparkov fraud better than chance but far below the model trained on Sparkov, and its threshold does not carry its false-positive rate across datasets — the realised rate on the Sparkov test fold is many times the ceiling it was selected under. Interpretation: a model and a threshold tuned around one generator do not transfer for free, which is the point of measuring it. Hypothesis, not established: the synthetic model's reliance on columns that are constant or out of range on Sparkov contributes to the drop. Transfer attributes nothing; it only measures.
+
+**What the drift experiment shows.** Measured: at a threshold selected once on late 2019 and never re-selected, the realised false-positive rate stays near that ceiling through every month of 2020, recall eases downward over the later months, and PR-AUC and precision move with each month's fraud rate. Interpretation: an operations team watching a fixed threshold would have seen a stable false-positive budget and a slowly softening catch rate. Hypothesis, not established: most of the PR-AUC movement follows the monthly fraud rate rather than a decline in ranking quality, and December's behaviour is seasonal — the drift record carries no prevalence-independent metric, so neither can be separated from the artifact alone.
+
+**Why the rules transfer only partially.** Measured: two rules are evaluable but cannot fire on a corpus where every row is US; the amount ceiling fires only on legitimate rows, because no Sparkov fraud reaches it; the off-hours rule fires with precision well above the corpus fraud rate while catching a small share of all fraud; the dormant-account rule is not evaluable at all. Interpretation: the rules are domain priors calibrated against this project's own generator and its injection patterns, so on another generator they measure how far those priors happen to agree. A rule that cannot fire is a property of the data, not evidence about the rule.
+
+**The findings the plan asked to be stated plainly.**
+
+- **F3, the history window.** Training once used unbounded history while serving used a 180-day window, so `days_since_last_tx` could differ between them past that window. The batch builder uses the serving window, which is what makes the Sparkov features the features production computes; the divergence is pinned by the parity tests rather than left to be discovered.
+- **F4, leakage built in by construction.** The synthetic generator injects fraud preferentially into higher-risk customers and merchants, and its fraud rows carry the high-risk countries; the synthetic model's SHAP ranking leans on exactly those columns, and its country segments show a group that is entirely fraud. Part of the synthetic headline is therefore generator design rather than detectability. Sparkov has no risk tiers and one country, which is why those columns are constant there and why the Sparkov numbers are the more honest measurement.
+- **F5, static account age.** `customer_account_age_days` is set when a customer is seeded and never updated, so it means "age at seeding". It is constant on Sparkov, and every Sparkov test row falls outside the range the synthetic model trained on. It is a dead feature on this corpus and a production wart left unchanged in featureset v1.
+
+**What the benchmark does not establish.** Why the development and full Sparkov results differ: an exploratory comparison pointed at which cards fall in each test fold rather than at the models, but it was designed after the folds were scored and is not part of the benchmark. Nor does the benchmark establish performance on held-out cards, the cost of label delay, or anything about real card fraud: every dataset here is simulated.
+
+---
+
 ## Deferred
 
 | Deferred | Where |
