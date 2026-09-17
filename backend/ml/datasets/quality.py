@@ -6,6 +6,13 @@ away and why, how the label is distributed, and — the part that usually goes
 unsaid — which canonical fields are constant on this dataset, because a
 constant field is a feature that cannot contribute anything.
 
+It also describes how fraud is distributed across cards and over time, and
+which cards carry fraud on both sides of a chronological split boundary: the
+Phase 5D methodology leaves both to be recorded from the data, because they
+decide the effective sample size behind a fold's metrics. The folds are those
+`ml.splits.chronological_split` makes of the loaded rows, which are the folds
+a run trained on the same rows records.
+
 Deliberately dataset-agnostic: it reads a `CanonicalDataset` plus the
 accounting an adapter produced, so every future benchmark gets the same
 report without this module learning anything about that source.
@@ -24,8 +31,37 @@ from typing import Any
 import numpy as np
 
 from ml.datasets.base import CanonicalDataset
+from ml.splits import chronological_split
 
 QUALITY_REPORT_FILENAME = "quality_report.json"
+
+# What each part of `fraud_distribution` counts, written into the report so
+# the numbers can be read without this code.
+FRAUD_DISTRIBUTION_DEFINITIONS: Mapping[str, str] = {
+    "card": (
+        "Transaction.customer_id: the entity whose history the features are built from and "
+        "that subsampling keeps whole; one per source card on Sparkov"
+    ),
+    "month": "the calendar month of a transaction's timestamp in UTC",
+    "folds": (
+        "ml.splits.chronological_split of these rows in canonical chronological order: 70/15/15 "
+        "by row count, the folds a run trained on these rows records in run.json"
+    ),
+    "boundary": (
+        "the position between two adjacent folds; rows before it are every row of the earlier "
+        "folds, rows after it every row of the later folds"
+    ),
+    "card_with_fraud_on_both_sides": (
+        "a card with at least one fraud before the boundary and at least one fraud after it"
+    ),
+    "shared_instant": (
+        "the earlier fold's last timestamp equals the later fold's first, so transactions at "
+        "that instant fall on both sides of the boundary; recorded, not corrected"
+    ),
+}
+
+# The fold names run.json records, in time order.
+_FOLD_NAMES = ("train", "val", "test")
 
 
 class FieldStatus(StrEnum):
@@ -93,6 +129,7 @@ class QualityReport:
     subsample: Mapping[str, Any] | None = None
     extra: Mapping[str, Any] = field(default_factory=dict)
     warnings: tuple[str, ...] = ()
+    fraud_distribution: Mapping[str, Any] = field(default_factory=dict)
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -127,6 +164,7 @@ class QualityReport:
             "subsample": dict(self.subsample) if self.subsample else None,
             "extra": dict(self.extra),
             "warnings": list(self.warnings),
+            "fraud_distribution": dict(self.fraud_distribution),
         }
 
     def write(self, directory: Path, *, filename: str = QUALITY_REPORT_FILENAME) -> Path:
@@ -184,7 +222,119 @@ def build_quality_report(
         subsample=provenance.subsample.to_dict() if provenance.subsample else None,
         extra=dict(extra or {}),
         warnings=_warnings(dataset, raw_row_count=raw_row_count, excluded=excluded),
+        fraud_distribution=describe_fraud_distribution(dataset),
     )
+
+
+def describe_fraud_distribution(dataset: CanonicalDataset) -> dict[str, Any]:
+    """How fraud is spread across cards, over months, and across the chronological folds.
+
+    Descriptive only: nothing here selects, filters or changes a row, a fold
+    or a feature.
+    """
+    labels = [int(dataset.labels[tx.id]) for tx in dataset.transactions]
+    cards = [tx.customer_id for tx in dataset.transactions]
+    frauds_per_card = Counter(card for card, label in zip(cards, labels, strict=True) if label)
+    return {
+        "definitions": dict(FRAUD_DISTRIBUTION_DEFINITIONS),
+        "cards": {
+            "with_transactions": len(set(cards)),
+            "with_fraud": len(frauds_per_card),
+            "frauds_per_card_with_fraud": (
+                _percentiles(np.array(list(frauds_per_card.values()), dtype=float), (50, 99))
+                if frauds_per_card
+                else None
+            ),
+        },
+        "by_month": _fraud_by_month(dataset, labels),
+        "chronological_split": _fraud_across_folds(dataset, cards, labels),
+    }
+
+
+def _fraud_by_month(dataset: CanonicalDataset, labels: Sequence[int]) -> list[dict[str, Any]]:
+    """Rows and frauds per calendar month, every month from the first to the last included."""
+    if not dataset.transactions:
+        return []
+    counts: dict[tuple[int, int], list[int]] = defaultdict(lambda: [0, 0])
+    for tx, label in zip(dataset.transactions, labels, strict=True):
+        moment = tx.created_at.astimezone(UTC)
+        counts[(moment.year, moment.month)][0] += 1
+        counts[(moment.year, moment.month)][1] += label
+
+    first = dataset.transactions[0].created_at.astimezone(UTC)
+    last = dataset.transactions[-1].created_at.astimezone(UTC)
+    months = []
+    year, month = first.year, first.month
+    while (year, month) <= (last.year, last.month):
+        rows, frauds = counts.get((year, month), [0, 0])
+        months.append({"month": f"{year:04d}-{month:02d}", "rows": rows, "frauds": frauds})
+        year, month = (year + 1, 1) if month == 12 else (year, month + 1)
+    return months
+
+
+def _fraud_across_folds(
+    dataset: CanonicalDataset, cards: Sequence[str], labels: Sequence[int]
+) -> dict[str, Any]:
+    """Fraud per fold, and the cards whose fraud falls on both sides of each boundary."""
+    timestamps = np.asarray([tx.created_at for tx in dataset.transactions], dtype=object)
+    if len(timestamps) < 3:
+        return {"available": False, "reason": "Fewer than 3 rows cannot be split into folds."}
+    splits = chronological_split(timestamps)
+    folds = list(zip(_FOLD_NAMES, (splits.train, splits.val, splits.test), strict=True))
+    if any(len(indices) == 0 for _, indices in folds):
+        return {
+            "available": False,
+            "reason": "Too few rows for every fold of the 70/15/15 split to hold one.",
+        }
+
+    def fraud_cards(indices: np.ndarray) -> set[str]:
+        return {cards[index] for index in indices if labels[index]}
+
+    def rows_at(instant: Any, indices: np.ndarray) -> int:
+        return sum(1 for moment in timestamps[indices] if moment == instant)
+
+    fold_summaries = [
+        {
+            "name": name,
+            "rows": len(indices),
+            "frauds": sum(labels[index] for index in indices),
+            "cards_with_fraud": len(fraud_cards(indices)),
+            "first_timestamp": min(timestamps[indices]).isoformat(),
+            "last_timestamp": max(timestamps[indices]).isoformat(),
+        }
+        for name, indices in folds
+    ]
+
+    boundaries = []
+    for position in range(1, len(folds)):
+        earlier_name, earlier = folds[position - 1]
+        later_name, later = folds[position]
+        before = np.concatenate([indices for _, indices in folds[:position]])
+        after = np.concatenate([indices for _, indices in folds[position:]])
+        spanning = fraud_cards(before) & fraud_cards(after)
+        earlier_last = max(timestamps[earlier])
+        later_first = min(timestamps[later])
+        shared = bool(earlier_last == later_first)
+        boundaries.append(
+            {
+                "between": [earlier_name, later_name],
+                "earlier_fold_last_timestamp": earlier_last.isoformat(),
+                "later_fold_first_timestamp": later_first.isoformat(),
+                "instant_shared": shared,
+                "rows_at_shared_instant": {
+                    "earlier_fold": rows_at(earlier_last, earlier) if shared else 0,
+                    "later_fold": rows_at(later_first, later) if shared else 0,
+                },
+                "cards_with_fraud_on_both_sides": len(spanning),
+                "frauds_before_on_those_cards": sum(
+                    labels[index] for index in before if cards[index] in spanning
+                ),
+                "frauds_after_on_those_cards": sum(
+                    labels[index] for index in after if cards[index] in spanning
+                ),
+            }
+        )
+    return {"available": True, "folds": fold_summaries, "boundaries": boundaries}
 
 
 def _category_breakdown(dataset: CanonicalDataset) -> tuple[dict[str, int], dict[str, int]]:
