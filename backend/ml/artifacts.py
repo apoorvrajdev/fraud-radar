@@ -9,7 +9,8 @@ The artifact directory layout is:
         feature_list.json         Canonical feature order (committed)
         threshold.json            Decision threshold, its FPR target, whether it fell back
         metrics.json              Test-set evaluation results (committed)
-        training_metadata.json    The fit: folds, hyperparameters, fit settings, live features (committed)
+        training_metadata.json    The fit: folds, hyperparameters, fit settings, live features,
+                                  and the SHA-256 of model.json (committed)
         pr_curve.png              Plot of test-set PR curve (gitignored)
 """
 from __future__ import annotations
@@ -17,13 +18,17 @@ from __future__ import annotations
 import json
 import platform
 import sys
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, replace
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
 import numpy as np
 import xgboost as xgb
+
+from ml.datasets.manifest import sha256_file
+
+MODEL_FILENAME = "model.json"
 
 
 @dataclass(frozen=True)
@@ -61,6 +66,12 @@ class TrainingMetadata:
     value in the training fold, and `constant_features` names the others in
     feature order. The `_whole_matrix` pair is the same count over every row
     of the dataset (see `ml/reporting.py`).
+
+    `model_sha256` is the SHA-256 of the `model.json` saved beside this record.
+    model.json is never committed, so the digest is the only durable link
+    between the record and the model it describes. `save_artifacts` computes
+    it from the bytes it wrote, replacing any value passed in; it is None only
+    in a record that has not been saved, or was saved before digests were.
     """
 
     trained_at_utc: str
@@ -83,6 +94,7 @@ class TrainingMetadata:
     constant_features: list[str]
     live_feature_count_whole_matrix: int
     constant_features_whole_matrix: list[str]
+    model_sha256: str | None = None
 
 
 def _json_dump(path: Path, payload: Any) -> None:
@@ -100,16 +112,22 @@ def save_artifacts(
     metrics: dict[str, Any],
     metadata: TrainingMetadata,
 ) -> None:
-    """Write all six artifact files to `artifact_dir`."""
+    """Write all six artifact files to `artifact_dir`.
+
+    The fit record is written last, with the digest of the model file as
+    written, so it describes the exact bytes on disk.
+    """
     artifact_dir.mkdir(parents=True, exist_ok=True)
 
     # XGBoost native JSON — load_model() reads this back exactly
-    _predicting_booster(model).save_model(str(artifact_dir / "model.json"))
+    model_path = artifact_dir / MODEL_FILENAME
+    _predicting_booster(model).save_model(str(model_path))
 
     _json_dump(artifact_dir / "feature_list.json", {"features": feature_names})
     _json_dump(artifact_dir / "threshold.json", asdict(threshold))
     _json_dump(artifact_dir / "metrics.json", metrics)
-    _json_dump(artifact_dir / "training_metadata.json", asdict(metadata))
+    saved = replace(metadata, model_sha256=sha256_file(model_path))
+    _json_dump(artifact_dir / "training_metadata.json", asdict(saved))
 
 
 def _predicting_booster(model: xgb.XGBClassifier) -> xgb.Booster:

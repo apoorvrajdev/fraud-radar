@@ -1,8 +1,9 @@
 """Round-trip tests: save → reload preserves predictions byte-for-byte."""
 from __future__ import annotations
 
+import hashlib
 import json
-from dataclasses import asdict
+from dataclasses import asdict, replace
 from pathlib import Path
 
 import numpy as np
@@ -34,28 +35,32 @@ def _save(artifact_dir: Path, model: xgb.XGBClassifier, n_features: int) -> None
             fallback_used=False,
         ),
         metrics={"pr_auc": 0.9, "roc_auc": 0.95},
-        metadata=TrainingMetadata(
-            trained_at_utc="2026-05-21T00:00:00+00:00",
-            dataset_size=200,
-            train_size=140,
-            val_size=30,
-            test_size=30,
-            train_fraud_rate=0.5,
-            val_fraud_rate=0.5,
-            test_fraud_rate=0.5,
-            best_hyperparameters={"max_depth": 3},
-            library_versions=collect_library_versions(),
-            random_state=42,
-            tuning_iterations=25,
-            tuning_cv_folds=4,
-            scale_pos_weight=1.0,
-            early_stopping_rounds=50,
-            best_iteration=12,
-            live_feature_count=n_features - 1,
-            constant_features=["f0"],
-            live_feature_count_whole_matrix=n_features,
-            constant_features_whole_matrix=[],
-        ),
+        metadata=_metadata(n_features),
+    )
+
+
+def _metadata(n_features: int) -> TrainingMetadata:
+    return TrainingMetadata(
+        trained_at_utc="2026-05-21T00:00:00+00:00",
+        dataset_size=200,
+        train_size=140,
+        val_size=30,
+        test_size=30,
+        train_fraud_rate=0.5,
+        val_fraud_rate=0.5,
+        test_fraud_rate=0.5,
+        best_hyperparameters={"max_depth": 3},
+        library_versions=collect_library_versions(),
+        random_state=42,
+        tuning_iterations=25,
+        tuning_cv_folds=4,
+        scale_pos_weight=1.0,
+        early_stopping_rounds=50,
+        best_iteration=12,
+        live_feature_count=n_features - 1,
+        constant_features=["f0"],
+        live_feature_count_whole_matrix=n_features,
+        constant_features_whole_matrix=[],
     )
 
 
@@ -126,6 +131,41 @@ def test_all_six_artifact_files_are_written(trained_pair: tuple) -> None:
     actual = {p.name for p in artifact_dir.iterdir() if p.is_file()}
     # pr_curve.png is written by train.py, not save_artifacts — that's fine
     assert expected.issubset(actual)
+
+
+def test_the_fit_record_carries_the_digest_of_the_model_file_beside_it(
+    trained_pair: tuple,
+) -> None:
+    _, _, artifact_dir = trained_pair
+
+    metadata = json.loads((artifact_dir / "training_metadata.json").read_text(encoding="utf-8"))
+
+    on_disk = hashlib.sha256((artifact_dir / "model.json").read_bytes()).hexdigest()
+    assert metadata["model_sha256"] == on_disk
+
+
+def test_a_passed_in_model_digest_is_replaced_by_the_written_one(
+    trained_pair: tuple, tmp_path: Path
+) -> None:
+    """Only the bytes actually written can vouch for themselves."""
+    model, _, _ = trained_pair
+    elsewhere = tmp_path / "elsewhere"
+    save_artifacts(
+        elsewhere,
+        model=model,
+        feature_names=[f"f{index}" for index in range(5)],
+        threshold=ThresholdRecord(
+            value=0.5, target_fpr=0.01, realised_fpr_on_val=0.008, fallback_used=False
+        ),
+        metrics={},
+        metadata=replace(_metadata(5), model_sha256="f" * 64),
+    )
+
+    metadata = json.loads((elsewhere / "training_metadata.json").read_text(encoding="utf-8"))
+
+    assert metadata["model_sha256"] == hashlib.sha256(
+        (elsewhere / "model.json").read_bytes()
+    ).hexdigest()
 
 
 def test_reload_preserves_predictions(trained_pair: tuple) -> None:
@@ -264,9 +304,13 @@ def test_training_metadata_adds_the_fit_settings_and_live_features_to_the_existi
         "live_feature_count_whole_matrix": 5,
         "constant_features_whole_matrix": [],
     }
-    assert set(payload) == existing | set(fit) | set(live)
+    digest = {
+        "model_sha256": hashlib.sha256((artifact_dir / "model.json").read_bytes()).hexdigest()
+    }
+    assert set(payload) == existing | set(fit) | set(live) | set(digest)
     assert {key: payload[key] for key in fit} == fit
     assert {key: payload[key] for key in live} == live
+    assert {key: payload[key] for key in digest} == digest
 
 
 def test_collect_library_versions_returns_real_strings() -> None:

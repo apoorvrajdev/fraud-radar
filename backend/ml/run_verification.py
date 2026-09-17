@@ -21,6 +21,10 @@ A run record of version 3 also identifies its test fold's transactions, and
 the loaded fold must hold exactly those, in the same order. Older records
 carry no identity; they still verify, and `VerifiedRun` says the identity was
 not checked rather than implying it was.
+
+The same holds for the saved model: a fit record that carries the SHA-256 of
+`model.json` must match the file byte for byte, which is checked on the
+record alone, before any data is loaded.
 """
 from __future__ import annotations
 
@@ -36,6 +40,7 @@ import xgboost as xgb
 from app.fraud.explainer import FraudExplainer
 from app.fraud.feature_spec import FEATURESETS, feature_names
 from ml.artifacts import (
+    MODEL_FILENAME,
     ThresholdRecord,
     collect_library_versions,
     load_feature_list,
@@ -43,6 +48,7 @@ from ml.artifacts import (
 )
 from ml.data import LabelledDataset
 from ml.datasets.base import DatasetContractError
+from ml.datasets.manifest import sha256_file
 from ml.holdout import evaluate_test_fold
 from ml.loading import RunData
 from ml.paths import RUNS_ROOT, run_dir
@@ -55,7 +61,6 @@ from ml.runs import (
 )
 from ml.splits import SplitIndices, assert_no_temporal_leakage, chronological_split
 
-MODEL_FILENAME = "model.json"
 THRESHOLD_FILENAME = "threshold.json"
 FEATURE_LIST_FILENAME = "feature_list.json"
 METRICS_FILENAME = "metrics.json"
@@ -99,6 +104,12 @@ class RecordedRun:
     metrics: Mapping[str, Any]
     feature_list: list[str]
 
+    @property
+    def model_sha256(self) -> str | None:
+        """The digest the fit record holds for `model.json`, or None if it holds none."""
+        digest = self.training_metadata.get("model_sha256")
+        return None if digest is None else str(digest)
+
 
 @dataclass(frozen=True)
 class VerifiedRun:
@@ -123,6 +134,15 @@ class VerifiedRun:
         count alone.
         """
         return self.recorded.record.test_fold_identity is not None
+
+    @property
+    def model_digest_verified(self) -> bool:
+        """Whether `model.json` was checked against the digest in the fit record.
+
+        Checked whenever the record carries one, so this is False only for a
+        fit record written before model digests were.
+        """
+        return self.recorded.model_sha256 is not None
 
 
 def read_recorded_run(run_name: str, *, runs_root: Path = RUNS_ROOT) -> RecordedRun:
@@ -164,6 +184,7 @@ def check_recorded_run(recorded: RecordedRun) -> None:
     _check_fit_record(recorded)
     _check_metrics_record(recorded)
     _check_model_file(recorded)
+    _check_model_digest(recorded)
 
 
 def verify_run(recorded: RecordedRun, data: RunData, explainer: FraudExplainer) -> VerifiedRun:
@@ -280,6 +301,20 @@ def _check_model_file(recorded: RecordedRun) -> None:
         raise RunVerificationError(
             f"Run {recorded.name!r}: {MODEL_FILENAME} takes {booster.num_features()} features, "
             f"but {FEATURE_LIST_FILENAME} lists {len(recorded.feature_list)}."
+        )
+
+
+def _check_model_digest(recorded: RecordedRun) -> None:
+    expected = recorded.model_sha256
+    if expected is None:
+        # A fit record written before model digests were.
+        return
+    actual = sha256_file(recorded.directory / MODEL_FILENAME)
+    if actual != expected:
+        raise RunVerificationError(
+            f"Run {recorded.name!r}: {MODEL_FILENAME} hashes to {actual}, but "
+            f"{TRAINING_METADATA_FILENAME} records {expected}. It is not the model file this "
+            "run saved."
         )
 
 

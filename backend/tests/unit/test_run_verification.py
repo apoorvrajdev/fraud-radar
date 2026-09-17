@@ -11,6 +11,7 @@ beside it, and requires verification to refuse and say why.
 """
 from __future__ import annotations
 
+import hashlib
 import json
 import shutil
 from collections.abc import Callable
@@ -27,11 +28,13 @@ from app.fraud.explainer import FraudExplainer, load_explainer
 from app.fraud.feature_spec import FEATURE_NAMES
 from ml import train
 from ml.data import LabelledDataset, synthetic_provenance
+from ml.datasets.manifest import sha256_file
 from ml.loading import RunData
 from ml.paths import run_dir
 from ml.run_verification import (
     RunVerificationError,
     VerifiedRun,
+    check_recorded_run,
     read_recorded_run,
     verify_run,
 )
@@ -295,7 +298,37 @@ def test_a_model_carrying_early_stopping_state_is_refused(run: TrainedRun) -> No
 
 
 def test_another_model_with_the_same_rounds_is_refused(run: TrainedRun) -> None:
-    """Right shape, wrong function: only the exact metric reproduction can tell."""
+    """Right shape, wrong function: only the exact metric reproduction can tell.
+
+    The fit record's model digest is rewritten to match the swapped file, so
+    the digest check passes and the scores are the only remaining evidence.
+    """
+    splits = run.outcome.splits
+    other = xgb.XGBClassifier(
+        n_estimators=run.outcome.fit.best_iteration + 1, max_depth=2, random_state=0
+    )
+    other.fit(run.ds.X[splits.train], run.ds.y[splits.train])
+    other.get_booster().save_model(str(run.directory / "model.json"))
+    swapped = sha256_file(run.directory / "model.json")
+    run.edit("training_metadata.json", lambda metadata: metadata.update(model_sha256=swapped))
+
+    _refused(run, "do not reproduce metrics.json exactly")
+
+
+def test_a_run_verifies_the_digest_of_its_saved_model(run: TrainedRun) -> None:
+    metadata = json.loads((run.directory / "training_metadata.json").read_text(encoding="utf-8"))
+    on_disk = hashlib.sha256((run.directory / "model.json").read_bytes()).hexdigest()
+
+    verified = _verify(run)
+
+    assert metadata["model_sha256"] == on_disk
+    assert verified.model_digest_verified is True
+
+
+def test_a_model_file_other_than_the_recorded_one_is_refused_before_loading_data(
+    run: TrainedRun,
+) -> None:
+    """Refused on the record alone: no data is needed to see the bytes differ."""
     splits = run.outcome.splits
     other = xgb.XGBClassifier(
         n_estimators=run.outcome.fit.best_iteration + 1, max_depth=2, random_state=0
@@ -303,7 +336,33 @@ def test_another_model_with_the_same_rounds_is_refused(run: TrainedRun) -> None:
     other.fit(run.ds.X[splits.train], run.ds.y[splits.train])
     other.get_booster().save_model(str(run.directory / "model.json"))
 
-    _refused(run, "do not reproduce metrics.json exactly")
+    with pytest.raises(RunVerificationError, match="It is not the model file this run saved"):
+        check_recorded_run(read_recorded_run(RUN, runs_root=run.runs_root))
+
+
+def test_the_same_model_saved_as_other_bytes_is_refused(run: TrainedRun) -> None:
+    """The digest pins the persisted artifact itself, not merely an equivalent model."""
+    path = run.directory / "model.json"
+    path.write_text(json.dumps(json.loads(path.read_text(encoding="utf-8")), indent=1), "utf-8")
+
+    _refused(run, r"model\.json hashes to .* but training_metadata\.json records")
+
+
+def test_a_recorded_model_digest_other_than_the_file_is_refused(run: TrainedRun) -> None:
+    run.edit("training_metadata.json", lambda metadata: metadata.update(model_sha256="0" * 64))
+
+    _refused(run, f"training_metadata.json records {'0' * 64}")
+
+
+def test_a_fit_record_without_a_model_digest_verifies_without_claiming_it(
+    run: TrainedRun,
+) -> None:
+    run.edit("training_metadata.json", lambda metadata: metadata.pop("model_sha256"))
+
+    verified = _verify(run)
+
+    assert verified.model_digest_verified is False
+    np.testing.assert_array_equal(verified.test_scores, run.outcome.test_scores)
 
 
 def test_an_explainer_from_another_run_is_refused(run: TrainedRun, tmp_path: Path) -> None:
