@@ -67,6 +67,8 @@ Extraction is pure Python, one production call per row. That cost is paid once p
 
 **Refusals on load:** wrong cache version, featureset mismatch, reordered columns, metadata/array disagreement, inconsistent row counts, duplicate ids, missing arrays, unreadable archive. A cache that returns the wrong matrix is worse than no cache, because the run still produces numbers.
 
+**Refusals on reuse:** a hit is also checked against the dataset loaded beside it, and refused when its transaction ids, row count or fraud count differ. The fingerprint names a matrix's inputs, not the rows an adapter made of them, so adapter output that changes while its inputs do not would otherwise be answered from a stale matrix.
+
 Caches live under `ml/data/cache/` and are gitignored. Deleting them costs time and nothing else.
 
 ## Consequences
