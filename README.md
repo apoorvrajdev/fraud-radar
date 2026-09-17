@@ -345,7 +345,7 @@ fraud-radar/
 ### Prerequisites
 
 - Python **3.11+**
-- Node **20+**
+- Node **20.19+** or **22.12+** — the range Vite 8 declares; Node 20.0–20.18 will refuse to install the frontend
 - [`uv`](https://docs.astral.sh/uv/) for Python package management
 - Git
 
@@ -388,6 +388,8 @@ The training run writes `model.json`, `feature_list.json`, `threshold.json`, `me
 
 A named run, trained with `uv run python -m ml.train --run-name <name>`, is analysed with `uv run python -m ml.analyze --run-name <name>`. The run is verified first: its data is rebuilt from its `run.json`, and its saved model must reproduce its `metrics.json` exactly on the re-derived test fold, or the analysis stops and says why. The same analysis JSONs and plots, and a `MODEL_CARD.md` for that run, are then written into `backend/ml/artifacts/runs/<name>/` only. Calibration is measured on the test fold with no calibrator fitted, and the served artifacts and `backend/ml/MODEL_CARD.md` are left untouched.
 
+The Phase 5D synthetic baseline is one of those named runs — `uv run python -m ml.train --run-name synthetic_v1`, on the same generated dataset the served model is trained from. It is the source model the cross-generator transfer below carries over to Sparkov unchanged.
+
 A named run's `run.json` also identifies its test fold by the count and SHA-256 of its transaction ids in fold order, and its `training_metadata.json` carries the SHA-256 of the `model.json` saved beside it. Verification refuses a run whose re-derived test fold holds other transactions, or the same ones in another order, and one whose model file is not byte-for-byte the one it saved — the latter before any data is loaded. Records written before these fields existed still verify, and say that the check was not made.
 
 ### External Benchmark (Sparkov)
@@ -415,9 +417,17 @@ Then build the feature matrix. It is extracted by the same `FeatureExtractor` th
 
 ```bash
 uv run python -m ml.features.build --dataset sparkov --max-cards 200
+uv run python -m ml.features.build --dataset sparkov --full-corpus
 ```
 
-A feature build is not given a benchmark run's name. The run record is written when the run is trained (`uv run python -m ml.train --dataset sparkov --max-cards 200 --run-name sparkov_v1_200cards`), and training refuses a run directory that already holds a `run.json`, so a recorded run is never replaced; a directory holding only its quality report is trained into as usual.
+A feature build is not given a benchmark run's name. The run record is written when the run is trained:
+
+```bash
+uv run python -m ml.train --dataset sparkov --max-cards 200 --run-name sparkov_v1_200cards
+uv run python -m ml.train --dataset sparkov --full-corpus --run-name sparkov_v1_full
+```
+
+Training refuses a run directory that already holds a `run.json`, so a recorded run is never replaced; a directory holding only its quality report is trained into as usual. Each of these commands fits *and* scores its own test fold, which is why the method had to be frozen before the first one ran.
 
 Changing the source bytes, the subsample or the featureset changes the fingerprint, so a stale matrix can never answer for new data. A reused matrix must also hold exactly the transactions of the dataset loaded beside it, in the same order and with the same row and fraud counts, or the cache hit is refused. The parity guarantee and cache format are in [`docs/adr/PHASE_5C_FEATURE_PARITY.md`](docs/adr/PHASE_5C_FEATURE_PARITY.md).
 
@@ -450,7 +460,7 @@ cd backend
 uv run pytest -v
 ```
 
-Runs 1,062 test cases covering the dataset contracts and run records (canonical invariants, provenance round-trip, adapter registry, offline layout, test-fold transaction identity), the data loader training and analysis share, run verification (including model file digests) and named-run analysis with its model card, the cross-generator transfer measurement (run pairing refusals, exactly which rows each model scores, source-threshold provenance and result labelling), the temporal drift experiment (frozen half-open periods, which rows reach tuning, early stopping and the threshold, undefined monthly metrics), the rules audit (context and rule-outcome parity with the scoring service, evaluability decided from the data, row populations), the benchmark card generator (records that do not describe the benchmark refused, every value traced to the record it was read from, the committed card kept in step with its runs), the promotion guard, the Sparkov adapter on CSV fixtures (schema drift, id derivation, label separation, explicit exclusions, entity subsampling, manifest verification) and its quality report, the batch feature builder's element-by-element parity with the live scoring path (including the future-information and window-eviction cases) and the feature cache's round-trip and refusal rules, the featureset registry pin, the chronological splitter, evaluation metrics, artifact round-trip, SHAP additivity, force / waterfall plot rendering, segment routing, calibration math (including positive-class variants), the six-rule engine (hour and high-risk-country boundaries parametrised), Stripe-pattern idempotency (hash determinism, replay path, 409 conflict, 422 paths), the scoring orchestrator (decision matrix, audit-log writes, hard-block short-circuit), the feature extractor's pre-loaded-history parity contract, the simulator payload builder, the dashboard stats service (24h window edges, hourly bucket fill, decimal quantisation, top-10 cap), and the `/explain`, `/transactions`, and `/stats/*` endpoints via `TestClient`.
+Runs 1,062 test cases covering the dataset contracts and run records (canonical invariants, provenance round-trip, adapter registry, offline layout, test-fold transaction identity), the data loader training and analysis share, run verification (including model file digests) and named-run analysis with its model card, the cross-generator transfer measurement (run pairing refusals, exactly which rows each model scores, source-threshold provenance and result labelling), the temporal drift experiment (frozen half-open periods, which rows reach tuning, early stopping and the threshold, undefined monthly metrics), the rules audit (context and rule-outcome parity with the scoring service, evaluability decided from the data, row populations), the benchmark card generator (records that do not describe the benchmark refused, every value traced to the record it was read from, the committed card kept in step with its runs), the promotion guard, the Sparkov adapter on CSV fixtures (schema drift, id derivation, label separation, explicit exclusions, entity subsampling, manifest verification) and its quality report, the batch feature builder's element-by-element parity with the live scoring path (including the future-information and window-eviction cases) and the feature cache's round-trip and refusal rules, the featureset registry pin, the chronological splitter, evaluation metrics, artifact round-trip, SHAP additivity, force / waterfall plot rendering, segment routing, calibration math (including positive-class variants), the six-rule engine (hour and high-risk-country boundaries parametrised), Stripe-pattern idempotency (hash determinism, replay path, 409 conflict, 422 paths), the scoring orchestrator (decision matrix, audit-log writes, hard-block short-circuit), the feature extractor's pre-loaded-history parity contract, the simulator payload builder, the dashboard stats service (24h window edges, hourly bucket fill, decimal quantisation, top-10 cap), and the `/explain`, `/transactions` (ingestion, list, detail and analyst decision), `/alerts`, and `/stats/*` endpoints via `TestClient`.
 
 [`.github/workflows/ci.yml`](.github/workflows/ci.yml) runs the same suite on every push to `main` and every pull request, alongside `ruff`, strict `mypy`, and the frontend's `tsc` + production build. The integration tests that load a real model would otherwise skip in CI — `backend/ml/artifacts/model.json` is gitignored — so the workflow trains a deliberately tiny model first (3,000 rows, two search iterations, about a minute) to keep them running for real rather than green-by-skip. Those CI numbers are throwaway; the published metrics come from the full training run above.
 
