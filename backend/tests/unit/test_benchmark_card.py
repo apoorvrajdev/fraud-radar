@@ -852,3 +852,245 @@ def test_a_drift_record_differing_only_in_retrieval_time_is_read(runs_root: Path
     )
 
     assert card.load_benchmark(runs_root).drift.get("run_name") == "sparkov_v1_drift"
+
+
+# ---------------------------------------------------------------------------
+# Rendering: helpers that read the card back
+# ---------------------------------------------------------------------------
+
+
+def build(root: Path) -> str:
+    return card.build_benchmark_card(card.load_benchmark(root))
+
+
+def section(text: str, heading: str) -> str:
+    """The body of the `## heading` section, up to the next `## ` heading."""
+    start = text.index(f"\n## {heading}")
+    end = text.find("\n## ", start + 1)
+    return text[start : end if end != -1 else len(text)]
+
+
+def row(text: str, label: str) -> list[str]:
+    """The cells of the first table row whose first cell is `label`."""
+    for line in text.splitlines():
+        cells = [cell.strip() for cell in line.strip().strip("|").split("|")]
+        if line.startswith("| ") and cells[0] == label:
+            return cells
+    raise AssertionError(f"No table row labelled {label!r}.")
+
+
+def f4(value: float) -> str:
+    return f"{value:.4f}"
+
+
+RESULTS = "1. Results — never merged"
+THRESHOLDS = "2. At each operating threshold"
+IN_DOMAIN_LABELS = {
+    SYNTHETIC: "Synthetic baseline",
+    DEV: "Sparkov in-domain, development (200 cards)",
+    FULL: "Sparkov in-domain, full corpus (999 cards)",
+}
+
+
+# ---------------------------------------------------------------------------
+# Rendering: results, thresholds and context
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize("name", [SYNTHETIC, DEV, FULL])
+def test_each_in_domain_result_is_read_from_its_own_run(runs_root: Path, name: str) -> None:
+    v = values(name)
+
+    cells = row(section(build(runs_root), RESULTS), IN_DOMAIN_LABELS[name])
+
+    assert cells[1:5] == [
+        f"`{name}`",
+        f"`{name}` train fold",
+        f"`{name}` test fold",
+        f"`{name}` val fold",
+    ]
+    assert cells[5:] == [
+        f"{v['test']:,}",
+        f"{v['test_frauds']:,}",
+        f4(v["prevalence"]),
+        f4(v["pr_auc"]),
+        f4(v["roc_auc"]),
+        f4(v["recall_1"]),
+        f4(v["recall_5"]),
+    ]
+
+
+def test_the_transfer_result_is_read_from_the_transfer_record(runs_root: Path) -> None:
+    transfer = transfer_record()
+    free, context = transfer["threshold_free"], transfer["context"]
+
+    cells = row(section(build(runs_root), RESULTS), "Cross-generator transfer")
+
+    assert cells[1:5] == [
+        f"`{SYNTHETIC}` → `{FULL}`",
+        f"`{SYNTHETIC}` train fold, not retrained",
+        f"`{FULL}` test fold",
+        f"`{SYNTHETIC}` val fold; nothing selected on `{FULL}`",
+    ]
+    assert cells[5:] == [
+        f"{context['target_test_rows']:,}",
+        f"{context['target_test_fraud_count']:,}",
+        f4(context["target_test_prevalence"]),
+        f4(free["pr_auc"]),
+        f4(free["roc_auc"]),
+        f4(free["recall_at_1pct_fpr"]),
+        f4(free["recall_at_5pct_fpr"]),
+    ]
+
+
+def test_a_changed_record_value_changes_that_value_on_the_card(runs_root: Path) -> None:
+    edit_json(runs_root / FULL / "metrics.json", lambda payload: payload.update(test_pr_auc=0.1234))
+
+    cells = row(section(build(runs_root), RESULTS), IN_DOMAIN_LABELS[FULL])
+
+    assert cells[8] == "0.1234"
+
+
+def test_the_results_are_four_rows_that_are_never_merged(runs_root: Path) -> None:
+    results = section(build(runs_root), RESULTS)
+    header, *rows = [line for line in results.splitlines() if line.startswith("| ")]
+
+    assert [cells.split("|")[1].strip() for cells in rows] == [
+        *IN_DOMAIN_LABELS.values(),
+        "Cross-generator transfer",
+    ]
+    columns = [cell.strip() for cell in header.strip("|").split("|")]
+    assert columns.index("Test prevalence") + 1 == columns.index("PR-AUC")
+    assert "ULB" not in results
+
+
+def test_the_development_run_is_labelled_with_the_cards_its_record_selected(
+    runs_root: Path,
+) -> None:
+    edit_json(
+        runs_root / DEV / "run.json",
+        lambda payload: payload["dataset"]["subsample"].update(selected_entities=150),
+    )
+
+    rows = section(build(runs_root), RESULTS)
+
+    assert row(rows, "Sparkov in-domain, development (150 cards)")[1] == f"`{DEV}`"
+
+
+def test_a_recall_not_read_on_a_test_roc_curve_is_refused(runs_root: Path) -> None:
+    edit_json(
+        runs_root / DEV / "metrics.json",
+        lambda payload: payload["threshold_source"].update(recall_at_1pct_fpr="threshold.json"),
+    )
+
+    with pytest.raises(card.BenchmarkCardError, match="not a recall read on a test ROC curve"):
+        build(runs_root)
+
+
+@pytest.mark.parametrize(
+    ("name", "label"),
+    [
+        (SYNTHETIC, "Synthetic baseline"),
+        (DEV, "Sparkov in-domain, development"),
+        (FULL, "Sparkov in-domain, full corpus"),
+    ],
+)
+def test_each_in_domain_threshold_row_is_read_from_its_own_run(
+    runs_root: Path, name: str, label: str
+) -> None:
+    v = values(name)
+
+    cells = row(section(build(runs_root), THRESHOLDS), label)
+
+    assert cells[1:] == [
+        f4(v["threshold"]),
+        f"`{name}` val fold",
+        "0.0100",
+        f4(v["val_fpr"]),
+        "no",
+        f4(v["precision"]),
+        f4(v["recall"]),
+        f4(v["f1"]),
+        f"{v['tp']:,}",
+        f"{v['fp']:,}",
+        f"{v['tn']:,}",
+        f"{v['fn']:,}",
+        f4(v["test_fpr"]),
+    ]
+
+
+def test_the_transfer_is_measured_at_the_source_runs_threshold(runs_root: Path) -> None:
+    transfer = transfer_record()
+    at, threshold = transfer["at_source_threshold"], transfer["source_threshold"]
+
+    thresholds = section(build(runs_root), THRESHOLDS)
+    cells = row(thresholds, "Cross-generator transfer, at the source run's threshold")
+
+    assert cells[1:] == [
+        f4(values(SYNTHETIC)["threshold"]),
+        threshold["selected_on"],
+        f4(threshold["fpr_ceiling_on_source_val"]),
+        f4(threshold["realised_fpr_on_source_val"]),
+        "no",
+        f4(at["precision"]),
+        f4(at["recall"]),
+        f4(at["f1"]),
+        f"{at['true_positives']:,}",
+        f"{at['false_positives']:,}",
+        f"{at['true_negatives']:,}",
+        f"{at['false_negatives']:,}",
+        f4(transfer["context"]["realised_fpr_on_target_test_at_source_threshold"]),
+    ]
+
+
+def test_fraud_counts_are_named_as_source_or_target_for_the_transfer(runs_root: Path) -> None:
+    context = transfer_record()["context"]
+
+    counts = section(build(runs_root), THRESHOLDS).split("**Fraud counts per fold.**")[1]
+
+    assert row(counts, "Cross-generator transfer")[1:] == [
+        f"{context['source_train_fraud_count']} (source `{SYNTHETIC}`)",
+        f"{context['source_val_fraud_count']} (source `{SYNTHETIC}`)",
+        f"{context['target_test_fraud_count']} (target `{FULL}`)",
+    ]
+    for name, label in (
+        (DEV, "Sparkov in-domain, development"),
+        (FULL, "Sparkov in-domain, full corpus"),
+    ):
+        v = values(name)
+        assert row(counts, label)[1:] == [
+            str(v["train_frauds"]),
+            str(v["val_frauds"]),
+            str(v["test_frauds"]),
+        ]
+
+
+def test_the_label_delay_note_is_stated_once(runs_root: Path) -> None:
+    text = build(runs_root)
+
+    assert text.count(LABEL_DELAY_NOTE) == 1
+
+
+def test_synthetic_era_targets_never_appear_on_the_card(runs_root: Path) -> None:
+    text = build(runs_root)
+
+    synthetic_metrics = read_json(runs_root / SYNTHETIC / "metrics.json")
+    assert {"target_pr_auc", "target_recall_at_1pct_fpr"} <= set(synthetic_metrics)
+    assert "target_pr_auc" not in text and "target_recall" not in text
+    assert f4(synthetic_metrics["target_pr_auc"]) not in text
+    assert f4(synthetic_metrics["target_recall_at_1pct_fpr"]) not in text
+
+
+def test_every_record_read_is_listed_with_its_digest(runs_root: Path) -> None:
+    records = card.load_benchmark(runs_root)
+
+    text = card.build_benchmark_card(records)
+
+    assert f"Records read ({len(records.files)})" in text
+    for record in records.files:
+        assert f"| `{record.source}` | `{record.sha256}` |" in text
+
+
+def test_the_card_is_the_same_bytes_every_time_it_is_built(runs_root: Path) -> None:
+    assert build(runs_root) == build(runs_root)
+    assert "Generated at" not in build(runs_root)
