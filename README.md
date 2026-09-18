@@ -331,7 +331,7 @@ fraud-radar/
 │   ├── ARCHITECTURE.md               # One-page system mental model (Mermaid)
 │   ├── DATA_LICENSES.md              # Per-source licence, citation and provenance policy
 │   ├── PHASE_5_PLAN.md               # Phase 5 milestone specification
-│   ├── adr/                          # 10 architecture decision records (Phase 3 slices, 4A, 5A, 5C, 5D)
+│   ├── adr/                          # 11 architecture decision records (Phase 3 slices, 4A, 5A, 5C, 5D, 5E)
 │   └── screenshots/                  # Capture conventions
 ├── .github/workflows/ci.yml          # pytest + ruff + strict mypy + frontend tsc and build
 ├── LICENSE
@@ -582,6 +582,7 @@ Today's headline metrics come from data produced by this repository's own genera
 - [`docs/adr/PHASE_5A_DESIGN.md`](docs/adr/PHASE_5A_DESIGN.md) — data and benchmark architecture (canonical schema invariant, adapter protocol, labels held outside the objects, provenance record, four-stage offline layout, run reproducibility record, featureset versioning).
 - [`docs/adr/PHASE_5C_FEATURE_PARITY.md`](docs/adr/PHASE_5C_FEATURE_PARITY.md) — how benchmark features stay identical to production features (one extractor, sentinel session, pinned history window), the golden parity test design, the one known divergence, and the feature-cache format and refusal rules.
 - [`docs/adr/PHASE_5D_BENCHMARK_METHODOLOGY.md`](docs/adr/PHASE_5D_BENCHMARK_METHODOLOGY.md) — the benchmark method fixed before any test fold is scored: three results that are never merged, a drift model tuned only on its own period, the dormant-account rule reported as not evaluable on Sparkov, the hard freeze before the dev test fold, and what only the real corpus can answer.
+- [`docs/adr/PHASE_5E_ULB_BENCHMARK_METHODOLOGY.md`](docs/adr/PHASE_5E_ULB_BENCHMARK_METHODOLOGY.md) — the real-world ULB benchmark method, fixed before the data is acquired: why ULB is not adapted into the canonical schema and featureset v1 is not evaluated on it, its own `ulb_pca_v1` featureset kept outside the production registry so no ULB run can be promoted, the Sparkov procedure applied unchanged with three pre-registered seeds, results never merged with v1 results, and what only the retrieved file can answer.
 - [`docs/DATA_LICENSES.md`](docs/DATA_LICENSES.md) — per-source licence, citation and provenance policy: what is derived and committed, what never enters the repository.
 - [`backend/ml/BENCHMARK_CARD.md`](backend/ml/BENCHMARK_CARD.md) — the Phase 5D results side by side, generated from the committed run records: the three results kept apart with each PR-AUC against its test prevalence, every result at its operating threshold, live features, calibration, SHAP rankings, the monthly drift series, the rules audit, data quality and provenance.
 - [`backend/ml/MODEL_CARD.md`](backend/ml/MODEL_CARD.md) — auto-regenerated model card with segment, calibration, and global SHAP analyses.

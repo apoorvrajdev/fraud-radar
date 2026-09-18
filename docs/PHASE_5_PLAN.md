@@ -4,6 +4,7 @@
 **Basis:** Full inspection of the repository at commit `128ffc9` (2026-05-28, "docs: add architecture diagrams and screenshot conventions (4D)"), the README, and the previous Phase 5 report. Every claim about the codebase below was verified by reading the source, not inferred from the README.
 **Timebox:** MUST-HAVE scope sized for ~3 focused weeks; NICE-TO-HAVE fills week 4 only if MUST is done.
 **Phase 5D / M4 methodology:** locked in [`adr/PHASE_5D_BENCHMARK_METHODOLOGY.md`](adr/PHASE_5D_BENCHMARK_METHODOLOGY.md), which governs wherever it differs from §4.3, §12, §14–§16, M4, §29 and the run names in M2's definition of done — the benchmark runs are `sparkov_v1_200cards` and `sparkov_v1_full`, each with its own quality report, per decision 14; the `sparkov_v1` of M2 is not used.
+**Phase 5E / M5 methodology:** locked in [`adr/PHASE_5E_ULB_BENCHMARK_METHODOLOGY.md`](adr/PHASE_5E_ULB_BENCHMARK_METHODOLOGY.md), which governs wherever it differs from §7, §17, §20, §23, M5 and §29 item 5.
 
 ---
 
@@ -536,6 +537,8 @@ backend/tests/unit/test_simulator_profile.py
 - **DoD:** `python -m ml.promote sparkov_v1_full` makes the API serve the Sparkov model; model card shows the three-way comparison, drift plot, rules audit, and the 13/17 live-feature accounting.
 
 ### M5 — 5E: ULB track (1.5 days)
+> **Methodology locked before acquisition** in [`adr/PHASE_5E_ULB_BENCHMARK_METHODOLOGY.md`](adr/PHASE_5E_ULB_BENCHMARK_METHODOLOGY.md). Where it differs from this plan, the decision record governs: ULB is not adapted into the canonical schema and featureset v1 is not evaluated on it; its own featureset `ulb_pca_v1` is `V1`–`V28` and `Amount` as published, not `log1p(Amount)` (§7, §17), and stays outside the production registry so promotion refuses it; tuning keeps the full 25 iterations (§17); the three seeds are the runs `ulb_pca_v1_seed42`, `_seed43` and `_seed44` rather than `runs/ulb_baseline/`; the card is `backend/ml/ULB_BENCHMARK_CARD.md` rather than `MODEL_CARD_ULB.md` (§23); and ULB results get their own table and card instead of a column beside the v1 results (§20, §29 item 5).
+
 - **Objective:** real-data benchmark with the same discipline.
 - **Files:** `ml/tracks/ulb/*`, `MODEL_CARD_ULB.md`.
 - **Details:** §17; 3 seeds for variance.
