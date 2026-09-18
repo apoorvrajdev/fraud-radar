@@ -9,6 +9,7 @@ from __future__ import annotations
 import hashlib
 import json
 import logging
+import re
 import shutil
 import subprocess
 from collections.abc import Callable
@@ -31,6 +32,9 @@ from ml.datasets.manifest import (
     sha256_file,
     verify_dataset,
 )
+from ml.datasets.registry import available_datasets
+from ml.paths import RAW_DATA_DIR
+from ml.train import parse_args as parse_train_args
 
 CONTENT = b"trans_num,amt,is_fraud\nabc,10.00,0\n"
 DIGEST = hashlib.sha256(CONTENT).hexdigest()
@@ -103,6 +107,51 @@ def test_committed_sparkov_entry_is_labelled_synthetic_in_prose() -> None:
     entry = load_manifest_entry("sparkov")
     assert "synthetic" in entry.notes.lower()
     assert "not real" in entry.notes.lower()
+
+
+def test_committed_ulb_entry_states_its_provenance() -> None:
+    """Phase 5E: what the source's own metadata says, and nothing it does not."""
+    entry = load_manifest_entry("ulb")
+
+    assert entry.origin is DataOrigin.REAL
+    assert entry.source == "kaggle"
+    assert entry.reference == "mlg-ulb/creditcardfraud"
+    assert entry.source_url == "https://www.kaggle.com/datasets/mlg-ulb/creditcardfraud"
+    assert entry.license.startswith("DbCL-1.0")
+    assert entry.label_field == "Class"
+    assert entry.filenames == ("creditcard.csv",)
+    # The size the Kaggle files API advertises; only a retrieval can pin a digest.
+    assert entry.file("creditcard.csv").expected_bytes == 150_828_752
+
+
+def test_committed_ulb_entry_is_labelled_real_and_anonymised_in_prose() -> None:
+    """The notes must not let a reader mistake this for generated data."""
+    notes = load_manifest_entry("ulb").notes.lower()
+    assert "real" in notes
+    assert "anonymised" in notes
+    assert "synthetic" not in notes
+
+
+def test_every_committed_licence_states_when_it_was_retrieved() -> None:
+    """A licence is recorded as the source displayed it on a given day, never from memory."""
+    for name, entry in load_manifest(DEFAULT_MANIFEST_PATH).items():
+        assert re.search(r"retrieved \d{4}-\d{2}-\d{2}", entry.license), name
+
+
+def test_ulb_is_acquired_like_any_source_but_is_not_a_training_dataset(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Phase 5E decision 2: ULB names no customer or merchant, so it has no adapter.
+
+    It is in the manifest, so it is downloaded and verified like any source,
+    but the v1 training path cannot be pointed at it.
+    """
+    assert "ulb" in load_manifest(DEFAULT_MANIFEST_PATH)
+    assert "ulb" not in available_datasets()
+
+    with pytest.raises(SystemExit):
+        parse_train_args(["--dataset", "ulb", "--run-name", "ulb_pca_v1_seed42"])
+    assert "invalid choice: 'ulb'" in capsys.readouterr().err
 
 
 def test_unknown_dataset_is_refused() -> None:
@@ -722,3 +771,26 @@ def test_credentials_never_reach_the_log(
 
     assert exit_code == download.EXIT_MANUAL_DOWNLOAD_REQUIRED
     assert "sentinel-7f3a" not in caplog.text
+
+
+ULB_LISTING = "name,size,creationDate\ncreditcard.csv,150828752,2019-09-20 00:04:39.013000\n"
+
+
+def test_committed_ulb_entry_drives_the_existing_acquisition_command(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """ULB is fetched by the same command as Sparkov, into its own gitignored directory."""
+    fake = _RecordingRun(_completed(stdout=ULB_LISTING))
+    monkeypatch.setattr(subprocess, "run", fake)
+    entry = load_manifest_entry("ulb")
+    destination = download.dataset_root("ulb")
+
+    assert download.kaggle_access_problem(entry, "/opt/kaggle") is None
+    [(command, _)] = fake.calls
+    assert command == ["/opt/kaggle", "datasets", "files", "mlg-ulb/creditcardfraud", "-v"]
+    assert destination == RAW_DATA_DIR / "ulb"
+
+    text = download.manual_instructions(entry, destination)
+    assert "creditcard.csv" in text
+    assert "DbCL-1.0" in text
+    assert "never be committed" in text

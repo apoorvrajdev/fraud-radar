@@ -22,6 +22,24 @@
           "sha256": "12d553ab19440c752d2531ee1af44bb64f12cc3d3839f1649f19e81c230545f0"
         }
       }
+    },
+    "ulb": {
+      "display_name": "Credit Card Fraud Detection",
+      "origin": "real",
+      "source": "kaggle",
+      "reference": "mlg-ulb/creditcardfraud",
+      "source_url": "https://www.kaggle.com/datasets/mlg-ulb/creditcardfraud",
+      "license": "DbCL-1.0: Database Contents License v1.0 (Kaggle dataset API, retrieved 2026-09-18)",
+      "citation": "Machine Learning Group, Universit\u00e9 Libre de Bruxelles, Credit Card Fraud Detection, Kaggle; collected in a research collaboration with Worldline. The dataset page asks that Dal Pozzolo, Caelen, Johnson and Bontempi, Calibrating Probability with Undersampling for Unbalanced Classification, IEEE CIDM 2015, and the further works it lists be cited.",
+      "label_field": "Class",
+      "label_definition": "1 = fraud, 0 = otherwise, as the dataset description defines Class",
+      "notes": "Real, anonymised benchmark. The publisher describes transactions made by European cardholders over two days in September 2013: 492 frauds out of 284,807 transactions, advertised rather than observed. V1-V28 are PCA components of undisclosed inputs; Time is seconds since the first transaction; no currency is stated for Amount. Used on its own track only and never promoted: docs/adr/PHASE_5E_ULB_BENCHMARK_METHODOLOGY.md.",
+      "files": {
+        "creditcard.csv": {
+          "bytes": 150828752,
+          "sha256": null
+        }
+      }
     }
   }
 }
