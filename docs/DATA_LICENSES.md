@@ -2,7 +2,7 @@
 
 Fraud Radar trains and evaluates on datasets it does not own. This file records what each source is, under what terms it is used, and what of it ever enters this repository.
 
-**Status:** Sparkov retrieved and verified on 2026-09-17; the SHA-256 digests of both files are pinned in `backend/ml/data/manifest.json`, so a load of any other bytes is refused. ULB has a manifest entry built from its Kaggle metadata, read on 2026-09-18; its file has not been downloaded, so no digest is pinned. Nothing else external has been downloaded. Licence rows below are what the source advertises publicly; each is confirmed at retrieval time (Phase 5B) and the confirmed wording, with its retrieval date, is written into the dataset's `DatasetProvenance.license` field and into every run that uses it.
+**Status:** Sparkov retrieved and verified on 2026-09-17; the SHA-256 digests of both files are pinned in `backend/ml/data/manifest.json`, so a load of any other bytes is refused. ULB retrieved and verified on 2026-09-18; the SHA-256 digest of its one file is pinned in the same manifest. Nothing else external has been downloaded. Licence rows below are what the source advertises publicly; each is confirmed at retrieval time (Phase 5B) and the confirmed wording, with its retrieval date, is written into the dataset's `DatasetProvenance.license` field and into every run that uses it.
 
 ---
 
@@ -82,7 +82,7 @@ Fraud Radar trains and evaluates on datasets it does not own. This file records 
 
 **This is real card-transaction data, anonymised by its publisher.** It is the one dataset in Phase 5 that no generator produced. Apart from the amount, a relative time and the label, every column is a PCA component of inputs the publisher withholds, so it is used on its own track, under the method fixed in [`PHASE_5E_ULB_BENCHMARK_METHODOLOGY.md`](adr/PHASE_5E_ULB_BENCHMARK_METHODOLOGY.md), and never promoted to the serving API.
 
-Everything below comes from the source's own metadata, read through the Kaggle API on 2026-09-18. The file has not been retrieved, so nothing here has been observed in its bytes.
+The licence, attribution, citation and descriptions below come from the source's own metadata, read through the Kaggle API on 2026-09-18. The file was retrieved and verified the same day; what its bytes showed is recorded under [Observed at acquisition](adr/PHASE_5E_ULB_BENCHMARK_METHODOLOGY.md#observed-at-acquisition-2026-09-18), and it matches the advertised size, row count and fraud count.
 
 | | |
 |---|---|
@@ -91,13 +91,13 @@ Everything below comes from the source's own metadata, read through the Kaggle A
 | **Licence** | **DbCL-1.0**, the [Database Contents License (DbCL) v1.0](https://opendatacommons.org/licenses/dbcl/1-0/) of Open Data Commons, confirmed 2026-09-18 via the Kaggle dataset API (`licenseName`). It is the only licence the API returns for the dataset. |
 | **Attribution** | Per the dataset description, collected and analysed during a research collaboration of Worldline and the Machine Learning Group of ULB |
 | **Citation** | The works the publisher asks to be cited, listed below |
-| **Files** | `creditcard.csv`, 150,828,752 bytes according to the Kaggle files API, which dates the file 2019-09-20. Not yet retrieved: no size has been observed and no digest is pinned. |
+| **Files** | `creditcard.csv`, 150,828,752 bytes, the size the Kaggle files API advertises and the size retrieved; the API dates the file 2019-09-20. SHA-256 `76274b691b16a6c49d3f159c883398e03ccd6d1ee12d9d8ee38f4b4b98551a89`, pinned in the manifest. |
 | **Advertised coverage** | Transactions made by credit cards in September 2013 by European cardholders, over two days: 492 frauds out of 284,807 transactions (0.172%). This is the publisher's description, not counts observed in the file. |
 | **Schema, as described** | `Time`: the seconds elapsed between each transaction and the first transaction in the dataset. `V1`–`V28`: principal components obtained with PCA; the original features are withheld for confidentiality. `Amount`: the transaction amount. `Class`: 1 for fraud, 0 otherwise. |
 | **Label** | `Class`; 1 = fraud, 0 otherwise, as the description defines it |
 | **Not stated by the publisher** | The currency of `Amount`; the calendar dates of the two days; which rows the PCA was fitted on; how the labels were established |
 | **Used for** | The ULB track only, with its own featureset `ulb_pca_v1`. Never promoted to the serving API ([Phase 5E decisions 4 and 12](adr/PHASE_5E_ULB_BENCHMARK_METHODOLOGY.md#4-ulb-has-its-own-featureset-ulb_pca_v1-outside-the-production-registry)). |
-| **Derived and committed** | Nothing yet. Once each exists: the file digest, quality-report aggregates, run records and the generated ULB card. Never rows or matrices. |
+| **Derived and committed** | The file digest. Once each exists and the licence terms below are settled: quality-report aggregates, run records and the generated ULB card. Never rows or matrices. |
 
 **Licence terms still to settle.** The DbCL covers the individual contents of a database; its text refers to the Open Database License (ODbL) for rights in the database itself. The Kaggle API names no database licence beside it. Which obligations, if any, attach to the aggregates and run records this repository would commit is therefore not settled here. It is settled, and recorded in this section, before any ULB quality report, run record or card is committed ([Phase 5E decision 16](adr/PHASE_5E_ULB_BENCHMARK_METHODOLOGY.md#16-the-raw-file-is-external-and-local-only)). The rule that raw rows and matrices are never committed holds whatever the outcome.
 

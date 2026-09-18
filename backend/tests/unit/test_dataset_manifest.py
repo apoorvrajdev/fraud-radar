@@ -120,8 +120,42 @@ def test_committed_ulb_entry_states_its_provenance() -> None:
     assert entry.license.startswith("DbCL-1.0")
     assert entry.label_field == "Class"
     assert entry.filenames == ("creditcard.csv",)
-    # The size the Kaggle files API advertises; only a retrieval can pin a digest.
-    assert entry.file("creditcard.csv").expected_bytes == 150_828_752
+
+
+# Retrieved and verified on 2026-09-18: the size the Kaggle files API advertised,
+# and the digest of the bytes that arrived.
+ULB_BYTES = 150_828_752
+ULB_SHA256 = "76274b691b16a6c49d3f159c883398e03ccd6d1ee12d9d8ee38f4b4b98551a89"
+
+
+def test_committed_ulb_entry_is_pinned_to_the_verified_bytes() -> None:
+    expected = load_manifest_entry("ulb").file("creditcard.csv")
+
+    assert expected.is_pinned
+    assert expected.sha256 == ULB_SHA256
+    assert expected.expected_bytes == ULB_BYTES
+
+
+def test_committed_ulb_pin_refuses_other_bytes_and_repinning(tmp_path: Path) -> None:
+    """Once pinned, a different file stops a load, and cannot be pinned over the digest."""
+    manifest_copy = tmp_path / "manifest.json"
+    shutil.copyfile(DEFAULT_MANIFEST_PATH, manifest_copy)
+    entry = load_manifest_entry("ulb", path=manifest_copy)
+    root = tmp_path / "raw" / "ulb"
+    root.mkdir(parents=True)
+    (root / "creditcard.csv").write_bytes(b'"Time","V1","Amount","Class"\n0,1.0,2.50,"0"\n')
+
+    check = check_file(entry.file("creditcard.csv"), root)
+    assert check.status is FileStatus.SIZE_MISMATCH
+    assert check.is_blocking
+    with pytest.raises(ManifestError, match="size_mismatch"):
+        require_verified(entry, root)
+
+    with pytest.raises(ManifestError, match="already pinned"):
+        pin_hashes(entry, root, path=manifest_copy)
+    assert load_manifest_entry("ulb", path=manifest_copy).file("creditcard.csv").sha256 == (
+        ULB_SHA256
+    )
 
 
 def test_committed_ulb_entry_is_labelled_real_and_anonymised_in_prose() -> None:

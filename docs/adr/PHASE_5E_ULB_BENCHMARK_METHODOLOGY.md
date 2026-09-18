@@ -1,6 +1,6 @@
 # Phase 5E — ULB Real-World Benchmark Methodology
 
-**Status:** accepted · **Date:** 2026-09-18 · **Milestone:** Phase 5E / M5 · **Scope:** the ULB track (`backend/ml/tracks/ulb/`, not yet built), its manifest entry, and one keyword argument on `backend/ml/train.py`
+**Status:** accepted · **Date:** 2026-09-18 · **Amended:** 2026-09-18 (observed at acquisition) · **Milestone:** Phase 5E / M5 · **Scope:** the ULB track (`backend/ml/tracks/ulb/`, not yet built), its manifest entry, and one keyword argument on `backend/ml/train.py`
 
 ---
 
@@ -10,7 +10,7 @@ Phase 5D measured the v1 pipeline on Sparkov, an externally generated synthetic 
 
 That makes ULB real, and it makes it structurally unlike every other dataset in this repository. It has no card, customer, merchant, country, channel or calendar date. None of the history features, the rules or the entity-level contracts that Phases 5A–5D were built around can be computed from it.
 
-This record fixes the method before the data is acquired. When it was accepted, ULB had not been downloaded, no ULB tooling existed, and no model had been trained on it. Everything only the files can settle is listed under [Unknown until acquisition](#unknown-until-acquisition) and will be recorded from the retrieved bytes, not from secondary sources.
+This record fixes the method before the data is acquired. When it was accepted, ULB had not been downloaded, no ULB tooling existed, and no model had been trained on it. Everything only the files can settle is listed under [Unknown until acquisition](#unknown-until-acquisition) and will be recorded from the retrieved bytes, not from secondary sources. What acquisition later showed is recorded under [Observed at acquisition](#observed-at-acquisition-2026-09-18).
 
 A pre-implementation review of the code against [`PHASE_5_PLAN.md`](../PHASE_5_PLAN.md) §17 and M5 found places where the plan cannot be followed as written, or has to be made precise:
 
@@ -285,6 +285,29 @@ These are unknown, not undecided. Each is recorded from the retrieved bytes, or 
 | Which rows the publisher fitted the PCA on | An accepted limitation either way; expected to remain unpublished | Dataset description at retrieval |
 | Whether the Kaggle CLI can list the dataset from this account | Automatic or manual acquisition | First acquisition attempt |
 
+### Observed at acquisition (2026-09-18)
+
+`creditcard.csv` was retrieved into `backend/ml/data/raw/ulb/` and verified read-only against the manifest. A second download from Kaggle the same day, into a temporary directory outside the repository, was byte-identical to it, with the same SHA-256 from two independent implementations; that copy was then deleted. The digest was pinned in the manifest afterwards, as a separately authorised step (decision 1).
+
+Nothing was split, featurised, trained or scored. Each answer below comes from the retrieved bytes or the source's own metadata, read on this date.
+
+| Unknown | Observed |
+|---|---|
+| Licence, citation and terms for derived works | `DbCL-1.0`, from the Kaggle dataset API and printed again by the Kaggle CLI at download. The citation list the publisher asks for is recorded in [`DATA_LICENSES.md`](../DATA_LICENSES.md). **Still open:** the DbCL covers the database's contents and refers to the ODbL for rights in the database itself, and no database licence is named beside it. What that means for committed ULB records is settled before any is committed (decision 16). |
+| Dataset version or last-updated date | The dataset metadata carries neither. The Kaggle files API dates `creditcard.csv` 2019-09-20 00:04:39. The pinned digest is what identifies the bytes. |
+| Files, sizes and SHA-256 | The download is a 66.0 MB zip holding one file, `creditcard.csv`: 150,828,752 bytes, exactly the advertised size, SHA-256 `76274b691b16a6c49d3f159c883398e03ccd6d1ee12d9d8ee38f4b4b98551a89`, now pinned. |
+| Header and value formats | ASCII, no byte-order mark, LF line endings, a final newline, no blank lines, and 31 fields on every row. The header is exactly `Time`, `V1`–`V28`, `Amount`, `Class`, every name double-quoted. In data rows only `Class` is quoted, as `"0"` or `"1"`. `Amount` has at most two decimal places. `Time` is written as a plain integer on every row but one, which writes 100000 as `1e+05`. |
+| Row and fraud counts | 284,807 rows and 492 frauds (0.1727%), the publisher's figures exactly. The fold sizes stated under [Frozen protocol](#frozen-protocol) therefore apply as written. |
+| `Time` | Runs from 0 to 172,792 seconds (47.998 hours), in whole seconds, and the file is already in `Time` order. 124,592 distinct values; 239,644 rows share their `Time` with at least one other row, and the largest group sharing one value has 36 rows. |
+| Missing or non-numeric values; negative and zero amounts | None missing, non-numeric or non-finite in any column. No negative amounts. 1,825 zero amounts, kept and counted (decision 7). No row would be excluded. |
+| Exact duplicates and conflicting labels | 773 groups of identical rows: 1,854 rows in all, 1,081 of them repeating an earlier row, the largest group 18 rows; 13 of the groups are fraud rows. No two rows with identical feature values carry different labels. Whether any pair straddles a fold boundary is answered by the quality report. |
+| Frauds in each fold, and each fold's elapsed-time span | Not observed at acquisition; answered by the quality report, which splits the data. |
+| The currency of `Amount` | Not stated in the dataset description. |
+| Which rows the PCA was fitted on | Not stated in the dataset description. |
+| Whether the Kaggle CLI can list the dataset | Yes: Kaggle CLI 2.2.4 listed and downloaded it. |
+
+**What acquisition changes.** Nothing in the method. No row is excluded, so the exclusion stop in decision 15 is not triggered, and every duplicate and zero amount stays in, as decision 7 requires. Two properties of the file bind the loader rather than the method: `Time` must be read as a number, not matched as an integer string, because of the one `1e+05`; and `Class` arrives quoted.
+
 ---
 
 ## Not done in M5
@@ -340,7 +363,7 @@ Each code step carries its own unit tests, on fixture files only; no test needs 
 
 | Deferred | Where |
 |---|---|
-| The facts listed under *Unknown until acquisition* | An *Observed at acquisition* section of this record, after the M5B gate |
+| Frauds in each fold, each fold's elapsed-time span, and duplicates straddling a fold boundary | The ULB quality report (M5C) |
 | The results and their interpretation | This record and the ULB card, in M5G, from the committed run records |
 | Multi-currency FX | M6 |
 | Featureset version in `feature_list.json`, `/explain` and the model endpoint | M7 |
