@@ -1,6 +1,6 @@
 # Phase 5E — ULB Real-World Benchmark Methodology
 
-**Status:** accepted · **Date:** 2026-09-18 · **Amended:** 2026-09-18 (observed at acquisition), 2026-09-19 (licence terms settled) · **Milestone:** Phase 5E / M5 · **Scope:** the ULB track (`backend/ml/tracks/ulb/`, not yet built), its manifest entry, and one keyword argument on `backend/ml/train.py`
+**Status:** accepted · **Date:** 2026-09-18 · **Amended:** 2026-09-18 (observed at acquisition), 2026-09-19 (licence terms settled) · **Milestone:** Phase 5E / M5 · **Scope:** the ULB track (`backend/ml/tracks/ulb/`), its manifest entry, and one keyword argument on `backend/ml/train.py`
 
 ---
 
