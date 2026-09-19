@@ -1,0 +1,179 @@
+{
+  "amounts": {
+    "zero_amount_rows": 1825
+  },
+  "chronological_split": {
+    "available": true,
+    "boundaries": [
+      {
+        "between": [
+          "train",
+          "val"
+        ],
+        "earlier_fold_last_elapsed_seconds": 132928,
+        "exact_duplicate_groups_straddling": 0,
+        "exact_duplicate_pairs_straddling": 0,
+        "instant_shared": false,
+        "later_fold_first_elapsed_seconds": 132929,
+        "rows_at_shared_instant": {
+          "earlier_fold": 0,
+          "later_fold": 0
+        }
+      },
+      {
+        "between": [
+          "val",
+          "test"
+        ],
+        "earlier_fold_last_elapsed_seconds": 151328,
+        "exact_duplicate_groups_straddling": 0,
+        "exact_duplicate_pairs_straddling": 0,
+        "instant_shared": true,
+        "later_fold_first_elapsed_seconds": 151328,
+        "rows_at_shared_instant": {
+          "earlier_fold": 2,
+          "later_fold": 1
+        }
+      }
+    ],
+    "folds": [
+      {
+        "first_elapsed_seconds": 0,
+        "frauds": 384,
+        "last_elapsed_seconds": 132928,
+        "name": "train",
+        "rows": 199364
+      },
+      {
+        "first_elapsed_seconds": 132929,
+        "frauds": 56,
+        "last_elapsed_seconds": 151328,
+        "name": "val",
+        "rows": 42721
+      },
+      {
+        "first_elapsed_seconds": 151328,
+        "frauds": 52,
+        "last_elapsed_seconds": 172792,
+        "name": "test",
+        "rows": 42722
+      }
+    ]
+  },
+  "dataset": "ulb",
+  "definitions": {
+    "boundary": "the position between two adjacent folds; rows before it are every row of the earlier folds, rows after it every row of the later folds",
+    "elapsed_seconds": "Time as published: seconds from the first transaction in the file; not a calendar date or a time of day",
+    "exact_duplicate_group": "rows equal in every column, Class included; every row of a group is kept",
+    "folds": "ml.splits.chronological_split of the rows in load order (Time, then position in the file): 70/15/15 by row count, the folds a run trained on these rows records in run.json",
+    "label_conflict_group": "rows equal in every column but Class that carry both labels",
+    "repeated_rows": "rows of exact-duplicate groups beyond the first row of each group",
+    "rows_sharing_a_time": "rows whose Time equals at least one other row's",
+    "shared_instant": "the earlier fold's last Time equals the later fold's first, so rows at that Time fall on both sides of the boundary; recorded, not corrected",
+    "stops": "the Phase 5E decision 15 conditions these rows trigger; any one stops the work before a model is trained",
+    "straddling_duplicate_pair": "two rows of one exact-duplicate group, one before the boundary and one after it"
+  },
+  "duplicates": {
+    "exact_duplicate_groups": 773,
+    "exact_duplicate_groups_of_fraud_rows": 13,
+    "label_conflict_groups": 0,
+    "largest_exact_duplicate_group": 18,
+    "repeated_rows": 1081,
+    "rows_in_exact_duplicate_groups": 1854,
+    "rows_in_label_conflict_groups": 0
+  },
+  "exclusions": [
+    {
+      "count": 0,
+      "reason": "missing_value"
+    },
+    {
+      "count": 0,
+      "reason": "non_numeric_value"
+    },
+    {
+      "count": 0,
+      "reason": "label_not_zero_or_one"
+    },
+    {
+      "count": 0,
+      "reason": "negative_amount"
+    }
+  ],
+  "field_notes": [
+    {
+      "detail": "Transaction.created_at position: 1970-01-01T00:00:00+00:00 plus Time seconds; orders and splits rows; elapsed time only, never a calendar date or a time of day; not a feature",
+      "field": "Time",
+      "status": "mapped"
+    },
+    {
+      "detail": "Transaction.amount, as published and untransformed; currency not stated, none assumed",
+      "field": "Amount",
+      "status": "mapped"
+    },
+    {
+      "detail": "the label, 0 or 1, held apart from the values",
+      "field": "Class",
+      "status": "mapped"
+    },
+    {
+      "detail": "no canonical field: PCA components of undisclosed inputs, carried as published into ULB-only features",
+      "field": "V1-V28",
+      "status": "mapped"
+    },
+    {
+      "detail": "Transaction.id: the 1-based position in the source file, stable because the digest is pinned; not a source identifier",
+      "field": "row position",
+      "status": "derived"
+    },
+    {
+      "detail": "no card or account key: no history, velocity or customer features",
+      "field": "Transaction.customer_id / Customer.*",
+      "status": "unavailable"
+    },
+    {
+      "detail": "no merchant name, category, MCC, risk rating or country",
+      "field": "Transaction.merchant_id / Merchant.*",
+      "status": "unavailable"
+    },
+    {
+      "detail": "no geography or channel",
+      "field": "Transaction.country / is_card_present / payment_method / status / currency",
+      "status": "unavailable"
+    }
+  ],
+  "generated_at_utc": "2026-09-19T17:36:55+00:00",
+  "label": {
+    "fraud_count": 492,
+    "fraud_rate": 0.001727485630620034
+  },
+  "licence": {
+    "citation": "Machine Learning Group, Universit\u00e9 Libre de Bruxelles, Credit Card Fraud Detection, Kaggle; collected in a research collaboration with Worldline. The dataset page asks that Dal Pozzolo, Caelen, Johnson and Bontempi, Calibrating Probability with Undersampling for Unbalanced Classification, IEEE CIDM 2015, and the further works it lists be cited.",
+    "licence": "DbCL-1.0: Database Contents License v1.0, https://opendatacommons.org/licenses/dbcl/1-0/, for the contents (Kaggle dataset API, retrieved 2026-09-18). ODbL-1.0: Open Database License v1.0, https://opendatacommons.org/licenses/odbl/1-0/, for the database: DbCL section 2.2 requires compliance with it, and the dataset page names the selection 'Database: Open Database, Contents: Database Contents' (read 2026-09-19).",
+    "method_offer": "ODbL section 4.6(b): the method of deriving the rows this record is computed from is offered, free of charge and in machine-readable form, as this repository's code: the ULB track in backend/ml/tracks/ulb/, at the commit the run records as code_version in its run.json. It adds no contents from outside the source file.",
+    "notice": "Contains information from the Credit Card Fraud Detection (https://www.kaggle.com/datasets/mlg-ulb/creditcardfraud) database of the Machine Learning Group, ULB, which is available under the Open Database License (ODbL) v1.0 (https://opendatacommons.org/licenses/odbl/1-0/); its contents are under the Database Contents License (DbCL) v1.0 (https://opendatacommons.org/licenses/dbcl/1-0/).",
+    "terms": "docs/DATA_LICENSES.md"
+  },
+  "origin": "real",
+  "rows": {
+    "excluded": 0,
+    "kept": 284807,
+    "read": 284807
+  },
+  "source": {
+    "files": {
+      "creditcard.csv": "76274b691b16a6c49d3f159c883398e03ccd6d1ee12d9d8ee38f4b4b98551a89"
+    }
+  },
+  "stops": [],
+  "time": {
+    "distinct_values": 124592,
+    "file_in_time_order": true,
+    "first_elapsed_seconds": 0,
+    "largest_group_sharing_a_time": 36,
+    "last_elapsed_seconds": 172792,
+    "rows_sharing_a_time": 239644,
+    "whole_seconds": true
+  },
+  "version": "kaggle-file-2019-09-20"
+}

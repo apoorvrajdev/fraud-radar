@@ -1,0 +1,64 @@
+{
+  "bin_counts": [
+    42666,
+    4,
+    2,
+    1,
+    1,
+    3,
+    1,
+    2,
+    1,
+    41
+  ],
+  "bin_mean_observed": [
+    0.0003046922608165753,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.5,
+    0.0,
+    0.926829268292683
+  ],
+  "bin_mean_predicted": [
+    0.00012285710765827477,
+    0.13598123006522655,
+    0.24152135103940964,
+    0.3949474096298218,
+    0.42210477590560913,
+    0.5547713239987692,
+    0.6183682680130005,
+    0.737715482711792,
+    0.8595581650733948,
+    0.9948136428507363
+  ],
+  "bin_positive_counts": [
+    13,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    1,
+    0,
+    38
+  ],
+  "brier_score": 0.0004467965921282861,
+  "expected_calibration_error": 0.0003746835162191301,
+  "n_test_samples": 42722,
+  "note": "Measured on the test fold; no calibrator fitted. The positive-class values are hard to read for two reasons: scale_pos_weight inflates scores by design, and few frauds leave the positive-class bins sparse.",
+  "positive_class_brier": 0.24979004806986152,
+  "positive_class_ece": 0.10196056414100119,
+  "worst_positive_bin": {
+    "bin_index": 7,
+    "gap": 0.237715482711792,
+    "mean_observed": 0.5,
+    "mean_predicted": 0.737715482711792,
+    "n_positives": 1,
+    "n_samples": 2
+  }
+}

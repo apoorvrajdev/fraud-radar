@@ -1,0 +1,38 @@
+{
+  "best_hyperparameters": {
+    "colsample_bytree": 0.8,
+    "learning_rate": 0.03,
+    "max_depth": 8,
+    "min_child_weight": 3,
+    "n_estimators": 800,
+    "reg_alpha": 0.0,
+    "reg_lambda": 3.0,
+    "subsample": 1.0
+  },
+  "best_iteration": 503,
+  "constant_features": [],
+  "constant_features_whole_matrix": [],
+  "dataset_size": 284807,
+  "early_stopping_rounds": 50,
+  "library_versions": {
+    "numpy": "2.4.6",
+    "platform": "Windows-11-10.0.26200-SP0",
+    "python": "3.13.14",
+    "scikit-learn": "1.8.0",
+    "xgboost": "3.2.0"
+  },
+  "live_feature_count": 29,
+  "live_feature_count_whole_matrix": 29,
+  "model_sha256": "1d5f7185ba559eedeb36d5df0e14d3e79bb0d57d404275d5e4cd1dcf5b2104b8",
+  "random_state": 44,
+  "scale_pos_weight": 518.1770833333334,
+  "test_fraud_rate": 0.0012171714807359207,
+  "test_size": 42722,
+  "train_fraud_rate": 0.0019261250777472363,
+  "train_size": 199364,
+  "trained_at_utc": "2026-09-19T18:06:14+00:00",
+  "tuning_cv_folds": 4,
+  "tuning_iterations": 25,
+  "val_fraud_rate": 0.001310830738980829,
+  "val_size": 42721
+}

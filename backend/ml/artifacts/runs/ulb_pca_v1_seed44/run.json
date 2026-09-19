@@ -1,0 +1,71 @@
+{
+  "code_version": "da1b7aa9646545d9fc14daca252fdd646f78649e",
+  "created_at_utc": "2026-09-19T18:06:14+00:00",
+  "dataset": {
+    "citation": "Machine Learning Group, Universit\u00e9 Libre de Bruxelles, Credit Card Fraud Detection, Kaggle; collected in a research collaboration with Worldline. The dataset page asks that Dal Pozzolo, Caelen, Johnson and Bontempi, Calibrating Probability with Undersampling for Unbalanced Classification, IEEE CIDM 2015, and the further works it lists be cited.",
+    "files": {
+      "creditcard.csv": "76274b691b16a6c49d3f159c883398e03ccd6d1ee12d9d8ee38f4b4b98551a89"
+    },
+    "fraud_count": 492,
+    "fraud_rate": 0.001727485630620034,
+    "label_definition": "1 = fraud, 0 = otherwise, as the dataset description defines Class",
+    "label_field": "Class",
+    "license": "DbCL-1.0: Database Contents License v1.0, https://opendatacommons.org/licenses/dbcl/1-0/, for the contents (Kaggle dataset API, retrieved 2026-09-18). ODbL-1.0: Open Database License v1.0, https://opendatacommons.org/licenses/odbl/1-0/, for the database: DbCL section 2.2 requires compliance with it, and the dataset page names the selection 'Database: Open Database, Contents: Database Contents' (read 2026-09-19).",
+    "name": "ulb",
+    "notes": "Real, anonymised benchmark. The publisher describes transactions made by European cardholders over two days in September 2013: 492 frauds out of 284,807 transactions, the counts observed on retrieval on 2026-09-18. V1-V28 are PCA components of undisclosed inputs; Time is seconds since the first transaction; no currency is stated for Amount. Used on its own track only and never promoted: docs/adr/PHASE_5E_ULB_BENCHMARK_METHODOLOGY.md. Timestamps are elapsed time from the first transaction, encoded from 1970-01-01T00:00:00+00:00; they are not calendar dates.",
+    "origin": "real",
+    "period_end": "1970-01-02T23:59:52+00:00",
+    "period_start": "1970-01-01T00:00:00+00:00",
+    "preprocessing": [
+      "header required to be exactly Time, V1-V28, Amount, Class, in that order",
+      "every value read as a number in plain or scientific notation; Class read through its quotes",
+      "values used as published: no transform, scaling or rounding",
+      "rows ordered by Time, then by position in the source file",
+      "transaction id: the row's 1-based position in the source file, not a source identifier",
+      "timestamps: 1970-01-01T00:00:00+00:00 plus Time seconds, elapsed-time positions and not calendar dates",
+      "exact duplicate rows and zero amounts kept",
+      "matrix: featureset ulb_pca_v1, the 29 columns V1-V28 and Amount as published, in source order; Time orders the rows and Class is the label, and neither is a feature; rows in load order; no transform, scaling, imputation or fitted step; no feature cache"
+    ],
+    "retrieved_at": "2026-09-19T17:52:49+00:00",
+    "row_count": 284807,
+    "schema_version": "ulb-source-1",
+    "source_url": "https://www.kaggle.com/datasets/mlg-ulb/creditcardfraud",
+    "subsample": null,
+    "version": "kaggle-file-2019-09-20"
+  },
+  "featureset_version": "ulb_pca_v1",
+  "library_versions": {
+    "numpy": "2.4.6",
+    "platform": "Windows-11-10.0.26200-SP0",
+    "python": "3.13.14",
+    "scikit-learn": "1.8.0",
+    "xgboost": "3.2.0"
+  },
+  "metadata_version": "3",
+  "notes": "Phase 5E ULB benchmark run under pre-registered random state 44. No subsample applies, so seed is null; the model random_state is recorded with the fit, in training_metadata.json. Fold periods are elapsed time from the first transaction, encoded from 1970-01-01T00:00:00+00:00, and are not calendar dates. Never promoted. Contains information from the Credit Card Fraud Detection (https://www.kaggle.com/datasets/mlg-ulb/creditcardfraud) database of the Machine Learning Group, ULB, which is available under the Open Database License (ODbL) v1.0 (https://opendatacommons.org/licenses/odbl/1-0/); its contents are under the Database Contents License (DbCL) v1.0 (https://opendatacommons.org/licenses/dbcl/1-0/). ODbL section 4.6(b): the method of deriving the rows this record is computed from is offered, free of charge and in machine-readable form, as this repository's code: the ULB track in backend/ml/tracks/ulb/, at the commit the run records as code_version in its run.json. It adds no contents from outside the source file.",
+  "run_name": "ulb_pca_v1_seed44",
+  "seed": null,
+  "splits": [
+    {
+      "end": "1970-01-02T12:55:28+00:00",
+      "name": "train",
+      "start": "1970-01-01T00:00:00+00:00"
+    },
+    {
+      "end": "1970-01-02T18:02:08+00:00",
+      "name": "val",
+      "start": "1970-01-02T12:55:29+00:00"
+    },
+    {
+      "end": "1970-01-02T23:59:52+00:00",
+      "name": "test",
+      "start": "1970-01-02T18:02:08+00:00"
+    }
+  ],
+  "test_fold_identity": {
+    "digest_definition": "SHA-256 of the fold's transaction ids, in fold order, encoded as a JSON array of strings with no whitespace, in UTF-8",
+    "fold": "test",
+    "transaction_count": 42722,
+    "transaction_ids_sha256": "943aee478e2216db524b256bb476904134da1c0c8f6335fdb213f98f2883c4f3"
+  }
+}
