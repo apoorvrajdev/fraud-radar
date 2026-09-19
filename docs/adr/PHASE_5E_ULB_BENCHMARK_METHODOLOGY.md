@@ -1,6 +1,6 @@
 # Phase 5E — ULB Real-World Benchmark Methodology
 
-**Status:** accepted · **Date:** 2026-09-18 · **Amended:** 2026-09-18 (observed at acquisition), 2026-09-19 (licence terms settled) · **Milestone:** Phase 5E / M5 · **Scope:** the ULB track (`backend/ml/tracks/ulb/`), its manifest entry, and one keyword argument on `backend/ml/train.py`
+**Status:** accepted · **Date:** 2026-09-18 · **Amended:** 2026-09-18 (observed at acquisition), 2026-09-19 (licence terms settled), 2026-09-20 (observed at execution) · **Milestone:** Phase 5E / M5 · **Scope:** the ULB track (`backend/ml/tracks/ulb/`), its manifest entry, and one keyword argument on `backend/ml/train.py`
 
 ---
 
@@ -309,6 +309,28 @@ Nothing was split, featurised, trained or scored. Each answer below comes from t
 **What acquisition changes.** Nothing in the method. No row is excluded, so the exclusion stop in decision 15 is not triggered, and every duplicate and zero amount stays in, as decision 7 requires. Two properties of the file bind the loader rather than the method: `Time` must be read as a number, not matched as an integer string, because of the one `1e+05`; and `Class` arrives quoted.
 
 **What the licence terms change.** Nothing in the method either. Everything decision 16 commits is permitted, and the raw file and the matrix stay local. They add one requirement for what is committed: every published ULB-derived record carries the ODbL §4.3 notice, and every record computed through the ULB loader or matrix is accompanied by the ODbL §4.6 method offer. Both are worded in [`DATA_LICENSES.md`](../DATA_LICENSES.md). The figures in this section are among those records:
+
+> Contains information from the [Credit Card Fraud Detection](https://www.kaggle.com/datasets/mlg-ulb/creditcardfraud) database of the Machine Learning Group, ULB, which is available under the [Open Database License (ODbL) v1.0](https://opendatacommons.org/licenses/odbl/1-0/); its contents are under the [Database Contents License (DbCL) v1.0](https://opendatacommons.org/licenses/dbcl/1-0/).
+
+---
+
+## Observed at execution (2026-09-19)
+
+The three pre-registered runs were trained in order from the pinned file, `ulb_pca_v1_seed42` first, at the commit each `run.json` records as its code version, `da1b7aa`. Only the random state differed between them. Each run was verified with `ml.tracks.ulb.verify` before its records were committed, and [`backend/ml/ULB_BENCHMARK_CARD.md`](../../backend/ml/ULB_BENCHMARK_CARD.md) lays the results out from those records. Every value below is read from them.
+
+| Left to execution | Observed |
+|---|---|
+| Frauds in each fold, and each fold's elapsed-time span | Train: 199,364 rows, 384 frauds, `Time` 0–132,928 s. Val: 42,721 rows, 56 frauds, 132,929–151,328 s. Test: 42,722 rows, 52 frauds, 151,328–172,792 s. The same in all three runs. |
+| Transactions sharing a `Time` across a boundary, and duplicates straddling one | The val and test folds share `Time` 151,328 s: 2 of its rows are in val and 1 in test. The train and val folds share none. No exact-duplicate group straddles either boundary. |
+| Decision 15 stops | None. No row was excluded, the val and test folds each hold fraud, every run's threshold met the 1% FPR ceiling on its val fold without the fallback, and every run verified. |
+| Live features | All 29 are live in every run's training fold. |
+| Reproduction | For each run, the matrix rebuilt from the pinned file gives the recorded folds and exactly the test-fold transactions `run.json` identifies, and the saved model reproduces `metrics.json` and `calibration_metrics.json` exactly. |
+
+**What the results say.** They answer [the question](#the-question) on both counts. The evaluation method frozen for Sparkov carried over to real, anonymised card transactions unchanged: the same procedure, search budget, split and threshold rule ran with only the random state varied, and no stop condition was met. Each result is also reproduced exactly from the pinned source bytes and the committed records.
+
+On the primary run, random state 42, the test PR-AUC is 0.7670 against a test prevalence of 0.0012; the repeats under random states 43 and 44 score 0.7569 and 0.7751. The operating thresholds the runs chose on their val folds differ — 0.0396, 0.0155 and 0.0027 — so a threshold is read only with the run that chose it, and each run's realised FPR stays under the 1% ceiling on val and on test. At those thresholds the runs catch 43, 40 and 44 of the test fold's 52 frauds.
+
+**What they do not say.** Every figure rests on 52 test frauds in one slice at the end of the second day, so the differences between the random states amount to a handful of frauds; the seeds measure the fit's randomness, not that uncertainty. The results do not show that featureset v1 or the rules work on real data, since neither is evaluated here. They are not comparable to the Sparkov or synthetic results, nor to ULB results from random splits, and they say nothing about production performance or present-day fraud. No calibrator was fitted, and the positive-class calibration values are read with the two caveats recorded beside them.
 
 > Contains information from the [Credit Card Fraud Detection](https://www.kaggle.com/datasets/mlg-ulb/creditcardfraud) database of the Machine Learning Group, ULB, which is available under the [Open Database License (ODbL) v1.0](https://opendatacommons.org/licenses/odbl/1-0/); its contents are under the [Database Contents License (DbCL) v1.0](https://opendatacommons.org/licenses/dbcl/1-0/).
 

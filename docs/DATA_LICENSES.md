@@ -78,7 +78,7 @@ Fraud Radar trains and evaluates on datasets it does not own. This file records 
   - *Observed in the published files, 2026-09-17.* Every row's `unix_time` is exactly 2,556 or 2,557 whole days earlier than its wall clock, with no hours component, which puts the epochs in 2012–2013. The offset is 2,557 days through 2019-02-27 and from 2020-03-01 on, 2,556 days from 2019-03-01 through 2020-02-28, and both on 2019-02-28, a wall-clock date holding rows from `unix_time` dates 2012-02-28 and 2012-02-29. Wall-clock 2020-02-29 holds no rows. `fraudTrain.csv` is stored in `unix_time` order, so its wall clock steps backwards once. The full evidence is under [The `unix_time` offset](adr/PHASE_5D_BENCHMARK_METHODOLOGY.md#the-unix_time-offset).
 - Timestamps are parsed once, with the explicit `%Y-%m-%d %H:%M:%S` format, and normalised to UTC. Ambiguous strings such as `01/02/2019` are excluded rather than guessed at.
 
-### ULB Credit Card Fraud — real-world benchmark (track and runs recorded, 5E)
+### ULB Credit Card Fraud — real-world benchmark (runs and card recorded, 5E)
 
 **This is real card-transaction data, anonymised by its publisher.** It is the one dataset in Phase 5 that no generator produced. Apart from the amount, a relative time and the label, every column is a PCA component of inputs the publisher withholds, so it is used on its own track, under the method fixed in [`PHASE_5E_ULB_BENCHMARK_METHODOLOGY.md`](adr/PHASE_5E_ULB_BENCHMARK_METHODOLOGY.md), and never promoted to the serving API.
 
@@ -97,7 +97,7 @@ The attribution, citation and descriptions below come from the source's own meta
 | **Label** | `Class`; 1 = fraud, 0 otherwise, as the description defines it |
 | **Not stated by the publisher** | The currency of `Amount`; the calendar dates of the two days; which rows the PCA was fitted on; how the labels were established |
 | **Used for** | The ULB track only, with its own featureset `ulb_pca_v1`. Never promoted to the serving API ([Phase 5E decisions 4 and 12](adr/PHASE_5E_ULB_BENCHMARK_METHODOLOGY.md#4-ulb-has-its-own-featureset-ulb_pca_v1-outside-the-production-registry)). |
-| **Derived and committed** | The file digest; the quality reports and run records of the three benchmark runs, each run carrying the notice below in its `run.json` and quality report; and, once it exists, the generated ULB card. Never rows or matrices. |
+| **Derived and committed** | The file digest; the quality reports and run records of the three benchmark runs, each run carrying the notice below in its `run.json` and quality report; and the ULB benchmark card generated from those records, [`backend/ml/ULB_BENCHMARK_CARD.md`](../backend/ml/ULB_BENCHMARK_CARD.md), which prints the notice and the method offer below. Never rows or matrices. |
 
 **Licence terms**, settled on 2026-09-19 from the full texts of both licences at opendatacommons.org and from the source's own metadata, before any ULB quality report, run record or card is committed ([Phase 5E decision 16](adr/PHASE_5E_ULB_BENCHMARK_METHODOLOGY.md#16-the-raw-file-is-external-and-local-only)). A bare section number refers to the licence last named before it.
 
@@ -111,7 +111,7 @@ The attribution, citation and descriptions below come from the source's own meta
 - **Not covered by either licence.** Privacy and data-protection rights in the contents (ODbL §2.4); committing no rows keeps this repository clear of them. Kaggle's own Terms of Use were not examined, because the page renders only in a browser.
 - **The citation list** below is the publisher's request, not a licence term, and it does not replace the notice.
 
-**Notice** (ODbL §4.3). Every published ULB-derived work carries it: this section, the acquisition findings in the Phase 5E record, each ULB run's `run.json` (through the manifest's licence field and the run's notes) and quality report, and, once they exist, the ULB card and the README's ULB table.
+**Notice** (ODbL §4.3). Every published ULB-derived work carries it: this section, the acquisition and execution findings in the Phase 5E record, each ULB run's `run.json` (through the manifest's licence field and the run's notes) and quality report, and the ULB benchmark card. The README reports no ULB figures; it links the card instead, and any ULB figure added to it would carry the notice too.
 
 > Contains information from the [Credit Card Fraud Detection](https://www.kaggle.com/datasets/mlg-ulb/creditcardfraud) database of the Machine Learning Group, ULB, which is available under the [Open Database License (ODbL) v1.0](https://opendatacommons.org/licenses/odbl/1-0/); its contents are under the [Database Contents License (DbCL) v1.0](https://opendatacommons.org/licenses/dbcl/1-0/).
 

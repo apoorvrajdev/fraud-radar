@@ -200,6 +200,14 @@ explainer once, and reuses them across every request. Training runs
 out-of-band and writes new artifacts that the app picks up on its
 next restart.
 
+The real-world ULB benchmark trains out-of-band in `backend/ml/` as
+well, in its own track, `backend/ml/tracks/ulb/`, and it never
+crosses that line. Its featureset, `ulb_pca_v1`, is kept out of the
+production featureset registry the app extracts from, so promotion,
+run analysis and `FraudExplainer` all refuse a ULB run: nothing it
+produces can reach `app/`. Its results are laid out in
+`backend/ml/ULB_BENCHMARK_CARD.md`.
+
 ---
 
 ## See also
@@ -218,5 +226,10 @@ next restart.
   queue + queue predicate + score-bucket boundaries.
 - [`docs/adr/PHASE_4A_DEMO_SCOPE.md`](adr/PHASE_4A_DEMO_SCOPE.md) —
   zero-cost Vercel-only architecture + snapshot contract.
+- [`docs/adr/PHASE_5E_ULB_BENCHMARK_METHODOLOGY.md`](adr/PHASE_5E_ULB_BENCHMARK_METHODOLOGY.md) —
+  the real-world ULB track, kept outside the production featureset
+  registry so no ULB run can be promoted or served.
+- [`backend/ml/ULB_BENCHMARK_CARD.md`](../backend/ml/ULB_BENCHMARK_CARD.md) —
+  the ULB results, generated from the ULB run records.
 - [`backend/ml/MODEL_CARD.md`](../backend/ml/MODEL_CARD.md) — segment
   metrics, calibration, global SHAP, limitations.
