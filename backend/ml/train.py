@@ -334,6 +334,8 @@ def _final_fit(
     X_val: np.ndarray,
     y_val: np.ndarray,
     best_params: dict[str, object],
+    *,
+    random_state: int = RANDOM_STATE,
 ) -> xgb.XGBClassifier:
     """Refit best params on train with early stopping against val.
 
@@ -349,7 +351,7 @@ def _final_fit(
         eval_metric="aucpr",
         scale_pos_weight=scale_pos_weight,
         tree_method="hist",
-        random_state=RANDOM_STATE,
+        random_state=random_state,
         early_stopping_rounds=EARLY_STOPPING_ROUNDS,
     )
     model.fit(X_train, y_train, eval_set=[(X_val, y_val)], verbose=False)
@@ -365,12 +367,14 @@ def train_and_evaluate(
     n_iter: int,
     cv_splits: int,
     target_fpr: float,
+    random_state: int = RANDOM_STATE,
 ) -> TrainingOutcome:
     """Split, tune, fit, choose the operating threshold, then evaluate.
 
     Each fold has one job. Hyperparameters are searched on train only; early
     stopping and the threshold use val only; test is scored once, after every
-    choice has been made.
+    choice has been made. `random_state` seeds the search, the shuffle of its
+    cross-validation folds and the final model, and nothing else.
     """
     # ---- Split ----------------------------------------------------------
     splits = chronological_split(ds.timestamps)
@@ -412,6 +416,7 @@ def train_and_evaluate(
         n_iter=n_iter,
         cv_splits=cv_splits,
         target_fpr=target_fpr,
+        random_state=random_state,
     )
     tuning = selected.tuning
     threshold_value = selected.threshold.value
@@ -483,6 +488,7 @@ def fit_operating_model(
     n_iter: int,
     cv_splits: int,
     target_fpr: float,
+    random_state: int = RANDOM_STATE,
 ) -> OperatingModel:
     """Tune on train, refit with early stopping against val, and choose the threshold on val.
 
@@ -496,14 +502,16 @@ def fit_operating_model(
         y_train,
         n_iter=n_iter,
         n_splits=cv_splits,
-        random_state=RANDOM_STATE,
+        random_state=random_state,
     )
 
     # ---- Final fit ------------------------------------------------------
-    model = _final_fit(X_train, y_train, X_val, y_val, tuning.best_params)
+    model = _final_fit(
+        X_train, y_train, X_val, y_val, tuning.best_params, random_state=random_state
+    )
     fitted_with = model.get_params()
     fit = FitRecord(
-        random_state=RANDOM_STATE,
+        random_state=int(fitted_with["random_state"]),
         tuning_iterations=n_iter,
         tuning_cv_folds=cv_splits,
         scale_pos_weight=float(fitted_with["scale_pos_weight"]),

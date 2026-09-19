@@ -175,9 +175,10 @@ def _observe(root: Path) -> Observed:
         x_val: np.ndarray,
         y_val: np.ndarray,
         best_params: dict[str, object],
+        **options: Any,
     ) -> Any:
         fit_calls.append((np.array(x_train), np.array(x_val)))
-        return real_fit(x_train, y_train, x_val, y_val, best_params)
+        return real_fit(x_train, y_train, x_val, y_val, best_params, **options)
 
     real_threshold = train.find_threshold_at_fpr
 

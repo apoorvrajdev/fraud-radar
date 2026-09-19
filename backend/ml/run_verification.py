@@ -206,6 +206,45 @@ def verify_run(recorded: RecordedRun, data: RunData, explainer: FraudExplainer) 
 
 
 # ---------------------------------------------------------------------------
+# Checks shared with a verifier outside the featureset registry
+# ---------------------------------------------------------------------------
+#
+# A run on a featureset the registry does not hold, such as the ULB track's,
+# is verified by that track's own verifier, which checks the featureset
+# against its own definition. The checks below do not depend on the
+# featureset, so it uses them as they are. `check_recorded_run` and its
+# registry guard are unchanged.
+
+
+def check_record_apart_from_featureset(recorded: RecordedRun) -> None:
+    """Every record-only check but the featureset's: name, environment, fit record and model."""
+    _check_run_name(recorded)
+    _check_environment(recorded)
+    _check_fit_record(recorded)
+    _check_metrics_record(recorded)
+    _check_model_file(recorded)
+    _check_model_digest(recorded)
+
+
+def check_loaded_folds(recorded: RecordedRun, data: RunData) -> SplitIndices:
+    """Refuse unless the loaded data has the run's provenance, folds and test-fold identity."""
+    _check_provenance(recorded, data)
+    splits = _check_folds(recorded, data.ds)
+    _check_test_fold_identity(recorded, data.ds, splits)
+    return splits
+
+
+def check_metrics_reproduced(
+    recorded: RecordedRun,
+    ds: LabelledDataset,
+    splits: SplitIndices,
+    test_scores: np.ndarray,
+) -> None:
+    """Refuse unless `test_scores` reproduce the run's `metrics.json` exactly."""
+    _check_metrics_reproduced(recorded, ds, splits, test_scores)
+
+
+# ---------------------------------------------------------------------------
 # Checks on the record alone
 # ---------------------------------------------------------------------------
 

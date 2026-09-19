@@ -133,6 +133,31 @@ def test_hyperparameters_are_searched_on_the_training_fold_only(
     assert options == {"n_iter": 3, "n_splits": 2, "random_state": train.RANDOM_STATE}
 
 
+def test_a_random_state_seeds_the_search_the_final_model_and_the_fit_record(
+    tuner_calls: list[tuple[np.ndarray, np.ndarray, dict[str, Any]]],
+) -> None:
+    """Phase 5E decision 9: the keyword changes the random state and nothing else."""
+    ds = _dataset()
+    default = _run(ds)
+    seeded = train.train_and_evaluate(ds, n_iter=3, cv_splits=2, target_fpr=0.05, random_state=43)
+
+    assert [options["random_state"] for _, _, options in tuner_calls] == [42, 43]
+    assert seeded.model.get_params()["random_state"] == 43
+    assert seeded.fit.random_state == 43
+    assert train.training_metadata(ds, seeded).random_state == 43
+    for fold in ("train", "val", "test"):
+        np.testing.assert_array_equal(getattr(seeded.splits, fold), getattr(default.splits, fold))
+    assert seeded.threshold.target_fpr == default.threshold.target_fpr
+
+
+def test_without_a_random_state_the_existing_constant_applies(tuner_calls: list[Any]) -> None:
+    outcome = _run(_dataset())
+
+    assert train.RANDOM_STATE == 42
+    assert outcome.model.get_params()["random_state"] == 42
+    assert outcome.fit.random_state == 42
+
+
 def test_the_final_fit_trains_on_train_and_stops_early_against_val(
     monkeypatch: pytest.MonkeyPatch, tuner_calls: list[Any]
 ) -> None:
@@ -146,9 +171,10 @@ def test_the_final_fit_trains_on_train_and_stops_early_against_val(
         x_val: np.ndarray,
         y_val: np.ndarray,
         best_params: dict[str, object],
+        **options: Any,
     ) -> Any:
         seen.update(x_train=x_train, x_val=x_val, best_params=best_params)
-        return real_fit(x_train, y_train, x_val, y_val, best_params)
+        return real_fit(x_train, y_train, x_val, y_val, best_params, **options)
 
     monkeypatch.setattr(train, "_final_fit", spy)
     outcome = _run(ds)
