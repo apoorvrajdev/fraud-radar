@@ -29,7 +29,7 @@
       "source": "kaggle",
       "reference": "mlg-ulb/creditcardfraud",
       "source_url": "https://www.kaggle.com/datasets/mlg-ulb/creditcardfraud",
-      "license": "DbCL-1.0: Database Contents License v1.0 (Kaggle dataset API, retrieved 2026-09-18)",
+      "license": "DbCL-1.0: Database Contents License v1.0, https://opendatacommons.org/licenses/dbcl/1-0/, for the contents (Kaggle dataset API, retrieved 2026-09-18). ODbL-1.0: Open Database License v1.0, https://opendatacommons.org/licenses/odbl/1-0/, for the database: DbCL section 2.2 requires compliance with it, and the dataset page names the selection 'Database: Open Database, Contents: Database Contents' (read 2026-09-19).",
       "citation": "Machine Learning Group, Universit\u00e9 Libre de Bruxelles, Credit Card Fraud Detection, Kaggle; collected in a research collaboration with Worldline. The dataset page asks that Dal Pozzolo, Caelen, Johnson and Bontempi, Calibrating Probability with Undersampling for Unbalanced Classification, IEEE CIDM 2015, and the further works it lists be cited.",
       "label_field": "Class",
       "label_definition": "1 = fraud, 0 = otherwise, as the dataset description defines Class",

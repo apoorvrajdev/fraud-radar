@@ -1,6 +1,6 @@
 # Phase 5E — ULB Real-World Benchmark Methodology
 
-**Status:** accepted · **Date:** 2026-09-18 · **Amended:** 2026-09-18 (observed at acquisition) · **Milestone:** Phase 5E / M5 · **Scope:** the ULB track (`backend/ml/tracks/ulb/`, not yet built), its manifest entry, and one keyword argument on `backend/ml/train.py`
+**Status:** accepted · **Date:** 2026-09-18 · **Amended:** 2026-09-18 (observed at acquisition), 2026-09-19 (licence terms settled) · **Milestone:** Phase 5E / M5 · **Scope:** the ULB track (`backend/ml/tracks/ulb/`, not yet built), its manifest entry, and one keyword argument on `backend/ml/train.py`
 
 ---
 
@@ -293,7 +293,7 @@ Nothing was split, featurised, trained or scored. Each answer below comes from t
 
 | Unknown | Observed |
 |---|---|
-| Licence, citation and terms for derived works | `DbCL-1.0`, from the Kaggle dataset API and printed again by the Kaggle CLI at download. The citation list the publisher asks for is recorded in [`DATA_LICENSES.md`](../DATA_LICENSES.md). **Still open:** the DbCL covers the database's contents and refers to the ODbL for rights in the database itself, and no database licence is named beside it. What that means for committed ULB records is settled before any is committed (decision 16). |
+| Licence, citation and terms for derived works | `DbCL-1.0`, from the Kaggle dataset API and printed again by the Kaggle CLI at download; the dataset page names the same selection "Database: Open Database, Contents: Database Contents". The citation list the publisher asks for is recorded in [`DATA_LICENSES.md`](../DATA_LICENSES.md). **Settled 2026-09-19**, from the full licence texts: the DbCL covers the contents and requires compliance with the ODbL (DbCL §2.2), which covers the database. Committed ULB records are ODbL Produced Works, and each carries the notice below. The terms are recorded in [`DATA_LICENSES.md`](../DATA_LICENSES.md). |
 | Dataset version or last-updated date | The dataset metadata carries neither. The Kaggle files API dates `creditcard.csv` 2019-09-20 00:04:39. The pinned digest is what identifies the bytes. |
 | Files, sizes and SHA-256 | The download is a 66.0 MB zip holding one file, `creditcard.csv`: 150,828,752 bytes, exactly the advertised size, SHA-256 `76274b691b16a6c49d3f159c883398e03ccd6d1ee12d9d8ee38f4b4b98551a89`, now pinned. |
 | Header and value formats | ASCII, no byte-order mark, LF line endings, a final newline, no blank lines, and 31 fields on every row. The header is exactly `Time`, `V1`–`V28`, `Amount`, `Class`, every name double-quoted. In data rows only `Class` is quoted, as `"0"` or `"1"`. `Amount` has at most two decimal places. `Time` is written as a plain integer on every row but one, which writes 100000 as `1e+05`. |
@@ -307,6 +307,10 @@ Nothing was split, featurised, trained or scored. Each answer below comes from t
 | Whether the Kaggle CLI can list the dataset | Yes: Kaggle CLI 2.2.4 listed and downloaded it. |
 
 **What acquisition changes.** Nothing in the method. No row is excluded, so the exclusion stop in decision 15 is not triggered, and every duplicate and zero amount stays in, as decision 7 requires. Two properties of the file bind the loader rather than the method: `Time` must be read as a number, not matched as an integer string, because of the one `1e+05`; and `Class` arrives quoted.
+
+**What the licence terms change.** Nothing in the method either. Everything decision 16 commits is permitted, and the raw file and the matrix stay local. They add one requirement for what is committed: every published ULB-derived record carries the ODbL §4.3 notice, and every record computed through the ULB loader or matrix is accompanied by the ODbL §4.6 method offer. Both are worded in [`DATA_LICENSES.md`](../DATA_LICENSES.md). The figures in this section are among those records:
+
+> Contains information from the [Credit Card Fraud Detection](https://www.kaggle.com/datasets/mlg-ulb/creditcardfraud) database of the Machine Learning Group, ULB, which is available under the [Open Database License (ODbL) v1.0](https://opendatacommons.org/licenses/odbl/1-0/); its contents are under the [Database Contents License (DbCL) v1.0](https://opendatacommons.org/licenses/dbcl/1-0/).
 
 ---
 

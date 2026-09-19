@@ -122,6 +122,20 @@ def test_committed_ulb_entry_states_its_provenance() -> None:
     assert entry.filenames == ("creditcard.csv",)
 
 
+def test_committed_ulb_licence_names_the_database_licence() -> None:
+    """DbCL 1.0 section 2.2 requires compliance with the ODbL, which covers the database.
+
+    The licence field reaches every ULB run's provenance, so it must name
+    both licences with their texts' addresses, not only the one Kaggle's API returns.
+    """
+    licence = load_manifest_entry("ulb").license
+
+    assert "ODbL-1.0" in licence
+    assert "https://opendatacommons.org/licenses/odbl/1-0/" in licence
+    assert "DbCL-1.0" in licence
+    assert "https://opendatacommons.org/licenses/dbcl/1-0/" in licence
+
+
 # Retrieved and verified on 2026-09-18: the size the Kaggle files API advertised,
 # and the digest of the bytes that arrived.
 ULB_BYTES = 150_828_752
