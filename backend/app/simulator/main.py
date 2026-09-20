@@ -62,6 +62,23 @@ _FOREIGN_COUNTRIES: tuple[str, ...] = ("GB", "DE", "FR", "JP", "AU", "CA")
 # is absent for the same reason.
 _FRAUD_PATTERNS: tuple[str, ...] = ("high_amount", "high_risk_country", "stealth")
 
+# Currencies `--currency-mix` will emit (Phase 5G).
+#
+# The list is restricted on purpose. The rules engine thresholds — the
+# $5,000 amount ceiling above all — are denominated in the raw amount,
+# not a converted one (see docs/FX_CONTRACT.md, "Deliberately not
+# done"). Emitting a currency of a very different magnitude would
+# therefore silently change which rules fire: ¥60,000 is about $400 but
+# would trip a ceiling meant for large payments. Every currency here is
+# within roughly a factor of two of USD, so an amount drawn in USD
+# range stays plausible in it and rule behaviour is unchanged.
+#
+# This is a simulator-realism constraint, not an FX rate. No conversion
+# happens here; the backend does that, from real reference rates.
+_MIXABLE_CURRENCIES: frozenset[str] = frozenset(
+    {"USD", "EUR", "GBP", "CHF", "CAD", "AUD", "SGD", "NZD"}
+)
+
 logging.basicConfig(
     level=logging.INFO,
     format="%(message)s",  # the simulator owns its own line format
@@ -182,24 +199,84 @@ def _generate_fraud_payload(
     raise ValueError(f"Unknown fraud pattern: {pattern!r}")
 
 
+def parse_currency_mix(spec: str) -> dict[str, float]:
+    """Parse ``"USD:0.85,EUR:0.1,GBP:0.05"`` into normalised weights.
+
+    Weights are normalised rather than required to sum to 1, so a
+    caller can write ``"USD:8,EUR:2"`` and mean 80/20.
+
+    Raises ValueError on an unparseable entry, a non-positive weight, a
+    code outside `_MIXABLE_CURRENCIES`, or an empty mix — a typo in a
+    currency code should stop the run, not quietly emit traffic in a
+    currency nobody asked for.
+    """
+    weights: dict[str, float] = {}
+    for chunk in spec.split(","):
+        entry = chunk.strip()
+        if not entry:
+            continue
+        code, sep, raw_weight = entry.partition(":")
+        code = code.strip().upper()
+        if not sep:
+            raise ValueError(f"Expected CODE:WEIGHT, got {entry!r}")
+        try:
+            weight = float(raw_weight)
+        except ValueError as exc:
+            raise ValueError(f"Weight for {code} is not a number: {raw_weight!r}") from exc
+        if weight <= 0:
+            raise ValueError(f"Weight for {code} must be > 0, got {weight}")
+        if code not in _MIXABLE_CURRENCIES:
+            supported = ", ".join(sorted(_MIXABLE_CURRENCIES))
+            raise ValueError(
+                f"{code} is not available for --currency-mix. Supported: {supported}. "
+                "See the note on _MIXABLE_CURRENCIES for why the set is limited."
+            )
+        weights[code] = weights.get(code, 0.0) + weight
+
+    if not weights:
+        raise ValueError("Currency mix is empty")
+
+    total = sum(weights.values())
+    return {code: weight / total for code, weight in weights.items()}
+
+
+def _pick_currency(mix: dict[str, float]) -> str:
+    """Draw one currency from a normalised mix."""
+    codes = sorted(mix)
+    return random.choices(codes, weights=[mix[c] for c in codes], k=1)[0]
+
+
 def _build_payload(
     customer_ids: list[str],
     merchant_ids: list[str],
     *,
     fraud_rate: float,
+    currency_mix: dict[str, float] | None = None,
 ) -> tuple[dict[str, Any], str]:
     """Sample one customer + merchant, decide clean vs fraud, return
     `(payload, pattern_label)`.
 
     `pattern_label` is `"clean"` for clean transactions, otherwise the
     name of the fraud pattern selected (`"high_amount"`, etc.).
+
+    `currency_mix`, when given, replaces the payload's currency with one
+    drawn from the mix. Only the currency changes — the amount, country
+    and card-present flags each pattern sets are untouched, so the fraud
+    signal a pattern encodes is exactly what it was before.
     """
     customer_id = random.choice(customer_ids)
     merchant_id = random.choice(merchant_ids)
     if random.random() < fraud_rate:
         pattern = random.choice(_FRAUD_PATTERNS)
-        return _generate_fraud_payload(customer_id, merchant_id, pattern), pattern
-    return _generate_clean_payload(customer_id, merchant_id), "clean"
+        payload = _generate_fraud_payload(customer_id, merchant_id, pattern)
+        label = pattern
+    else:
+        payload = _generate_clean_payload(customer_id, merchant_id)
+        label = "clean"
+
+    if currency_mix:
+        payload["currency"] = _pick_currency(currency_mix)
+    return payload, label
 
 
 # ---------------------------------------------------------------------------
@@ -288,6 +365,7 @@ def run_simulator(
     fraud_rate: float,
     server_url: str,
     n: int | None = None,
+    currency_mix: dict[str, float] | None = None,
 ) -> None:
     """Main loop. Loads the customer/merchant pool, opens an httpx.Client,
     POSTs at the requested rate, logs each response.
@@ -302,6 +380,13 @@ def run_simulator(
         "pool: %d customers, %d merchants  target=%s",
         rate, fraud_rate * 100, len(customers), len(merchants), server_url,
     )
+    if currency_mix:
+        log.info(
+            "Currency mix — %s",
+            "  ".join(
+                f"{code} {share:.0%}" for code, share in sorted(currency_mix.items())
+            ),
+        )
 
     interval = 1.0 / rate if rate > 0 else 1.0
     idx = 0
@@ -309,7 +394,9 @@ def run_simulator(
         with httpx.Client(timeout=10.0) as client:
             while n is None or idx < n:
                 payload, pattern = _build_payload(
-                    customers, merchants, fraud_rate=fraud_rate,
+                    customers, merchants,
+                    fraud_rate=fraud_rate,
+                    currency_mix=currency_mix,
                 )
                 status, body, latency = _post_one(
                     client, payload, server_url=server_url,
@@ -350,12 +437,28 @@ def main() -> None:
         "--n", type=int, default=None,
         help="Stop after N transactions (default: run forever)",
     )
+    parser.add_argument(
+        "--currency-mix", type=str, default=None,
+        metavar="CODE:WEIGHT,...",
+        help=(
+            "Emit transactions across several currencies, e.g. "
+            "'USD:0.85,EUR:0.1,GBP:0.05'. Weights are normalised. "
+            "Exercises the FX enrichment path; default is USD only."
+        ),
+    )
     args = parser.parse_args()
+    try:
+        currency_mix = (
+            parse_currency_mix(args.currency_mix) if args.currency_mix else None
+        )
+    except ValueError as exc:
+        parser.error(str(exc))
     run_simulator(
         rate=args.rate,
         fraud_rate=args.fraud_rate,
         server_url=args.server_url,
         n=args.n,
+        currency_mix=currency_mix,
     )
 
 

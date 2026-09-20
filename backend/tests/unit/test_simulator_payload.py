@@ -14,9 +14,11 @@ from app.schemas.transaction import TransactionCreate
 from app.simulator.main import (
     _FRAUD_PATTERNS,
     _HIGH_RISK_COUNTRIES,
+    _MIXABLE_CURRENCIES,
     _build_payload,
     _generate_clean_payload,
     _generate_fraud_payload,
+    parse_currency_mix,
 )
 
 # Sample IDs matching the 36-char Pydantic constraint on the schema.
@@ -102,3 +104,142 @@ def test_build_payload_uses_pool_ids_only() -> None:
         )
         assert payload["customer_id"] in customer_pool
         assert payload["merchant_id"] in merchant_pool
+
+
+# ---------------------------------------------------------------------------
+# Phase 5G — currency mix
+# ---------------------------------------------------------------------------
+
+
+def test_parse_currency_mix_normalises_weights() -> None:
+    """Weights need not sum to 1 — "USD:8,EUR:2" means 80/20."""
+    mix = parse_currency_mix("USD:8,EUR:2")
+
+    assert mix == {"USD": 0.8, "EUR": 0.2}
+
+
+def test_parse_currency_mix_accepts_fractions_and_whitespace() -> None:
+    mix = parse_currency_mix(" usd:0.85 , eur:0.10 , gbp:0.05 ")
+
+    assert set(mix) == {"USD", "EUR", "GBP"}
+    assert sum(mix.values()) == pytest.approx(1.0)
+
+
+def test_parse_currency_mix_sums_a_repeated_code() -> None:
+    mix = parse_currency_mix("USD:0.5,USD:0.5")
+
+    assert mix == {"USD": 1.0}
+
+
+@pytest.mark.parametrize(
+    "spec",
+    [
+        pytest.param("USD", id="no-weight"),
+        pytest.param("USD:abc", id="non-numeric-weight"),
+        pytest.param("USD:0", id="zero-weight"),
+        pytest.param("USD:-1", id="negative-weight"),
+        pytest.param("", id="empty"),
+        pytest.param(",,", id="only-separators"),
+    ],
+)
+def test_parse_currency_mix_rejects_malformed_input(spec: str) -> None:
+    with pytest.raises(ValueError):
+        parse_currency_mix(spec)
+
+
+def test_parse_currency_mix_rejects_an_unsupported_currency() -> None:
+    """A typo must stop the run, not quietly emit unasked-for traffic.
+
+    JPY is rejected deliberately, not by oversight: the rules engine's
+    thresholds are denominated in the raw amount, so a currency two
+    orders of magnitude from USD would change which rules fire.
+    """
+    with pytest.raises(ValueError, match="not available"):
+        parse_currency_mix("USD:0.9,JPY:0.1")
+
+
+def test_every_mixable_currency_is_a_valid_iso_code() -> None:
+    """The backend's FX path refuses anything that is not three letters."""
+    for code in _MIXABLE_CURRENCIES:
+        assert len(code) == 3
+        assert code.isalpha()
+        assert code.isupper()
+
+
+def test_build_payload_defaults_to_usd_without_a_mix() -> None:
+    """Backward compatibility: the simulator's existing behaviour."""
+    random.seed(42)
+    for _ in range(50):
+        payload, _label = _build_payload(
+            _CUSTOMER_IDS, _MERCHANT_IDS, fraud_rate=0.3,
+        )
+        assert payload["currency"] == "USD"
+
+
+def test_build_payload_emits_the_requested_currencies() -> None:
+    random.seed(42)
+    mix = parse_currency_mix("USD:0.6,EUR:0.4")
+
+    seen = set()
+    for _ in range(200):
+        payload, _label = _build_payload(
+            _CUSTOMER_IDS, _MERCHANT_IDS, fraud_rate=0.1, currency_mix=mix,
+        )
+        seen.add(payload["currency"])
+
+    assert seen == {"USD", "EUR"}
+
+
+def test_currency_mix_proportions_hold_over_many_samples() -> None:
+    """20% EUR over 2000 draws: σ ≈ 18, so [300, 500] is ~5σ of slack."""
+    random.seed(7)
+    mix = parse_currency_mix("USD:0.8,EUR:0.2")
+
+    eur = 0
+    for _ in range(2000):
+        payload, _label = _build_payload(
+            _CUSTOMER_IDS, _MERCHANT_IDS, fraud_rate=0.0, currency_mix=mix,
+        )
+        if payload["currency"] == "EUR":
+            eur += 1
+
+    assert 300 <= eur <= 500, eur
+
+
+def test_currency_mix_changes_only_the_currency() -> None:
+    """The fraud signal a pattern encodes must survive the mix.
+
+    Amount, country and card-present are what each pattern uses to
+    trigger a specific rule; if the mix perturbed them, non-USD traffic
+    would quietly carry different fraud behaviour than USD traffic.
+    """
+    random.seed(99)
+    baseline, baseline_label = _build_payload(
+        _CUSTOMER_IDS, _MERCHANT_IDS, fraud_rate=0.5,
+    )
+    random.seed(99)
+    mixed, mixed_label = _build_payload(
+        _CUSTOMER_IDS, _MERCHANT_IDS,
+        fraud_rate=0.5,
+        currency_mix={"EUR": 1.0},
+    )
+
+    assert mixed_label == baseline_label
+    assert mixed["currency"] == "EUR"
+    assert baseline["currency"] == "USD"
+    for field in ("amount", "country", "is_card_present", "customer_id"):
+        assert mixed[field] == baseline[field]
+
+
+def test_mixed_currency_payloads_still_validate() -> None:
+    """Non-USD payloads must satisfy the ingestion schema unchanged."""
+    random.seed(11)
+    mix = parse_currency_mix("USD:0.5,EUR:0.3,GBP:0.2")
+
+    for _ in range(50):
+        payload, _label = _build_payload(
+            _CUSTOMER_IDS, _MERCHANT_IDS, fraud_rate=0.3, currency_mix=mix,
+        )
+        model = TransactionCreate(**payload)
+        assert model.amount > Decimal("0")
+        assert len(model.currency) == 3
