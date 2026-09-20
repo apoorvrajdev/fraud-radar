@@ -246,3 +246,52 @@ export interface AlertsFilters {
   min_age_seconds?: number;
   max_age_seconds?: number;
 }
+
+// ---------------------------------------------------------------------------
+// Phase 5G: model and dataset identity
+// ---------------------------------------------------------------------------
+
+/**
+ * Held-out test-fold metrics for the served model. Always read
+ * alongside `metrics_caveat` — these describe how learnable the
+ * training generator is, not how detectable real fraud is.
+ */
+export interface ServingMetrics {
+  pr_auc: number;
+  roc_auc: number;
+  recall_at_1pct_fpr: number;
+  test_size: number | null;
+  test_fraud_rate: number | null;
+}
+
+/** The model artifacts the API process has loaded. */
+export interface ServingModel {
+  dataset_name: string;
+  dataset_kind: string;
+  featureset_version: string;
+  feature_count: number;
+  trained_at_utc: string | null;
+  threshold: number | null;
+  metrics: ServingMetrics | null;
+  metrics_caveat: string;
+}
+
+/**
+ * One evaluation track and its relationship to the served model.
+ * `served` is the field that keeps the production/benchmark boundary
+ * legible — exactly one track has it true, and the real-data (ULB)
+ * track never does.
+ */
+export interface BenchmarkTrack {
+  name: string;
+  kind: "synthetic" | "synthetic-external" | "real-anonymised";
+  description: string;
+  served: boolean;
+  card_path: string | null;
+}
+
+export interface ModelInfo {
+  serving: ServingModel;
+  benchmarks: BenchmarkTrack[];
+  reporting_currency: string;
+}

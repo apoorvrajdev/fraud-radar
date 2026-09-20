@@ -2,6 +2,7 @@
 from fastapi import APIRouter
 
 from app.api.v1.alerts import router as alerts_router
+from app.api.v1.model import router as model_router
 from app.api.v1.stats import router as stats_router
 from app.api.v1.transactions import router as transactions_router
 
@@ -9,5 +10,6 @@ api_router = APIRouter(prefix="/api/v1")
 api_router.include_router(transactions_router)
 api_router.include_router(stats_router)
 api_router.include_router(alerts_router)
+api_router.include_router(model_router)
 
 __all__ = ["api_router"]
