@@ -98,6 +98,15 @@ def _select_detail_ids(transactions: list[dict[str, Any]]) -> list[str]:
     picked.extend(tx["id"] for tx in by_decision["ALLOW"][:DETAIL_TARGETS_ALLOW])
     picked.extend(tx["id"] for tx in overridden[:DETAIL_TARGETS_OVERRIDDEN])
 
+    # Phase 5G: currency coverage. Decision-class buckets alone can
+    # easily select 30 USD rows, leaving the demo unable to show the
+    # thing 5F built — an original amount beside a derived one. Pick a
+    # couple of rows per distinct currency, and per distinct FX source,
+    # so the detail pages include a converted row and an unconverted
+    # one whatever the traffic mix happened to be.
+    picked.extend(_pick_per_key(transactions, "currency", per_key=2))
+    picked.extend(_pick_per_key(transactions, "fx_source", per_key=2))
+
     # De-dupe while preserving order (an overridden row may also be in
     # one of the decision buckets).
     seen: set[str] = set()
@@ -107,6 +116,23 @@ def _select_detail_ids(transactions: list[dict[str, Any]]) -> list[str]:
             seen.add(tx_id)
             unique.append(tx_id)
     return unique
+
+
+def _pick_per_key(
+    transactions: list[dict[str, Any]], field: str, *, per_key: int
+) -> list[str]:
+    """Pick up to ``per_key`` transaction ids for each distinct value of ``field``.
+
+    Rows whose value is null are grouped under their own key, so "no FX
+    source recorded" is itself represented rather than dropped.
+    """
+    by_value: dict[Any, list[str]] = {}
+    for tx in transactions:
+        by_value.setdefault(tx.get(field), []).append(tx["id"])
+    picked: list[str] = []
+    for value in sorted(by_value, key=lambda v: (v is None, str(v))):
+        picked.extend(by_value[value][:per_key])
+    return picked
 
 
 def export(base_url: str, output_dir: Path) -> dict[str, int]:
@@ -132,6 +158,15 @@ def export(base_url: str, output_dir: Path) -> dict[str, int]:
         print("→ fetching /stats/breakdown")
         breakdown = _get(client, "/stats/breakdown")
         _write_json(output_dir / "stats-breakdown.json", breakdown)
+
+        # Model and dataset identity (Phase 5G). Exported so the demo's
+        # provenance panel says the same thing the live app does —
+        # which model is served and which tracks are benchmark-only —
+        # rather than being hard-coded into the frontend where it could
+        # drift from the backend that produced the rest of the snapshot.
+        print("→ fetching /model")
+        model = _get(client, "/model")
+        _write_json(output_dir / "model.json", model)
 
         # Transactions list — walk the cursor to honour the 300-row
         # contract (backend caps `limit` at 200 per request). Strip
@@ -179,10 +214,25 @@ def export(base_url: str, output_dir: Path) -> dict[str, int]:
                 detail_ids.append(tx_id)
 
         print(f"→ fetching {len(detail_ids)} curated /transactions/{{id}} pages")
+        detail_dir = output_dir / "transactions"
         for tx_id in detail_ids:
             detail = _get(client, f"/transactions/{tx_id}")
-            _write_json(output_dir / "transactions" / f"{tx_id}.json", detail)
+            _write_json(detail_dir / f"{tx_id}.json", detail)
         counts["transaction_details"] = len(detail_ids)
+
+        # Drop detail pages left over from a previous export. Their
+        # rows are no longer in `transactions.json`, so nothing can
+        # navigate to them — they would just ship dead JSON to the CDN
+        # and make the directory a misleading record of the snapshot.
+        # These files are generated output and fully reproducible.
+        keep = {f"{tx_id}.json" for tx_id in detail_ids}
+        removed = 0
+        for stale in detail_dir.glob("*.json"):
+            if stale.name not in keep:
+                stale.unlink()
+                removed += 1
+        if removed:
+            print(f"→ pruned {removed} detail page(s) from the previous snapshot")
 
     # Manifest last, so partial failures don't leave a stale date.
     manifest = {

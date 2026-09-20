@@ -1,0 +1,53 @@
+{
+  "id": "10c7c0f2-9e42-489f-bd47-53577e3cb6de",
+  "customer_id": "008ac684-1093-4f86-a3e2-8f21e83df6ef",
+  "merchant_id": "01e26392-f549-40af-b723-d39d07ac9a25",
+  "amount": "250.0000",
+  "currency": "KPW",
+  "status": "DECLINED",
+  "payment_method": "CARD",
+  "country": "US",
+  "fraud_score": null,
+  "fraud_decision": "DECLINE",
+  "created_at": "2026-09-20T08:37:43.131416",
+  "amount_base": "1.9225",
+  "fx_rate": "0.00769000",
+  "fx_rate_date": "2026-09-18",
+  "fx_source": "live",
+  "card_last4": null,
+  "ip_address": null,
+  "device_id": null,
+  "is_card_present": true,
+  "threshold": 0.7431091070175171,
+  "rules_triggered": [
+    "velocity_burst",
+    "geo_velocity_impossible"
+  ],
+  "top_contributors": [],
+  "effective_decision": "DECLINE",
+  "analyst_label": null,
+  "analyst_notes": null,
+  "reviewed_at": null,
+  "audit": [
+    {
+      "id": 22083,
+      "actor": "scorer:2026-05-21T12:47:25+00:00",
+      "action": "scored.hard_block",
+      "payload": {
+        "decision": "DECLINE",
+        "threshold": 0.7431091070175171,
+        "rules_triggered": [
+          "velocity_burst",
+          "geo_velocity_impossible"
+        ],
+        "rule_reasons": [
+          "3 transactions in 120s (threshold: 3 in 120s)",
+          "country mismatch: US now, DE 4min ago"
+        ],
+        "fx_source": "live",
+        "fx_rate_date": "2026-09-18"
+      },
+      "created_at": "2026-09-20T08:37:43"
+    }
+  ]
+}

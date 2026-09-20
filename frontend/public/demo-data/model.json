@@ -1,0 +1,42 @@
+{
+  "serving": {
+    "dataset_name": "synthetic_v1",
+    "dataset_kind": "synthetic",
+    "featureset_version": "v1",
+    "feature_count": 17,
+    "trained_at_utc": "2026-05-21T12:47:25+00:00",
+    "threshold": 0.7431091070175171,
+    "metrics": {
+      "pr_auc": 0.9326733114784815,
+      "roc_auc": 0.9988999139378583,
+      "recall_at_1pct_fpr": 0.978494623655914,
+      "test_size": 7502,
+      "test_fraud_rate": 0.012396694214876033
+    },
+    "metrics_caveat": "Measured on a held-out chronological fold of this repository's own synthetic generator. It measures how learnable that generator is, not how detectable real fraud is."
+  },
+  "benchmarks": [
+    {
+      "name": "synthetic_v1",
+      "kind": "synthetic",
+      "description": "This repository's own generator — 50,010 transactions with six injected fraud patterns. The development baseline, and the data the served model is trained on.",
+      "served": true,
+      "card_path": "backend/ml/MODEL_CARD.md"
+    },
+    {
+      "name": "sparkov_v1",
+      "kind": "synthetic-external",
+      "description": "Simulated data from an independent generator (Sparkov). Not real card transactions. Tests whether features designed against this project's own simulator transfer at all.",
+      "served": false,
+      "card_path": "backend/ml/BENCHMARK_CARD.md"
+    },
+    {
+      "name": "ulb_pca_v1",
+      "kind": "real-anonymised",
+      "description": "Real, publisher-anonymised card data (ULB), on its own featureset of published PCA components. Runs on an isolated track and cannot be promoted or served.",
+      "served": false,
+      "card_path": "backend/ml/ULB_BENCHMARK_CARD.md"
+    }
+  ],
+  "reporting_currency": "USD"
+}
