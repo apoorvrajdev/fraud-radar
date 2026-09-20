@@ -1,739 +1,475 @@
 <h1 align="center">Fraud Radar</h1>
 
 <p align="center">
-  <strong>Real-time fraud detection where machine learning meets production engineering.</strong>
+  <strong>A real-time card-fraud detection platform, and an honest evaluation of whether its model actually generalises.</strong>
 </p>
 
 <p align="center">
   <a href="https://github.com/apoorvrajdev/fraud-radar/actions/workflows/ci.yml"><img src="https://github.com/apoorvrajdev/fraud-radar/actions/workflows/ci.yml/badge.svg?branch=main" alt="CI" /></a>
-  <img src="https://img.shields.io/badge/status-in%20development-yellow?style=flat-square" alt="Status: In Development" />
   <img src="https://img.shields.io/badge/python-3.11+-3776AB?style=flat-square&logo=python&logoColor=white" alt="Python 3.11+" />
   <img src="https://img.shields.io/badge/FastAPI-009688?style=flat-square&logo=fastapi&logoColor=white" alt="FastAPI" />
   <img src="https://img.shields.io/badge/React-19-61DAFB?style=flat-square&logo=react&logoColor=black" alt="React 19" />
   <img src="https://img.shields.io/badge/TypeScript-strict-3178C6?style=flat-square&logo=typescript&logoColor=white" alt="TypeScript" />
   <img src="https://img.shields.io/badge/XGBoost-tabular-EB6F2D?style=flat-square" alt="XGBoost" />
+  <img src="https://img.shields.io/badge/tests-1%2C407-success?style=flat-square" alt="1,407 tests" />
   <img src="https://img.shields.io/badge/license-MIT-blue?style=flat-square" alt="License: MIT" />
 </p>
 
 <p align="center">
-  A deliberately scoped engineering showcase that mirrors how tier-1 financial institutions build the systems that decide, in milliseconds, whether your card transaction goes through.
+  <a href="https://fraud-radar-lilac.vercel.app"><strong>Live demo</strong></a> ·
+  <a href="backend/ml/BENCHMARK_CARD.md">Benchmark card</a> ·
+  <a href="backend/ml/ULB_BENCHMARK_CARD.md">Real-data card</a> ·
+  <a href="docs/ARCHITECTURE.md">Architecture</a> ·
+  <a href="https://www.loom.com/share/a4fb7eb81ba7496e80e300a36c41617b">Walkthrough</a>
 </p>
 
-<p align="center">
-  <strong>Live demo:</strong> <a href="https://fraud-radar-lilac.vercel.app">https://fraud-radar-lilac.vercel.app</a><br />
-  <strong>Walkthrough:</strong> <a href="https://www.loom.com/share/a4fb7eb81ba7496e80e300a36c41617b">Loom video</a> — the live stack end to end, including behaviour the static demo cannot show
-</p>
+---
+
+Transactions arrive over HTTP, get scored by a rules engine plus an XGBoost model in single-digit milliseconds, carry a SHAP attribution for every decision, and land in an analyst review queue with an append-only audit trail. That is the product.
+
+The part I care more about is the second half: the same model was then evaluated against an independently generated corpus, carried across generators without retraining, tested for temporal drift, audited rule-by-rule, and set beside a real anonymised card dataset on an isolated track. **The cross-generator transfer result is bad, it is reported here in full, and it is the most useful thing in the repository.**
+
+## At a glance
+
+| | |
+|---|---|
+| **Product** | FastAPI backend · React 19 + TypeScript dashboard · SQLAlchemy 2.0 (SQLite dev, Postgres-compatible schemas) · static-snapshot demo on Vercel |
+| **Scoring** | 6 deterministic rules → 17-feature extractor → XGBoost → SHAP → conservative-wins decision, at service-layer p50 **3.7 ms** / p95 **5.8 ms** |
+| **Served model** | Trained on this repository's own generator (`synthetic_v1`, featureset `v1`), operating threshold **0.7431** chosen on a validation fold. No benchmark run has been promoted |
+| **In-distribution** | PR-AUC **0.9327** on a held-out chronological fold of the generator it was trained on |
+| **Cross-generator transfer** | PR-AUC **0.0087** against a test prevalence of 0.0033 — see [what the evaluation taught us](#what-the-evaluation-taught-us) |
+| **Real anonymised data** | ULB, 284,807 rows / 492 frauds, on its own isolated PCA featureset. PR-AUC **0.7670** (primary seed). Never promoted, never merged with the above |
+| **Verification** | 1,407 tests · `ruff` · `mypy --strict` · every benchmark run reproducible from committed records |
 
 ---
 
-## Status
+## Contents
 
-> 🚧 **Active build.** This is a flagship portfolio project being built across four focused days as a public engineering showcase. **Phases 1–4 and all of Phase 5 are complete**: the stack runs end to end, the static demo is deployed, the walkthrough is recorded, an externally generated benchmark has been executed and written up in [`backend/ml/BENCHMARK_CARD.md`](backend/ml/BENCHMARK_CARD.md), the real-world ULB benchmark has run under its frozen method and is written up in its own card, [`backend/ml/ULB_BENCHMARK_CARD.md`](backend/ml/ULB_BENCHMARK_CARD.md), multi-currency FX enrichment is in the live ingestion path under the contract in [`docs/FX_CONTRACT.md`](docs/FX_CONTRACT.md), and 5G turned all of it into a coherent product: currency-aware amounts, a model/dataset provenance badge, and a refreshed demo snapshot exported from the live stack. The build log follows. Phase 1, Phase 2, and all of Phase 3 are complete — the SQLAlchemy 2.0 models, Alembic migrations, Pydantic v2 schemas, repository layer, synthetic dataset generator, feature extractor, XGBoost training pipeline, SHAP explanation endpoint, and auto-regenerated model card (segment metrics, calibration analysis, global SHAP) are all in place. The dataset holds 50,010 transactions across 500 customers and 200 merchants at a 1.52% fraud rate with six injected fraud patterns, reproducible from `seed=42`. The feature extractor turns each transaction into a 17-dimensional vector covering amount, time-of-day, geographic mismatch, velocity, customer history, and merchant context. The trained classifier scores **0.9327 PR-AUC** and **0.9785 Recall @ 1% FPR** on a chronological held-out test fold. The Phase 3 backend is fully shipped: the rules engine (3A), the ingestion endpoint with Stripe-style idempotency (3B), the end-to-end scoring pipeline with audit log (3C, service-layer p50=3.7ms / p95=5.8ms), and the background transaction simulator (3D) that continuously feeds the live API at a dashboard-friendly rate. Phase 3E shipped the dashboard's three read-only aggregate endpoints — `/api/v1/stats/overview`, `/stats/timeseries`, and `/stats/breakdown` — behind a CORS-aware FastAPI app, with a React 19 + TanStack Query frontend rendering five KPI tiles, a 24h fraud-rate line chart, a per-hour volume sparkline, and a top-10 country breakdown that all poll the live API on a 30/60s cadence and degrade per-tile when the backend disappears. Phase 3F extends that into a full transactions view: `GET /api/v1/transactions` returns an opaque-cursor keyset-paginated list with eight composable query filters (decision, country, amount range, time window, customer, merchant) and Pydantic cross-field validation that fails closed at 422; the frontend `/transactions` route renders the live feed in a sortable table with URL-synced filter chrome, color-coded decision pills, and a "Load more" footer that drives the cursor walk without collapsing already-rendered rows on a partial failure. Phase 3G closes the analyst-review loop: the design is locked in [`docs/adr/PHASE_3G_DESIGN.md`](docs/adr/PHASE_3G_DESIGN.md), the backend serves a composite `TransactionDetail` envelope from `GET /api/v1/transactions/{id}` (row fields + threshold + rules + top SHAP contributors with pre-classified direction + audit trail + a computed `effective_decision` that reflects any analyst override while preserving the model's verdict verbatim) and a `POST /api/v1/transactions/{id}/decision` analyst-override endpoint that is idempotent on identical resubmit and writes an `ANALYST_DECISION_REVISED` audit row on changes, and the frontend `/transactions/:id` route renders a full detail page with a dual-badge header, hand-rolled CSS SHAP bars, a rules-triggered panel, an identity/channel grid, a vertical audit timeline with collapsible payloads, and — for rows still in REVIEW — an analyst decision form gated by a localStorage-backed analyst-id capture modal that maps cleanly to the backend's `X-Analyst-Id` trust contract. Phase 3H closes the loop on the analyst workflow: the design is locked in [`docs/adr/PHASE_3H_DESIGN.md`](docs/adr/PHASE_3H_DESIGN.md), the backend serves `GET /api/v1/alerts` — a purpose-built pending-review worklist sorted `fraud_score DESC, created_at ASC, id ASC` so the riskiest unhandled rows surface first without the oldest getting stranded — carrying its own keyset cursor codec and a queue-wide `summary` block (pending count, oldest pending age, score-bucket distribution with `low / mid / high` boundaries calibrated against the empirical REVIEW score distribution observed on the live DB) that deliberately ignores the caller's filters so queue health reflects the queue, not the view; the frontend `/alerts` route renders a summary strip, URL-synced filter chrome (min score, country, age band), and a dense queue table with score chips aligned to the same bucket boundaries the strip uses, plus a celebratory "Queue clear" empty state when nothing is waiting, and the 3G mutation now invalidates the alerts cache so submitting a verdict pops the row off the queue without manual refresh. Integration decisions captured in [`docs/adr/PHASE_3C_INTEGRATION.md`](docs/adr/PHASE_3C_INTEGRATION.md), [`docs/adr/PHASE_3E_DESIGN.md`](docs/adr/PHASE_3E_DESIGN.md), [`docs/adr/PHASE_3F_DESIGN.md`](docs/adr/PHASE_3F_DESIGN.md), [`docs/adr/PHASE_3G_DESIGN.md`](docs/adr/PHASE_3G_DESIGN.md), and [`docs/adr/PHASE_3H_DESIGN.md`](docs/adr/PHASE_3H_DESIGN.md). Phase 4 then shipped the public demo. 4A locked its design in [`docs/adr/PHASE_4A_DEMO_SCOPE.md`](docs/adr/PHASE_4A_DEMO_SCOPE.md) — a zero-cost, zero-cold-start, zero-maintenance posture in which the React frontend is shipped to Vercel as a static SPA that reads from a frozen JSON snapshot of the live API instead of a hosted backend (every truly free backend host either cold-starts, caps rows on free Postgres, or quietly stops being free, so the only path that satisfies all three constraints is no public backend at all). 4B shipped the export tool: [`scripts/export_demo_snapshot.py`](scripts/export_demo_snapshot.py) walks the live API and writes the locked contract — `stats-overview.json`, `stats-timeseries.json`, `stats-breakdown.json`, a 300-row `transactions.json` (paged through the 200-row endpoint cap), `alerts.json` with the queue summary, ~30 curated `transactions/{id}.json` detail pages covering every decision class plus every alert row, and a `manifest.json` written last so a partial failure never leaves a stale date stamp — to `frontend/public/demo-data/`. 4C shipped demo mode itself — a `VITE_DEMO_MODE` build flag, a static API client that resolves to the bundled JSON, a top banner stamping the snapshot date with links to GitHub and the Loom, visibly-disabled write actions instead of theatre, and a `vercel.json` SPA rewrite so deep links survive a refresh — and 4D, 4E and 4F closed the phase with [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md), a walkthrough recorded against the *live* local stack so it shows real-time simulator behaviour the static demo cannot, and the Vercel deploy linked at the top of this README. Phase 5 then took the headline number off this repository's own generator: 5A fixed the canonical dataset contract, adapter protocol and four-stage offline layout; 5B added the manifest-verified Sparkov acquisition and adapter; 5C made benchmark features the production features by construction; and 5D executed the benchmark with the method frozen in an ADR before any test fold was scored — a synthetic baseline, a 200-card development run, a full-corpus run, a cross-generator transfer, a temporal drift series and a rules audit over every row, each run's records committed and laid out in [`backend/ml/BENCHMARK_CARD.md`](backend/ml/BENCHMARK_CARD.md). 5E then added a real-world track on the ULB credit-card dataset, its method again frozen in an ADR before the data was acquired: its own loader, aggregate-only quality report, `ulb_pca_v1` matrix, trainer and verifier in `backend/ml/tracks/ulb/`, and three pre-registered runs, each verified before its records were committed and laid out in [`backend/ml/ULB_BENCHMARK_CARD.md`](backend/ml/ULB_BENCHMARK_CARD.md), generated from those records. 5F then added the one piece of live-path engineering Phase 5 still needed: multi-currency FX enrichment, built around the assumption that its external dependency will be unavailable — a derived reporting amount attached beside the submitted one, historical rates cached locally and never allowed to resolve to a rate newer than the transaction, and a provider outage that costs a row its converted figure and nothing else. 5G closed the phase by making all of it visible without overclaiming any of it: a single `Amount` component that shows what the cardholder was charged with the derived reporting figure subordinate to it, `GET /api/v1/model` and a dashboard panel that name the served model and mark the Sparkov and ULB tracks as benchmark-only, a `--currency-mix` flag on the simulator, and a demo snapshot regenerated against the live stack so every FX state in it was produced by the system rather than authored. The intent is to ship steadily, in public, with honest commits — not to pretend it is further along than it is.
-
-> 📊 **Headline results — this repository's own generator, held-out test fold.** PR-AUC **0.9327** · ROC-AUC **0.9989** · Recall @ 1% FPR **0.9785** · Recall @ 5% FPR **1.0000** · at operating threshold 0.7431 → precision **0.61**, recall **0.96**. Source: [`backend/ml/artifacts/metrics.json`](backend/ml/artifacts/metrics.json). These measure how learnable the in-house generator is, not how detectable fraud is: the externally generated Sparkov benchmark, the cross-generator transfer, the temporal drift series and the rules audit are laid out in [`backend/ml/BENCHMARK_CARD.md`](backend/ml/BENCHMARK_CARD.md), and the real-world ULB benchmark, on its own featureset, in [`backend/ml/ULB_BENCHMARK_CARD.md`](backend/ml/ULB_BENCHMARK_CARD.md). Detailed breakdown in [Test-Set Metrics](#-test-set-metrics) below.
-
----
-
-## 📌 What Is This Project?
-
-Fraud Radar is a real-time card-fraud detection dashboard that simulates the kind of monitoring platforms used inside tier-1 financial institutions — the JPMorgans, Citis, Amexes, and Stripes of the world. Transactions flow in, get scored by a hybrid rules-plus-ML pipeline in single-digit milliseconds, and surface in a dashboard where analysts can triage anything suspicious.
-
-It is **not** a production payment processor and it is **not** a startup MVP. There is no payment rail behind it and no real money moves. Every transaction is synthetic. What this project *is* is a deliberate engineering showcase — the kind of thing you build to demonstrate that you understand how the real systems are put together, not just how to glue a model to a web framework.
-
-I built it for hiring teams evaluating backend, ML, and fintech engineering skills, and for anyone who has ever wondered what an end-to-end fraud-monitoring platform actually looks like underneath the marketing copy. Every architectural decision in this repository is one I can defend in an interview.
+- [The problem](#the-problem) · [What I built](#what-i-built) · [Architecture](#architecture) · [The scoring pipeline](#the-scoring-pipeline)
+- [How it was evaluated](#how-it-was-evaluated) · [Results](#results) · [**What the evaluation taught us**](#what-the-evaluation-taught-us)
+- [Production engineering](#production-engineering) · [Explainability and the analyst loop](#explainability-and-the-analyst-loop) · [Multi-currency](#multi-currency)
+- [Limitations](#limitations) · [Data provenance](#data-provenance-and-licensing) · [Why this is not a Kaggle notebook](#why-this-is-not-a-kaggle-notebook)
+- [Repository layout](#repository-layout) · [Running it locally](#running-it-locally) · [Roadmap](#roadmap)
 
 ---
 
-## 🎯 Why It Matters
+## The problem
 
-Card fraud costs the global payments industry **tens of billions of dollars** every year. The platforms that fight it are some of the most demanding software in the financial world: they need to score transactions in **single-digit milliseconds**, produce **explainable decisions** that hold up under regulatory scrutiny, and maintain **immutable audit trails** that survive compliance reviews years after the fact.
+A fraud classifier is the easy part. The systems that actually run in payments have to do several things a notebook never does:
 
-This project demonstrates the architectural patterns that real fraud platforms rely on, scaled down to a size one engineer can build and reason about end to end:
+- **Decide in milliseconds**, synchronously, on the authorisation path.
+- **Explain every decision**, because a declined customer becomes a support ticket and a regulator eventually asks why.
+- **Survive retries** — a network timeout must not double-charge or double-block.
+- **Keep a human in the loop**, because no production fraud system runs fully automated.
+- **Leave an audit trail** that still makes sense years later.
+- **Keep working when a dependency is down**, rather than failing the payment.
 
-- **Idempotent transaction ingestion** using the Stripe-style `Idempotency-Key` pattern so retries never double-charge or double-block.
-- **Hybrid rules-plus-ML scoring** that combines fast hard-coded rules with a probabilistic model.
-- **Human-in-the-loop review queues** because no production fraud system runs fully automated.
-- **Append-only audit logs** that record every decision, every override, every reason.
+And underneath all of it: a model trained on data that resembles production only as closely as whoever built the dataset managed. That last problem is the one this repository spends the most effort on.
 
----
+## What I built
 
-## 💡 What This Project Demonstrates
+An end-to-end system, not a notebook:
 
-- Production-style **FastAPI** backend with a clean layered architecture (`api → service → repository → models`).
-- **Idempotent transaction processing** using a Stripe-pattern `Idempotency-Key` header.
-- **Hybrid fraud pipeline**: a deterministic rules engine layered with an **XGBoost** probabilistic classifier.
-- **Model explainability** with **SHAP** values surfaced for every decision the model makes.
-- **Realistic synthetic dataset** built on top of `Faker` and modeling six distinct real-world fraud patterns.
-- **SQLAlchemy 2.0** typed ORM with **Alembic** migrations and Postgres-compatible schemas.
-- **React 19 + TypeScript + Tailwind** dashboard with TanStack Query for server state.
-- **Append-only audit log** that demonstrates compliance and observability awareness from day one.
-- **Decimal-precision money handling** — no `float` arithmetic anywhere near a monetary value, including across the FX wire.
-- **Multi-currency reporting with a hostile-dependency posture** — historical FX conversion that keeps the original amount authoritative, caches rates locally, refuses to price a transaction at a rate newer than itself, and treats the provider being down as the expected case.
-- **Clean Git workflow** with Conventional Commits and small, reviewable changesets.
+- A **FastAPI** service with a layered architecture (`api → services → repositories → models`), Stripe-pattern idempotent ingestion, synchronous hybrid scoring, a keyset-paginated transactions API, a purpose-built alerts queue, and an append-only audit log.
+- A **React 19 + TypeScript** dashboard: live KPIs, a filterable transaction feed, a per-transaction detail page with SHAP attribution and the analyst decision form, and an alerts worklist.
+- An **offline ML pipeline** that is strictly separated from the serving path — dataset adapters, a batch feature builder that calls the *production* extractor, training, evaluation, and per-run reproducibility records.
+- A **benchmark programme** with its methodology frozen in ADRs *before* the data was scored, producing two generated cards that no one hand-edits.
+- A **currency enrichment layer** built on the assumption that its external provider will be unavailable.
 
----
+## Architecture
 
-## 🏗️ Architecture
+```mermaid
+flowchart TB
+    subgraph live["LIVE — serving path"]
+        direction TB
+        UI["React 19 + TypeScript dashboard<br/>overview · transactions · detail · alerts"]
+        API["FastAPI · Pydantic v2 · Idempotency-Key"]
+        UI -->|HTTPS / JSON| API
 
-```
-                    ┌──────────────────────────────────────┐
-                    │     React Dashboard (Vite + TS)      │
-                    │   TanStack Query · Tailwind · Recharts │
-                    └──────────────────┬───────────────────┘
-                                       │ HTTPS / JSON
-                    ┌──────────────────▼───────────────────┐
-                    │       FastAPI API Gateway            │
-                    │   Pydantic v2 · Idempotency-Key       │
-                    └──────────────────┬───────────────────┘
-                                       │
-                ┌──────────────────────┼──────────────────────┐
-                │                      │                      │
-        ┌───────▼──────┐       ┌───────▼───────┐      ┌───────▼────────┐
-        │  api/        │──────▶│  services/    │─────▶│ repositories/  │
-        │  routers     │       │ fraud pipeline│      │  SQLAlchemy 2  │
-        └───────┬──────┘       └───────┬───────┘      └───────┬────────┘
-                │                      │                      │
-        ┌───────▼────────────┐         │                      │
-        │  enrichment/fx     │         │                      │
-        │  ECB rates, cached │         │                      │
-        │  never blocks      │         │                      │
-        └────────────────────┘         │                      │
-                                       │                      │
-                              ┌────────▼─────────┐    ┌───────▼────────┐
-                              │  Rules Engine    │    │   SQLite DB    │
-                              │  + XGBoost Model │    │ (Postgres-ready)│
-                              │  + SHAP Explainer│    └────────────────┘
-                              └────────┬─────────┘
-                                       │
-                              ┌────────▼───────────────────┐
-                              │       ml/artifacts/        │
-                              │  model.json + feature_list │
-                              │  + threshold + metrics     │
-                              └────────────────────────────┘
+        API --> TXA["/transactions"]
+        API --> ALA["/alerts"]
+        API --> STA["/stats/*"]
+        API --> MDA["/model"]
 
-                    ┌──────────────────────────────────┐
-                    │  Background Transaction Simulator │
-                    │  (feeds the ingestion endpoint)   │
-                    └──────────────────────────────────┘
-```
+        TXA --> FX["enrichment/fx<br/>historical rate + cache<br/><i>never blocks scoring</i>"]
+        TXA --> SVC["services/<br/>scoring · idempotency · review"]
+        ALA --> SVC
+        STA --> SVC
 
-The artifacts that box loads are produced by a separate offline pipeline that never runs inside the API process:
+        SVC --> FEAT["FeatureExtractor<br/>17 features"]
+        SVC --> RULES["Rules engine<br/>6 pure rules"]
+        FEAT --> XGB["XGBoost"]
+        XGB --> SHAP["SHAP TreeExplainer"]
+        RULES --> DEC{"Decision<br/>conservative wins"}
+        SHAP --> DEC
+        DEC --> AUD["Audit log<br/>append-only"]
+        DEC --> QUEUE["Analyst review queue"]
 
-```
-  synthetic generator               Sparkov CSVs (gitignored)
-          │                                    │
-          └──────────────────┬─────────────────┘
-                             ▼
-              ┌─────────────────────────────┐
-              │  ml/datasets/  adapters     │ ─▶ CanonicalDataset + provenance
-              └──────────────┬──────────────┘    (labels held outside the objects)
-                             ▼
-              ┌─────────────────────────────┐
-              │  ml/features/  batch build  │ ─▶ the production FeatureExtractor,
-              └──────────────┬──────────────┘    cached as fingerprinted .npz
-                             ▼
-              ┌─────────────────────────────┐
-              │  ml/train.py                │ ─▶ chronological 70/15/15, tuning,
-              └──────────────┬──────────────┘    threshold selected on val only
-                             ▼
-              ┌─────────────────────────────┐
-              │  ml/artifacts/runs/<name>/  │ ─▶ run.json, metrics, model card
-              └──────────────┬──────────────┘    (model.json + PNGs gitignored)
-                             ▼
-     ml.analyze  ·  ml.experiments.{transfer, temporal_drift, rules_audit}
-                             │  additive JSON written back into the run directory
-                             ▼
-              ml.benchmark_card  ─▶  ml/BENCHMARK_CARD.md
+        SVC --> REPO["repositories/ → SQLAlchemy 2.0"]
+        REPO --> DB[("SQLite dev<br/>Postgres-ready")]
+    end
+
+    subgraph offline["OFFLINE — never runs in the API process"]
+        direction TB
+        SRC["Synthetic generator · Sparkov CSVs · ULB CSV<br/><i>external corpora gitignored, SHA-256 pinned</i>"]
+        SRC --> ADPT["dataset adapters → canonical records<br/>labels held outside the objects"]
+        ADPT --> BATCH["batch feature builder<br/><b>calls the same FeatureExtractor</b>"]
+        BATCH --> TRAIN["train → tune → threshold on val → score test once"]
+        TRAIN --> RUNS[("runs/&lt;name&gt;/<br/>run.json · metrics · threshold")]
+        RUNS --> EXP["transfer · temporal drift · rules audit"]
+        EXP --> CARDS["BENCHMARK_CARD.md<br/>ULB_BENCHMARK_CARD.md<br/><i>generated from records</i>"]
+    end
+
+    SIM["Transaction simulator<br/>HTTP client, optional currency mix"] -->|POST| API
+    RUNS -.->|"promote — built, never run"| ART[("ml/artifacts/<br/>model.json + threshold")]
+    ART -.->|"loaded once at startup"| XGB
+    DB -.->|"export snapshot"| DEMO["Vercel static demo<br/>frozen JSON, no backend"]
+
+    style live fill:#0d1117,stroke:#30363d
+    style offline fill:#0d1117,stroke:#30363d
+    style DEC fill:#1f2937,stroke:#4b5563
 ```
 
-**Why a monolith?** Splitting fraud scoring, ingestion, and persistence into separate services would burn the entire four-day budget on Kubernetes manifests, message bus wiring, and inter-service contracts instead of features the reviewer can actually see and click through. A layered monolith captures the same separation-of-concerns thinking with a tenth of the operational surface area.
+The two halves touch at exactly one place: the artifact directory. Offline produces it, live loads it. **Training never needs the API, and the API never needs the training data.**
 
-**Why SQLite?** It keeps the developer experience to a single `uv sync` with zero containers required, and every model is written with SQLAlchemy types that are 1:1 compatible with PostgreSQL. Swapping engines is a single `DATABASE_URL` change and an Alembic run.
+Fuller diagrams — runtime topology, the end-to-end scoring sequence, the analyst-review loop with its cache wiring, and the layered code structure — are in [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).
 
-**Why synchronous fraud scoring?** Production fraud platforms typically score on a hot path fed by Kafka or Kinesis. Inside a single-process demo, an async pub/sub layer would be cargo culting — synchronous calls model the same logical flow and keep latency observable. The README's "What I'd build next" section calls out the event-driven upgrade path explicitly.
-
----
-
-## 🧠 Fraud Detection Pipeline
-
-Every incoming transaction passes through a two-stage scoring pipeline before a decision is returned:
+## The scoring pipeline
 
 ```
-Transaction
-    │
-    ▼
-┌─────────────────────┐
-│  1. Rules Engine    │  ──▶  Hard-block on obvious fraud signals
-└──────────┬──────────┘       (velocity, geo-impossibility, blocklists)
-           │
-           ▼
-┌─────────────────────┐
-│  2. Feature Builder │  ──▶  Derives velocity, geo, recency, merchant
-└──────────┬──────────┘       and amount-percentile features
-           │
-           ▼
-┌─────────────────────┐
-│  3. XGBoost Scorer  │  ──▶  Score ∈ [0, 1]
-└──────────┬──────────┘
-           │
-           ▼
-┌─────────────────────┐
-│  4. SHAP Explainer  │  ──▶  Top contributing features per decision
-└──────────┬──────────┘
-           │
-           ▼
-┌─────────────────────┐
-│  5. Decision Logic  │  ──▶  APPROVE  · REVIEW  · DECLINE
-└─────────────────────┘
+transaction
+   → FX enrichment          derived reporting amount; cannot raise
+   → rules engine           6 pure rules; HARD_BLOCK short-circuits the model
+   → feature extraction     17 features over a 180-day customer history window
+   → XGBoost                raw binary:logistic score in [0, 1]
+   → SHAP                   top contributors, computed at inference time
+   → decision               conservative wins: APPROVE · REVIEW · DECLINE
+   → audit log              actor, action, payload, immutable
+   → analyst queue          human verdict can override; model verdict preserved
 ```
 
-1. **Rules engine** runs synchronously and short-circuits on obvious fraud — impossible-travel velocity, known blocklists, hard amount ceilings.
-2. **XGBoost classifier** scores everything the rules don't catch. The output is the raw `binary:logistic` score in [0, 1] — used as a ranking signal against a threshold, deliberately **not** described as a calibrated probability: calibration is *measured* on the held-out fold (Brier, ECE, and positive-class variants that strip out the well-calibrated negative mass) and reported in the model card, but no calibrator is ever fitted. Applying a Platt or isotonic step is named as a production follow-up, not done here.
-3. **SHAP explainer** attaches the top contributing features to every scored decision so the dashboard never shows a black-box verdict.
-4. **Decision logic** maps the score into one of three actions using configurable thresholds: `APPROVE`, `REVIEW` (queue for analyst triage), or `DECLINE`.
+Two design choices worth calling out.
 
-The synthetic dataset that trains the model deliberately injects **six real-world fraud patterns** so the classifier learns signal that resembles production data, not toy noise:
+**The model score is deliberately not described as a calibrated probability.** It is a ranking signal against a threshold. Calibration is *measured* on the held-out fold — Brier, ECE, and positive-class variants that strip out the well-calibrated negative mass — and reported in the cards, but no calibrator is ever fitted. Applying a Platt or isotonic step is named as a follow-up, not done.
 
-- **Card testing** — rapid bursts of small-value transactions used to validate stolen card numbers.
-- **Geo-velocity** — physically impossible travel between consecutive transactions.
-- **Account takeover** — a long dormancy followed by a sudden high-value transaction.
-- **High-amount anomalies** — transactions far outside the cardholder's historical spend distribution.
-- **Off-hours patterns** — clustering of transactions at unusual times for the cardholder.
-- **Merchant concentration** — abnormal density of activity at a single merchant or merchant category.
+**Training calls the production feature extractor.** The batch builder in `ml/features/` invokes the same `FeatureExtractor.extract()` the API calls, with the same 180-day history window, behind a sentinel session that raises if anything tries to reach a database. A golden parity test compares batch against the serving path element by element with exact float equality, on a fixture where no feature is constant — because parity on a column that never varies proves nothing. Train/serve skew is the bug that quietly destroys fraud-model precision in production, and the only durable fix is one code path. Design in [`PHASE_5C_FEATURE_PARITY.md`](docs/adr/PHASE_5C_FEATURE_PARITY.md).
 
-### Three data layers, kept apart
+## How it was evaluated
 
-The classifier the API serves is trained on that synthetic dataset, which makes it a **development baseline**: it measures how learnable this repository's own generator is, which is not the same question as how detectable fraud is. Phase 5 asks the second question separately, on the [Sparkov corpus](https://www.kaggle.com/datasets/kartik2112/fraud-detection) — **simulated** data from an independent generator, still not real card transactions. The two are never merged and never averaged:
+The headline number of a fraud project is usually computed on the same generator that produced its training data, which measures how learnable that generator is — not how detectable fraud is. Phase 5 exists to break that loop, using four evaluations that are **never merged and never averaged**:
 
-- Nothing from the benchmark is promoted into the served model. Promotion is built and tested, and deliberately has not been run.
-- Every benchmark run writes a record — `run.json`, metrics, threshold, provenance — and those records are committed, so any benchmark number here traces back to a run that can be rebuilt and re-verified.
-- Raw corpora, feature caches and model binaries are gitignored. They are reproducible from the records and the pinned digests.
-- [`backend/ml/BENCHMARK_CARD.md`](backend/ml/BENCHMARK_CARD.md) is generated from those committed records rather than written by hand.
+| Layer | Data | What it can answer |
+|---|---|---|
+| **In-house synthetic** | This repository's generator: 50,010 transactions, 500 customers, 200 merchants, 1.52% fraud, six injected patterns, `seed=42` | Is the pipeline correct end to end? Nothing about the real world |
+| **Sparkov** | An [independent generator](https://www.kaggle.com/datasets/kartik2112/fraud-detection) (Brandon Harris's Sparkov), 1,852,394 rows. **Simulated, not real card transactions** | Do features designed against my own simulator work on someone else's? |
+| **Cross-generator transfer** | The synthetic model, unchanged, on Sparkov's test fold | Does in-distribution performance survive a change of data-generating process? |
+| **ULB** | [Real, publisher-anonymised card data](https://www.kaggle.com/datasets/mlg-ulb/creditcardfraud): 284,807 rows, 492 frauds (0.17%), features are PCA components the publisher withholds the inputs to | What does real data look like — on a track that cannot contaminate production? |
 
-The third layer is **real** card data: the [ULB credit-card dataset](https://www.kaggle.com/datasets/mlg-ulb/creditcardfraud), anonymised by its publisher, whose columns apart from the amount, a relative time and the label are PCA components of inputs it withholds. It runs on its own track, [`backend/ml/tracks/ulb/`](backend/ml/tracks/ulb/), under the method fixed in [`docs/adr/PHASE_5E_ULB_BENCHMARK_METHODOLOGY.md`](docs/adr/PHASE_5E_ULB_BENCHMARK_METHODOLOGY.md) before the data was acquired:
+Both benchmark methodologies were **frozen in ADRs before any test fold was scored** ([5D](docs/adr/PHASE_5D_BENCHMARK_METHODOLOGY.md), [5E](docs/adr/PHASE_5E_ULB_BENCHMARK_METHODOLOGY.md)). Every run writes a record — `run.json`, metrics, threshold, provenance — and those records are committed, so any number below traces back to a run that can be rebuilt and re-verified. Verification refuses a run whose re-derived test fold holds other transactions, the same ones in another order, or whose model file is not byte-for-byte the one it saved. The cards are **generated from the records**, not written by hand.
 
-- ULB has its own featureset, `ulb_pca_v1` — the 28 published components and the amount, as published — kept out of the production 17-feature registry, so a ULB run can be neither promoted nor served.
-- The track has its own loader, aggregate-only quality report, matrix builder, trainer and verifier. The raw file and any matrix built from it stay local; licence terms are in [`docs/DATA_LICENSES.md`](docs/DATA_LICENSES.md).
-- Three pre-registered runs — random states 42, 43 and 44, with 42 the primary — have been trained under the frozen chronological 70/15/15 protocol, and each was verified before its records were committed.
+## Results
 
-Their results are laid out in [`backend/ml/ULB_BENCHMARK_CARD.md`](backend/ml/ULB_BENCHMARK_CARD.md), generated from those records rather than written by hand. They are never set beside the synthetic or Sparkov results, and nothing below reports them.
+Every row below states what its model was trained on, what it was evaluated on, and where its threshold was chosen. **Read each PR-AUC against the test prevalence beside it** — a scorer with no signal scores about the prevalence. These are four different populations; ranking them against each other would be meaningless.
 
----
+### A. In-distribution — trained and evaluated on the same corpus
 
-## 🔍 Explainability & the Analyst Loop
+| Result | Test rows | Test frauds | Prevalence | PR-AUC | ROC-AUC | Recall @ 1% FPR | Recall @ 5% FPR |
+|---|---|---|---|---|---|---|---|
+| Synthetic baseline (`synthetic_v1`) | 7,502 | 93 | 0.0124 | **0.9327** | 0.9989 | 0.9785 | 1.0000 |
+| Sparkov, 200-card development run | 53,922 | 159 | 0.0029 | **0.9196** | 0.9985 | 0.9748 | 0.9937 |
+| Sparkov, full corpus (999 cards) | 277,860 | 924 | 0.0033 | **0.8653** | 0.9963 | 0.9459 | 0.9838 |
 
-Every scored transaction can be inspected via `GET /api/v1/transactions/{id}/explain`. The endpoint runs the same `FeatureExtractor` the scorer uses and returns the fraud score, the decision, the top 5 SHAP contributors, and the full 17-feature attribution map:
+At each operating threshold, chosen on that run's own validation fold at FPR ≤ 1%:
 
-```bash
-curl http://localhost:8000/api/v1/transactions/<TX_ID>/explain
-```
+| Result | Threshold | Precision | Recall | F1 | Realised test FPR |
+|---|---|---|---|---|---|
+| Synthetic baseline | 0.7431 | 0.6138 | 0.9570 | 0.7479 | 0.0076 |
+| Sparkov, development | 0.5286 | 0.2710 | 0.9748 | 0.4241 | 0.0078 |
+| Sparkov, full corpus | 0.2373 | 0.2592 | 0.9361 | 0.4060 | 0.0089 |
 
-Two PNG formats are also supported for embedding in dashboard tiles: `?format=force` (top-8 features plus an aggregated remainder) and `?format=waterfall` (all 17 features).
+### B. Cross-generator transfer — the result that matters
 
-SHAP is computed at inference time against a `TreeExplainer` cached at process startup — not pre-computed in batch. Every explanation is live for every scored transaction, and the same feature-extraction code path serves both training and inference, so the explainer never drifts from the scorer.
+> **Model trained on the in-house synthetic generator → evaluated on Sparkov's test fold, not retrained.**
+> Nothing was selected on Sparkov data: no threshold, no calibration, no feature selection, no tuning.
 
-That endpoint recomputes. The **detail view deliberately does not**: `GET /api/v1/transactions/{id}` returns a composite envelope read from what was persisted at scoring time — row fields, the threshold in force, the rules that fired, the stored top contributors with their direction pre-classified, the full audit trail, and a computed `effective_decision`. Re-invoking the explainer here would show what the *current* model thinks, and a page backing an audit trail has to show what was actually decided.
+| | Test rows | Test frauds | Prevalence | PR-AUC | ROC-AUC | Recall @ 1% FPR | Recall @ 5% FPR |
+|---|---|---|---|---|---|---|---|
+| synthetic_v1 → sparkov_v1_full | 277,860 | 924 | 0.0033 | **0.0087** | 0.7354 | 0.0390 | 0.0530 |
 
-`effective_decision` is where the human enters. `POST /api/v1/transactions/{id}/decision` records an analyst verdict — `CONFIRMED_FRAUD` projects to `DECLINE`, `CONFIRMED_LEGIT` to `APPROVE`, a null label falls through to the model's call — while the original `fraud_decision` column is preserved verbatim, so the model's verdict stays clean for evaluation and retraining. Resubmitting the same verdict is idempotent; changing it writes an `ANALYST_DECISION_REVISED` audit row.
+Applying the source model's own threshold (0.7431) unchanged to the target fold:
 
-`GET /api/v1/alerts` is the queue that feeds that loop: rows sitting in `REVIEW` with no analyst label yet, sorted `fraud_score DESC, created_at ASC, id ASC` so the riskiest surface first without the oldest getting stranded, keyset-paginated with its own cursor codec, and carrying a queue-wide `summary` block that ignores the caller's filters — queue health should describe the queue, not the current view.
+| Precision | Recall | F1 | TP | FP | TN | FN | Realised FPR |
+|---|---|---|---|---|---|---|---|
+| 0.0030 | 0.0628 | 0.0057 | 58 | **19,215** | 257,721 | 866 | 0.0694 |
 
-The dashboard consumes all three: `/transactions` for the live feed, `/transactions/:id` for the detail page and its analyst decision form, and `/alerts` for the worklist. Submitting a verdict invalidates the alerts cache, so the row leaves the queue without a manual refresh.
+**A PR-AUC of 0.0087 against a prevalence of 0.0033 is barely better than chance.** Read the two previous tables together: the same 17 features, retrained on Sparkov, reach 0.8653. Carried over without retraining, they reach 0.0087 and flag 19,215 legitimate transactions to catch 58 frauds.
 
----
+### C. ULB — real anonymised data, isolated track
 
-## 📥 Ingestion
+Three pre-registered random states, shown side by side and **never averaged**. Seed 42 is the primary; 43 and 44 are its pre-registered repeats, so they show how much a result moves with the fit's randomness — not a confidence interval.
 
-Transactions enter the pipeline via `POST /api/v1/transactions` with a required `Idempotency-Key` header:
+| Run | Role | Test rows | Test frauds | Prevalence | PR-AUC | ROC-AUC | Recall @ 1% FPR | Recall @ 5% FPR |
+|---|---|---|---|---|---|---|---|---|
+| `ulb_pca_v1_seed42` | primary | 42,722 | 52 | 0.0012 | **0.7670** | 0.9751 | 0.8269 | 0.8654 |
+| `ulb_pca_v1_seed43` | repeat | 42,722 | 52 | 0.0012 | 0.7569 | 0.9760 | 0.8077 | 0.8462 |
+| `ulb_pca_v1_seed44` | repeat | 42,722 | 52 | 0.0012 | 0.7751 | 0.9803 | 0.8462 | 0.8846 |
 
-```bash
-curl -X POST http://localhost:8000/api/v1/transactions \
-  -H "Idempotency-Key: $(uuidgen)" \
-  -H "Content-Type: application/json" \
-  -d '{"customer_id": "...", "merchant_id": "...", "amount": "100.00",
-       "currency": "USD", "payment_method": "CARD", "country": "US",
-       "is_card_present": true}'
-```
+ULB runs on its own featureset, `ulb_pca_v1` — the 28 published components plus the amount, as published — which is deliberately **kept out of the production 17-feature registry, so a ULB run can be neither promoted nor served**. The test fold holds 52 frauds among 42,722 rows, so a handful of rows moves every figure on that card.
 
-Idempotency follows the Stripe pattern: same key + same body returns the cached response with an `X-Idempotency-Replay: true` header; same key + different body returns `409 Conflict`. The cache key is a SHA-256 over `TransactionCreate(**body).model_dump_json()` — not raw HTTP bytes — so the hash is stable across whitespace differences and field reordering by intermediaries. Cached entries expire after 24 hours.
+### D. Temporal drift
 
-Every accepted transaction now runs the full pipeline synchronously — FX enrichment → rules engine → feature extraction → XGBoost score → SHAP attribution → decision composition → audit log — and the response body carries `fraud_score`, `decision`, `threshold`, `rules_triggered`, and `top_contributors` (top-5 SHAP, same shape as `/explain`). `PENDING` remains a legitimate `Decision` enum value, reserved for rows that error mid-scoring and need re-attempting.
+A model of its own, tuned and fitted on 2019-01 → 2019-10, threshold selected **once** on 2019-11 → 2019-12, then scoring each month of 2020 at that fixed threshold. Twelve months, no re-selection:
 
----
+| | Jan | Mar | May | Jul | Sep | Nov | Dec |
+|---|---|---|---|---|---|---|---|
+| PR-AUC | 0.9147 | 0.9084 | 0.9276 | 0.8054 | 0.8981 | 0.8711 | 0.8047 |
+| Recall | 0.9650 | 0.9527 | 0.9696 | 0.9065 | 0.9441 | 0.9354 | 0.9341 |
+| Precision | 0.3662 | 0.3609 | 0.3998 | 0.2610 | 0.3098 | 0.2731 | 0.1644 |
 
-## 💱 Multi-Currency
+Recall holds between 0.906 and 0.970 across the year at a frozen threshold; precision decays from 0.40 to 0.16 as monthly prevalence falls from 0.0071 to 0.0018. That is the shape you would expect from a fixed threshold meeting a shifting base rate — the model's ranking stays usable while the operating point silently gets worse. Full twelve-month series in the [benchmark card](backend/ml/BENCHMARK_CARD.md#6-temporal-drift).
 
-A transaction is stored in the currency it was submitted in, and that value is never overwritten. FX enrichment attaches a derived reporting figure *beside* it — `amount_base`, `fx_rate`, `fx_rate_date`, `fx_source` — or attaches nothing and says why. The full contract is [`docs/FX_CONTRACT.md`](docs/FX_CONTRACT.md); the parts worth reading here are the ones about being wrong.
+### E. Rules audit
 
-Rates come from [Frankfurter](https://frankfurter.dev), an open API over ECB reference rates with no key and a self-hostable deployment behind `FX_API_BASE_URL`. A rate means *1 unit of the transaction's currency = `fx_rate` units of the reporting currency*, so conversion is always a multiplication and there is no second code path to get backwards. It resolves in four steps — local cache, provider (2 s timeout), stale cache, nothing — and a transaction already in USD skips all four: rate 1, amount copied verbatim, no lookup.
+The production rules, unmodified, evaluated on **all 1,852,394 Sparkov rows** (9,651 frauds), each row given the same 180-day context the scoring service builds:
 
-**The rate has to be the one that applied at the time.** That is the whole point of a historical conversion, and it is the part that quietly breaks. So every cache read — the fresh one *and* the stale fallback — is constrained to `rate_date <= on`. A rate published after the transaction is not a candidate for it, which makes "last month's transaction priced at today's rate" structurally unreachable rather than a rule someone has to remember. The stale fallback is therefore always an *older* rate, and the row records that it is old.
+| Rule | Severity | Fired | On fraud | Precision | Fraud recall |
+|---|---|---|---|---|---|
+| `off_hours_high_value` | REVIEW | 1,312 | 262 | 0.1997 | 0.0271 |
+| `velocity_burst` | HARD_BLOCK | 72 | 4 | 0.0556 | 0.0004 |
+| `amount_ceiling` | REVIEW | 195 | 0 | 0.0000 | 0.0000 |
+| `geo_velocity_impossible` | HARD_BLOCK | 0 | 0 | — | 0.0000 |
+| `high_risk_country` | REVIEW | 0 | 0 | — | 0.0000 |
+| `dormant_account_high_value` | — | \- | \- | \- | **not evaluable** — Sparkov has no account-open timestamp |
 
-Weekends normalise back to the preceding Friday before the lookup, because the provider does not do it for you: asked for a Saturday it returns the carried-forward rate stamped *with the Saturday*, which is indistinguishable from a Saturday observation. Normalising locally keeps `fx_rate_date` a day the rate could actually have been published on, and lets a weekend's transactions share one cache entry.
+Rules alone would APPROVE 1,850,815 of those rows, containing 9,385 of the 9,651 frauds. **The rules, calibrated against my own generator, catch almost nothing on someone else's data** — `high_risk_country` and `geo_velocity_impossible` never fire at all, because Sparkov carries no country signal those rules can use. A rule the data cannot support is reported as not evaluable rather than quietly run and scored as zero.
 
-**The provider is assumed to be down.** FX enrichment cannot raise: a timeout, an outage, a malformed body, a currency the provider will not price, or an exception nothing anticipated all leave the transaction fully scored, decided, persisted and audited — with four null FX columns and an `fx_source` of `unsupported` or `unavailable`. A permanent refusal (HTTP 400/404/422 — the pair is not carried) is classified apart from a transient one, because only the second should be answered with an older cached rate; 429 is "try later", not "never works". `fx_source` is copied into the scoring audit payload whenever it is not `identity`, so a decision taken on a stale rate is visible in the trail and not just on a row that a later re-enrichment could overwrite.
+## What the evaluation taught us
 
-Money never touches a float: the provider's JSON is parsed with `parse_float=Decimal`, and the multiplication runs in a widened `Decimal` context so that at the full width of `NUMERIC(19, 4)` the exact product is formed and rounded **once**, rather than being rounded by the default 28-digit context and then rounded again.
+**The central finding: in-distribution performance says almost nothing about whether a fraud model generalises.**
 
-Reporting aggregates sum `COALESCE(amount_base, amount)`, because adding a raw amount column across currencies adds euros to yen. Amount *filters* deliberately do not — "show me transactions over 250" is a question about what the cardholder was charged. And the model never sees any of it: the 17-feature registry, the served classifier and every benchmark track are untouched. Whether a base-currency amount would help the classifier is a question for an evaluation, not an assumption.
+The same 17-feature pipeline scores PR-AUC 0.9327 on the generator it was trained on, 0.8653 when retrained on an independent generator, and **0.0087 when carried across generators without retraining**. The features are identical. The code is identical. Only the data-generating process changed.
 
-**In the UI**, one [`Amount`](frontend/src/components/ui/Amount.tsx) component owns every per-transaction money display, so the rule that the original value is authoritative holds by construction rather than by each call site remembering it. A row already in the reporting currency renders as one line — `≈ $100.00 USD` under `$100.00` is noise. A converted row shows the charged amount first with the derived figure below it, marked `≈` and visually subordinate, carrying its rate and date on hover. A row priced from a stale rate says so and dates it. A row with no rate shows the original alone and explains the absence on hover, quietly — an unconverted transaction is a normal row, not an error state. A currency code `Intl` does not recognise degrades to `125.00 XYZ` rather than falling back to a dollar sign.
+Three things explain it, and they are worth separating:
 
----
+1. **Five of the seventeen features are constant on Sparkov** — both country mismatches, account age, risk tier, and `is_high_risk_category`. The model leans on signal the target corpus simply does not carry.
+2. **The operating threshold does not transfer either.** The synthetic run's 0.7431 was chosen for a 1% FPR on its own validation fold; on Sparkov it realises 6.94%, producing 19,215 false positives. A threshold is a property of a score distribution, not of a model.
+3. **My generator contains structural associations the real world does not guarantee.** The clearest one is documented below.
 
-## 🛠️ Tech Stack
+### The country/fraud coupling — a documented property of the generator
 
-| Layer        | Technologies                                                          |
-| ------------ | --------------------------------------------------------------------- |
-| **Backend**  | Python 3.11+, FastAPI, SQLAlchemy 2.0, Pydantic v2, Alembic, uv       |
-| **ML**       | scikit-learn, XGBoost, SHAP, pandas, numpy, Faker                     |
-| **Frontend** | React 19, TypeScript (strict), Vite, Tailwind CSS, TanStack Query, React Router, Recharts |
-| **Database** | SQLite (dev), Postgres-compatible schemas via SQLAlchemy              |
-| **Tooling**  | ruff, mypy (strict), pytest, ESLint, GitHub Actions CI                |
-| **Infra**    | Vercel (frontend, static-snapshot demo); local-first backend          |
+While smoke-testing the demo I noticed every non-US country showing a ~100% decline rate. I traced it, and it is not a scoring or aggregation bug — it is how the data is made, at two independent layers:
 
----
+- The **simulator** hard-codes `country = "US"` for clean payloads. Non-US countries appear *only* inside fraud patterns (`high_risk_country` → RU/CN/NG/RO/VE/ID, `stealth` → GB/DE/FR/JP/AU/CA). So P(fraud-shaped | non-US) = 1.0 by construction.
+- The **training corpus** is worse: `COUNTRY_WEIGHTS` in the customer generator contains only `{US, GB, CA, DE, FR, AU, IN, BR, JP, MX}`, so RU/CN/NG/RO/VE/ID enter the 50,010 rows **exclusively** through the geo-velocity fraud injector. All 125 such rows are fraud. The model saw *zero* legitimate transactions from those countries.
 
-## 📁 Repository Structure
+Among countries that do appear legitimately, country is a weak signal (fraud rates 0.31%–2.79%). But for those six, the association is deterministic — which is exactly the kind of shortcut that produces a 0.9327 in-distribution and a 0.0087 in transfer.
+
+> **To be explicit: this says nothing about real-world fraud rates by country.** It is an artefact of how this repository's synthetic data was constructed, and it is reported here because a generator's structural associations are precisely what a closed-loop evaluation hides. Correcting it would mean regenerating the dataset and retraining, which would move every published number — a deliberate future decision, not a quiet edit.
+
+### What ULB does and does not add
+
+ULB is **real** card data, so it answers a question no generator can. But its features are PCA components whose inputs the publisher withholds, which means the production featureset cannot be evaluated on it and its results cannot be compared with anything above. It therefore runs on a fully isolated track: its own loader, its own aggregate-only quality report, its own `ulb_pca_v1` featureset outside the production registry, its own trainer and read-only verifier. Its PR-AUC of 0.7670 at 0.12% prevalence is a real-data result about *that* featureset — not a statement about the served model, which has never seen it.
+
+**Promotion is built, tested, and deliberately has never been run.** The model the API serves is still the synthetic-trained one, and the dashboard says so.
+
+## Production engineering
+
+**Ingestion and idempotency.** `POST /api/v1/transactions` requires an `Idempotency-Key`. Same key + same body replays the cached response with `X-Idempotency-Replay: true`; same key + different body returns 409. The cache key is a SHA-256 over `TransactionCreate(**body).model_dump_json()` — not raw HTTP bytes — so it is stable across whitespace and field reordering by intermediaries. 24-hour TTL.
+
+**Scoring and audit.** One context load serves both the rules engine and the feature extractor (the 180-day window matches the longest rule lookback). A HARD_BLOCK short-circuits the model entirely. Every decision writes one audit row with the actor, the action, and the payload. Service-layer latency p50 3.7 ms / p95 5.8 ms; endpoint p50 16 ms / p95 20 ms including routing, validation, commit and serialisation (n=500, developer laptop — full distribution in [`latency_metrics.json`](backend/ml/artifacts/latency_metrics.json)).
+
+**Money.** Every monetary value is `Decimal` end to end — ORM columns, Pydantic schemas, arithmetic. No `float` anywhere near an amount, including across the FX wire.
+
+**Data layer.** SQLAlchemy 2.0 typed ORM, five Alembic migrations, CHECK constraints carrying real invariants (decision vocabularies, positive amounts, and an FX pairing constraint that makes a half-converted row impossible). SQLite in development; every column type maps 1:1 to PostgreSQL, so moving is a `DATABASE_URL` change plus an Alembic run.
+
+**Reads.** Keyset pagination with opaque cursors on both the transactions list and the alerts queue — each with its own codec, because the alerts worklist sorts by `fraud_score DESC, created_at ASC, id ASC` and a shared encoder would have coupled two unrelated sort keys.
+
+**The simulator** is a normal HTTP client to its own service: every transaction it writes goes through the rules engine, scorer, SHAP, audit log and idempotency cache exactly as any other client's would. `--currency-mix` spreads traffic across currencies to exercise the FX path.
+
+**The demo** is a zero-cost, zero-cold-start static build: the React app reads a frozen JSON snapshot of the live API instead of a hosted backend. Decision recorded in [`PHASE_4A_DEMO_SCOPE.md`](docs/adr/PHASE_4A_DEMO_SCOPE.md); write actions render visibly disabled rather than faked.
+
+## Explainability and the analyst loop
+
+Every scored transaction carries its top SHAP contributors, computed at inference time against a `TreeExplainer` cached at startup — not pre-computed in batch. `GET /api/v1/transactions/{id}/explain` recomputes and returns the full 17-feature attribution map, with `?format=force` and `?format=waterfall` rendering the canonical SHAP plots as PNGs.
+
+The **detail page deliberately does not recompute.** It reads what was persisted at scoring time — the row, the threshold in force, the rules that fired, the stored contributors with their direction pre-classified, the audit trail. Re-invoking the explainer there would show what the *current* model thinks, and a page backing an audit trail has to show what was actually decided.
+
+`POST /api/v1/transactions/{id}/decision` records an analyst verdict: `CONFIRMED_FRAUD` projects to DECLINE, `CONFIRMED_LEGIT` to APPROVE, a null label falls through to the model's call. **The original `fraud_decision` column is preserved verbatim**, so the model's verdict stays clean for evaluation and retraining. Resubmitting the same verdict is idempotent; changing it writes an `ANALYST_DECISION_REVISED` audit row.
+
+`GET /api/v1/alerts` is the queue feeding that loop, carrying a queue-wide summary block that deliberately ignores the caller's filters — queue health should describe the queue, not the current view.
+
+## Multi-currency
+
+A transaction keeps the amount and currency it was submitted in; FX enrichment attaches a derived reporting figure *beside* it, never over it. Rates come from [Frankfurter](https://frankfurter.dev) over ECB reference data, cached locally, and none of it is ever committed.
+
+The contract ([`docs/FX_CONTRACT.md`](docs/FX_CONTRACT.md)) is short and the interesting parts are about being wrong:
+
+- **Every cache read is constrained to `rate_date ≤ transaction date`**, which makes pricing a historical transaction at today's rate structurally unreachable rather than a rule someone has to remember. The stale fallback is therefore always an *older* rate, and the row records that it is.
+- Weekends normalise back to the preceding Friday **before** the lookup, because the provider echoes whatever date you ask for and cannot tell you the true publication day.
+- A provider outage costs a row its converted amount and nothing else — it is still scored, decided, persisted and audited, with `fx_source` recording which of `identity / live / cache / stale / unsupported / unavailable` answered, in the audit payload as well as on the row.
+- Money never touches a binary float: rates parse with `parse_float=Decimal`, and the multiplication runs in a widened `Decimal` context so the product is formed exactly and rounded once.
+
+Reporting aggregates sum `COALESCE(amount_base, amount)` because adding raw amounts across currencies adds euros to yen. Amount *filters* deliberately do not — "over 250" is a question about what the cardholder was charged. **The model never sees any of it**: the 17-feature registry and every benchmark track are untouched.
+
+## Limitations
+
+Stated plainly, because a results table without them is misleading:
+
+- **The served model is trained on synthetic data.** Its 0.9327 PR-AUC measures how learnable this repository's generator is, not how detectable real fraud is.
+- **Sparkov is simulated too.** It is an *independent* generator, which is what makes it useful, but it is not real card transactions and must never be described as such.
+- **ULB is real but isolated.** Different featureset, different track, not promoted, not comparable to the rows above.
+- **Transfer performance is poor** — PR-AUC 0.0087 — and that is reported rather than buried.
+- **The generator has structural associations**, most clearly the country/fraud coupling documented above.
+- **Label delay is not modelled.** The chronological split treats every training label as known at the validation boundary, whereas real fraud labels arrive days to months later via chargebacks. Every result here is optimistic in a way the benchmark does not measure.
+- **Scores are not calibrated.** Calibration is measured, never fitted.
+- **Demo traffic is not production traffic.** The snapshot is a few hundred synthetic rows generated in minutes at a 12% fraud rate; it is a UI fixture, not a sample of anything.
+- **ULB's test fold holds 52 frauds.** A handful of rows moves every figure on that card.
+- **The walkthrough video predates Phase 5** and shows the product before the benchmark, FX and badge work.
+
+## Data provenance and licensing
+
+Per-source licence, citation and provenance policy: [`docs/DATA_LICENSES.md`](docs/DATA_LICENSES.md).
+
+What is committed: SHA-256 digests of every raw input, derived statistics, quality reports, metrics, run metadata, model cards. What is never committed: the raw corpora themselves, any row-level extract of a third-party dataset, feature matrices built from them. Because the raw bytes are absent, the file hash in each `run.json` is the durable link between a published number and the data that produced it — anyone can re-download, hash and compare.
+
+Sparkov is CC0 (confirmed via the Kaggle API at retrieval). ULB is ODbL for the database and DbCL for its contents; its card carries the licence notice and the method offer those terms require. Frankfurter is queried at runtime and never downloaded into the repository at all.
+
+## Why this is not a Kaggle notebook
+
+Not a value judgement — just a different scope. The usual shape is *load CSV → train → report AUC*. This repository spends most of its effort on what comes after that:
+
+| | |
+|---|---|
+| **Train/serve parity** | The trainer calls the production extractor; a golden test asserts element-by-element equality with the serving path |
+| **Frozen methodology** | Both benchmark methods fixed in ADRs before any test fold was scored |
+| **External validation** | An independent generator, plus real anonymised data on an isolated track |
+| **Transfer measured** | And reported at PR-AUC 0.0087 rather than omitted |
+| **Drift and rules audited** | Twelve months at a fixed threshold; all six rules over 1.85M rows, with one reported as not evaluable |
+| **Reproducible records** | Every run rebuildable and verified against its own saved model, byte-for-byte |
+| **Cards generated, not written** | Tests fail if a committed card drifts from its records |
+| **Failure modes tested** | Provider timeouts, outages, malformed responses, stale rates, idempotency conflicts |
+| **It is deployed** | And the dashboard states which model is serving and which datasets are benchmark-only |
+
+## Repository layout
 
 ```
 fraud-radar/
-├── backend/                          # FastAPI service + offline ML pipeline
-│   ├── app/                          # Web/API layer — the only code that serves traffic
-│   │   ├── api/v1/                   # Routers: transactions, alerts, stats, model — thin orchestration only
-│   │   ├── services/                 # Scoring orchestrator (rules → features → model → SHAP → decision),
-│   │   │                             #   idempotency cache, transaction detail, review, alerts, stats
-│   │   ├── repositories/             # SQLAlchemy data access (transaction, customer, merchant, audit, stats, fx_rate)
-│   │   ├── models/                   # SQLAlchemy ORM models (incl. idempotency_keys, audit_log, fx_rates)
-│   │   ├── schemas/                  # Pydantic v2 request/response schemas
-│   │   ├── fraud/                    # FeatureExtractor, FraudExplainer, plots, rules engine, decision matrix
-│   │   ├── enrichment/               # FX conversion + the Frankfurter rate provider — the only outbound dependency
-│   │   ├── core/                     # Reserved cross-cutting utilities
-│   │   ├── db/                       # Session, engine
-│   │   └── simulator/                # CLI HTTP client that feeds the live API with synthetic traffic
-│   ├── ml/                           # Offline only — datasets, features, training, experiments, artifacts
-│   │   ├── synthesis/                # Synthetic generators (customers, merchants, transactions, fraud injectors)
-│   │   ├── analysis/                 # Segment, calibration, global SHAP
-│   │   ├── datasets/                 # External benchmarks: registry, pinned download, Sparkov adapter, quality report
-│   │   ├── features/                 # Batch builder on the production extractor + fingerprinted cache
-│   │   ├── experiments/              # Cross-generator transfer, temporal drift, rules audit
-│   │   ├── tracks/ulb/               # ULB real-data track: loader, quality report, ulb_pca_v1 matrix, trainer, verifier, card
-│   │   ├── data/                     # raw/ source bytes and cache/ matrices — both gitignored
-│   │   ├── artifacts/                # Served artifacts; model.json and PNGs gitignored
-│   │   │   └── runs/<name>/          # Per-run records: run.json, metrics, threshold, analysis, MODEL_CARD.md
-│   │   ├── notebooks/                # Exploratory notebooks
-│   │   ├── train.py                  # XGBoost training pipeline — served artifacts, or a named run
-│   │   ├── analyze.py                # Post-training analysis + model card
-│   │   ├── generate_dataset.py       # CLI to seed DB + write labelled CSV
-│   │   ├── benchmark_card.py         # Builds BENCHMARK_CARD.md from the committed run records
-│   │   ├── run_verification.py       # Rebuilds a run and checks it reproduces its own metrics
-│   │   ├── holdout.py                # Re-derives a run's folds from its run.json
-│   │   ├── promote.py                # Copies a run's artifacts into the served directory
-│   │   ├── loading.py                # Dataset + matrix loading shared by training and analysis
-│   │   ├── splits.py                 # Chronological train/val/test split
-│   │   ├── tuning.py                 # RandomizedSearchCV wrapper
-│   │   ├── evaluation.py             # PR-AUC, Recall@FPR, threshold selection
-│   │   ├── data.py                   # Synthetic dataset loader (DB rows + CSV labels)
-│   │   ├── artifacts.py              # Save/load model artifacts (JSON)
-│   │   ├── BENCHMARK_CARD.md         # Generated — Phase 5D results from the run records
-│   │   ├── ULB_BENCHMARK_CARD.md     # Generated — Phase 5E ULB results from the ULB run records
-│   │   └── MODEL_CARD.md             # Auto-regenerated from analyze.py
-│   ├── tests/
-│   │   ├── unit/                     # 1,285 unit tests
-│   │   └── integration/              # 113 integration tests
-│   ├── alembic/                      # DB migrations
-│   │   └── versions/                 # 5 migrations (initial schema, 2 for Phase 3B, audit-log id type, FX columns + fx_rates)
-│   └── pyproject.toml                # uv-managed dependencies
-├── frontend/                         # React + TypeScript dashboard
-│   ├── src/
-│   │   ├── components/
-│   │   │   ├── layout/               # AppShell, Sidebar, DemoBanner
-│   │   │   ├── ui/                   # Card, Stat (KPI tile primitive), Amount (currency-aware money)
-│   │   │   ├── dashboard/            # KpiTiles, FraudRateChart, VolumeSparkline, CountryBreakdownTable, ModelDataPanel
-│   │   │   ├── transactions/         # Filters, filter chips, table, decision badge
-│   │   │   │   └── detail/           # Header, contributors, features, rules, audit, analyst decision form
-│   │   │   └── alerts/               # Summary strip, filters, queue table, score chip
-│   │   ├── pages/                    # Dashboard, Transactions, TransactionDetail, Alerts
-│   │   ├── hooks/                    # Stats, transactions list + detail, alerts, analyst id + decision mutation
-│   │   ├── lib/                      # axios api client, demo adapter + flag, QueryClient, format helpers, cn
-│   │   ├── types/                    # Hand-mirrored backend Pydantic schemas
-│   │   └── assets/
-│   ├── public/demo-data/             # Generated — the frozen API snapshot the public demo reads
-│   ├── vercel.json                   # Demo build command + SPA rewrite
-│   └── package.json
-├── scripts/
-│   └── export_demo_snapshot.py       # Walks the live API and writes the demo snapshot
-├── docs/
-│   ├── ARCHITECTURE.md               # One-page system mental model (Mermaid)
-│   ├── DATA_LICENSES.md              # Per-source licence, citation and provenance policy
-│   ├── PHASE_5_PLAN.md               # Phase 5 milestone specification
-│   ├── FX_CONTRACT.md                # What a converted amount means, and what it means when there isn't one
-│   ├── adr/                          # 11 architecture decision records (Phase 3 slices, 4A, 5A, 5C, 5D, 5E)
-│   └── screenshots/                  # Capture conventions
-├── .github/workflows/ci.yml          # pytest + ruff + strict mypy + frontend tsc and build
-├── LICENSE
-└── README.md
+├── backend/
+│   ├── app/                     # the only code that serves traffic
+│   │   ├── api/v1/              # routers: transactions, alerts, stats, model
+│   │   ├── services/            # scoring, idempotency, review, alerts, stats, model info
+│   │   ├── enrichment/          # FX conversion + rate provider — the only outbound dependency
+│   │   ├── repositories/        # SQLAlchemy data access
+│   │   ├── models/              # ORM models (Decimal money, CHECK constraints)
+│   │   ├── schemas/             # Pydantic v2 wire contracts
+│   │   ├── fraud/               # FeatureExtractor, explainer, rules, decision matrix
+│   │   └── simulator/           # HTTP client that feeds the live API
+│   ├── ml/                      # offline only
+│   │   ├── synthesis/           # the in-house generator (frozen as the v1 baseline)
+│   │   ├── datasets/            # registry, pinned download, Sparkov adapter, quality report
+│   │   ├── features/            # batch builder on the production extractor + cache
+│   │   ├── experiments/         # transfer, temporal drift, rules audit
+│   │   ├── tracks/ulb/          # the isolated real-data track
+│   │   ├── artifacts/runs/      # per-run records (model.json gitignored)
+│   │   ├── BENCHMARK_CARD.md    # generated from the records
+│   │   └── ULB_BENCHMARK_CARD.md
+│   └── tests/                   # 1,294 unit · 113 integration
+├── frontend/                    # React 19 + TS dashboard; public/demo-data/ is the snapshot
+├── scripts/export_demo_snapshot.py
+└── docs/                        # ARCHITECTURE · FX_CONTRACT · DATA_LICENSES · PHASE_5_PLAN · adr/ (11)
 ```
 
----
+## Running it locally
 
-## 🚀 Quick Start
-
-### Prerequisites
-
-- Python **3.11+**
-- Node **20.19+** or **22.12+** — the range Vite 8 declares; Node 20.0–20.18 will refuse to install the frontend
-- [`uv`](https://docs.astral.sh/uv/) for Python package management
-- Git
-
-### Backend
+**Prerequisites:** Python 3.11+, Node 20.19+ or 22.12+ (the range Vite 8 declares), [`uv`](https://docs.astral.sh/uv/), Git.
 
 ```bash
+# Backend — API at http://localhost:8000 (docs at /docs)
 cd backend
 uv sync
+uv run alembic upgrade head
 uv run uvicorn app.main:app --reload --port 8000
-```
 
-The interactive API docs will be live at **http://localhost:8000/docs**.
-
-### Frontend
-
-```bash
+# Frontend — dashboard at http://localhost:5173
 cd frontend
 npm install
 npm run dev
 ```
 
-The dashboard will be live at **http://localhost:5173**.
-
-### Reproduce Training
-
-`fraud_radar.db` and `ml/data/synthetic_transactions.csv` are gitignored — they must be regenerated locally before training:
+`fraud_radar.db` and the labelled CSV are gitignored; regenerate and train before the scoring endpoints will work:
 
 ```bash
 cd backend
-uv sync
-uv run python -m ml.generate_dataset   # ~2 min: populates DB + writes labelled CSV
-uv run python -m ml.train              # ~5–10 min: tunes, fits, evaluates, saves artifacts
-uv run python -m ml.analyze            # ~1 min: regenerates MODEL_CARD.md + segment / calibration / feature-importance artifacts
-cat ml/artifacts/metrics.json
+uv run python -m ml.generate_dataset   # ~2 min — seeds the DB, writes the labelled CSV
+uv run python -m ml.train              # ~5–10 min — tunes, fits, evaluates, saves artifacts
+uv run python -m ml.analyze            # ~1 min  — regenerates MODEL_CARD.md and analyses
 ```
 
-The training run writes `model.json`, `feature_list.json`, `threshold.json`, `metrics.json`, `training_metadata.json`, and `pr_curve.png` into `backend/ml/artifacts/`. Of those, `model.json` and `pr_curve.png` are gitignored; the rest are committed so each training run is reviewable in version control.
-
-`ml.analyze` then adds `segment_metrics.json`, `calibration_metrics.json`, `feature_importance.json`, plus `calibration_curve.png`, `global_shap_beeswarm.png`, and `global_shap_bar.png`, and rewrites [`backend/ml/MODEL_CARD.md`](backend/ml/MODEL_CARD.md) with the current numbers. JSON outputs are committed; the PNGs are gitignored.
-
-A named run, trained with `uv run python -m ml.train --run-name <name>`, is analysed with `uv run python -m ml.analyze --run-name <name>`. The run is verified first: its data is rebuilt from its `run.json`, and its saved model must reproduce its `metrics.json` exactly on the re-derived test fold, or the analysis stops and says why. The same analysis JSONs and plots, and a `MODEL_CARD.md` for that run, are then written into `backend/ml/artifacts/runs/<name>/` only. Calibration is measured on the test fold with no calibrator fitted, and the served artifacts and `backend/ml/MODEL_CARD.md` are left untouched.
-
-The Phase 5D synthetic baseline is one of those named runs — `uv run python -m ml.train --run-name synthetic_v1`, on the same generated dataset the served model is trained from. It is the source model the cross-generator transfer below carries over to Sparkov unchanged.
-
-A named run's `run.json` also identifies its test fold by the count and SHA-256 of its transaction ids in fold order, and its `training_metadata.json` carries the SHA-256 of the `model.json` saved beside it. Verification refuses a run whose re-derived test fold holds other transactions, or the same ones in another order, and one whose model file is not byte-for-byte the one it saved — the latter before any data is loaded. Records written before these fields existed still verify, and say that the check was not made.
-
-### External Benchmark (Sparkov)
-
-The Sparkov corpus is **simulated** data from an independent generator — not real card transactions. It is never committed; acquire it locally:
+With the backend up, feed it traffic:
 
 ```bash
-cd backend
-uv run python -m ml.datasets.download --dataset sparkov              # Kaggle CLI, or printed manual steps
-uv run python -m ml.datasets.download --dataset sparkov --pin-hashes # first retrieval: pin the SHA-256s
-```
-
-On a first acquisition nothing is pinned yet, so a difference from the publisher's advertised file size is reported and the run continues — pinning records what actually arrived. After that, any change in size or digest refuses to proceed rather than warning. Then load it into the canonical representation and write a quality report:
-
-```bash
-uv run python -m ml.datasets.sparkov --max-cards 200 --report --run-name sparkov_v1_200cards
-uv run python -m ml.datasets.sparkov --full-corpus --report --run-name sparkov_v1_full
-```
-
-The two benchmark runs are `sparkov_v1_200cards`, the development run on 200 cards drawn with subsample seed 42, and `sparkov_v1_full`, the full corpus ([decision 14](docs/adr/PHASE_5D_BENCHMARK_METHODOLOGY.md#14-run-names)). Each run's quality report is written into its own directory; the adapter's default run name, `sparkov_v1`, is not used for either, because two reports written under it would overwrite each other.
-
-`--max-cards` subsamples whole card histories, never individual rows: dropping part of a card's past would corrupt every velocity feature computed from it. An unsubsampled load above 500,000 rows must be asked for with `--full-corpus`, because canonical objects cost a measured ~2 KB per row and the published corpus is 1.85M of them — a multi-gigabyte decision the loader will not make on your behalf. The report lands in `ml/artifacts/runs/<run-name>/quality_report.json` with row accounting, per-category fraud rates, every exclusion and its reason, and the canonical fields that are constant on this corpus. Five of the seventeen v1 features are expected to be constant on Sparkov — both country mismatches, account age, risk tier and `is_high_risk_category` — which is context any metric from it needs; each training run counts its live features from its own matrix rather than assuming that number. Licence and provenance: [`docs/DATA_LICENSES.md`](docs/DATA_LICENSES.md).
-
-Then build the feature matrix. It is extracted by the same `FeatureExtractor` that scores live traffic and cached under a fingerprint of its inputs:
-
-```bash
-uv run python -m ml.features.build --dataset sparkov --max-cards 200
-uv run python -m ml.features.build --dataset sparkov --full-corpus
-```
-
-A feature build is not given a benchmark run's name. The run record is written when the run is trained:
-
-```bash
-uv run python -m ml.train --dataset sparkov --max-cards 200 --run-name sparkov_v1_200cards
-uv run python -m ml.train --dataset sparkov --full-corpus --run-name sparkov_v1_full
-```
-
-Training refuses a run directory that already holds a `run.json`, so a recorded run is never replaced; a directory holding only its quality report is trained into as usual. Each of these commands fits *and* scores its own test fold, which is why the method had to be frozen before the first one ran.
-
-Changing the source bytes, the subsample or the featureset changes the fingerprint, so a stale matrix can never answer for new data. A reused matrix must also hold exactly the transactions of the dataset loaded beside it, in the same order and with the same row and fraud counts, or the cache hit is refused. The parity guarantee and cache format are in [`docs/adr/PHASE_5C_FEATURE_PARITY.md`](docs/adr/PHASE_5C_FEATURE_PARITY.md).
-
-The cross-generator transfer measures one run's model, unchanged, on another run's test fold — the synthetic run's model on the rows a Sparkov run was evaluated on:
-
-```bash
-uv run python -m ml.experiments.transfer --source-run synthetic_v1 --target-run sparkov_v1_full --target-full-corpus
-```
-
-Both runs are rebuilt from their records and fully verified first; the source model file must match its recorded digest and the target's test fold its recorded transaction ids. Nothing is chosen on the target's data — no threshold, calibration, feature selection or tuning — and the source model receives every v1 column, constant ones included. `transfer_metrics.json` is written into the target run's directory, beside its untouched `metrics.json`: PR-AUC and ROC-AUC with the target test prevalence, recall at 1% and 5% FPR labelled as points on the target test ROC curve, and the confusion matrix and realised target-test FPR at the source run's own validation-selected threshold, with source and target counts named apart. The method is fixed in [`docs/adr/PHASE_5D_BENCHMARK_METHODOLOGY.md`](docs/adr/PHASE_5D_BENCHMARK_METHODOLOGY.md), decision 8.
-
-The transfer was measured once, against the full-corpus run: it is the result the comparison carries, so the development run's test fold was left alone. The drift experiment and the rules audit were each run once on the full corpus as well; promotion is tooling that has deliberately not been run, because replacing the served model is a decision to take with the numbers in hand:
-
-```bash
-uv run python -m ml.experiments.temporal_drift --dataset sparkov --full-corpus --run-name sparkov_v1_drift
-uv run python -m ml.experiments.rules_audit --run-name sparkov_v1_full --rows all --full-corpus
-uv run python -m ml.promote <run>   # built and tested; not run for Sparkov
-```
-
-- **Temporal drift** fits a model through the same procedure on its own calendar periods — search on 2019-01 to 2019-10, early stopping and a single threshold selection on 2019-11 to 2019-12 — and scores each month of 2020 once at that threshold. `drift_metrics.json` reports volume, fraud rate, PR-AUC, recall, precision and realised FPR per month, `null` wherever a month leaves one undefined. It is written to a run directory of its own; a trained run's directory is refused.
-- **The rules audit** verifies a run, then evaluates the production rules on all of its rows or one fold, each row with the 180-day context the scoring service builds. It reports per-rule firings, precision and fraud recall, and the rules-only outcome against the labels. A rule the data cannot support, such as the dormant-account rule without account-open timestamps, is reported as not evaluable rather than run. Every audit states its row population.
-- **Promotion** copies exactly the five model artifacts of a run into the served directory. It refuses a featureset absent from the registry, a feature list out of order, and a model file that differs from its recorded digest.
-
-Every result these produced is laid out together in [`backend/ml/BENCHMARK_CARD.md`](backend/ml/BENCHMARK_CARD.md), regenerated from the run records by `uv run python -m ml.benchmark_card`.
-
-### Real-World Benchmark (ULB)
-
-The ULB file is **real**, anonymised card data. It is never committed, and neither is any row or matrix built from it. It is acquired with the same command as Sparkov and refused unless it matches the digest pinned in the manifest:
-
-```bash
-cd backend
-uv run python -m ml.datasets.download --dataset ulb
-```
-
-ULB is not adapted into the canonical schema and has no feature cache: its track reads the pinned file itself, and each run builds its `ulb_pca_v1` matrix in memory. The three pre-registered runs were trained, then verified, with:
-
-```bash
-uv run python -m ml.tracks.ulb.train --seed 42
-uv run python -m ml.tracks.ulb.train --seed 43
-uv run python -m ml.tracks.ulb.train --seed 44
-uv run python -m ml.tracks.ulb.verify ulb_pca_v1_seed42 ulb_pca_v1_seed43 ulb_pca_v1_seed44
-```
-
-Training accepts only those three random states and refuses a run that is already recorded. It builds the aggregate-only quality report first, and stops before any model is trained if a row is excluded or the validation or test fold holds no fraud. It then searches on the training fold with the frozen budget, chooses the threshold on the validation fold at FPR ≤ 1%, and scores the test fold once; a threshold that falls back is recorded and stops the work. The verifier is read-only: it rebuilds the matrix from the pinned file and requires the saved model to reproduce `metrics.json` and `calibration_metrics.json` exactly. Each run's records are committed under `backend/ml/artifacts/runs/ulb_pca_v1_seed{42,43,44}/`, with `model.json` and plots gitignored. They are laid out in [`backend/ml/ULB_BENCHMARK_CARD.md`](backend/ml/ULB_BENCHMARK_CARD.md), regenerated from those records alone — never from a model or the source file — by `uv run python -m ml.tracks.ulb.card`. The card carries the licence notice and the method offer the ULB terms require.
-
-### Tests
-
-```bash
-cd backend
-uv run pytest -v
-```
-
-Runs 1,398 test cases covering the dataset contracts and run records (canonical invariants, provenance round-trip, adapter registry, offline layout, test-fold transaction identity), the data loader training and analysis share, run verification (including model file digests) and named-run analysis with its model card, the cross-generator transfer measurement (run pairing refusals, exactly which rows each model scores, source-threshold provenance and result labelling), the temporal drift experiment (frozen half-open periods, which rows reach tuning, early stopping and the threshold, undefined monthly metrics), the rules audit (context and rule-outcome parity with the scoring service, evaluability decided from the data, row populations), the benchmark card generator (records that do not describe the benchmark refused, every value traced to the record it was read from, the committed card kept in step with its runs), the promotion guard, the Sparkov adapter on CSV fixtures (schema drift, id derivation, label separation, explicit exclusions, entity subsampling, manifest verification) and its quality report, the ULB track on fixture files (the published layout read exactly, exclusions counted by reason, load order and elapsed-time stamps, the aggregate-only quality report and its stop conditions, the `ulb_pca_v1` matrix's column order, determinism and split isolation, the trainer's frozen budget and stops, the verifier's refusals, a ULB run refused by promotion, analysis and the serving explainer, and the ULB card generator — records that do not describe the three runs refused, the licence notice and method offer pinned, the committed card kept in step with its runs), the batch feature builder's element-by-element parity with the live scoring path (including the future-information and window-eviction cases) and the feature cache's round-trip and refusal rules, the featureset registry pin, the chronological splitter, evaluation metrics, artifact round-trip, SHAP additivity, force / waterfall plot rendering, segment routing, calibration math (including positive-class variants), the six-rule engine (hour and high-risk-country boundaries parametrised), Stripe-pattern idempotency (hash determinism, replay path, 409 conflict, 422 paths), the scoring orchestrator (decision matrix, audit-log writes, hard-block short-circuit), the feature extractor's pre-loaded-history parity contract, the simulator payload builder, the dashboard stats service (24h window edges, hourly bucket fill, decimal quantisation, top-10 cap), FX enrichment (the provider's request shape and every way a response can be refused, the rate cache's `rate_date <= on` guarantee and age window, same-currency determinism, exact `Decimal` conversion at the full width of `NUMERIC(19, 4)`, weekend resolution, unsupported currencies, timeouts and outages, the stale fallback and its refusal to reach for a newer rate, cache hits asserted by counting provider calls, and — end to end — a non-USD transaction still scored, decided, persisted and audited while the provider is down), the simulator's currency mix (normalised weights, refusal of a currency outside the emittable set, and proof that a mixed payload differs from its unmixed counterpart in exactly one field), the model-identity endpoint (values read from the artifacts, degradation to nulls when they are absent, and the assertions that exactly one track is served and that ULB can never read as production), and the `/explain`, `/transactions` (ingestion, list, detail and analyst decision), `/alerts`, `/model`, and `/stats/*` endpoints via `TestClient`.
-
-[`.github/workflows/ci.yml`](.github/workflows/ci.yml) runs the same suite on every push to `main` and every pull request, alongside `ruff`, strict `mypy`, and the frontend's `tsc` + production build. The integration tests that load a real model would otherwise skip in CI — `backend/ml/artifacts/model.json` is gitignored — so the workflow trains a deliberately tiny model first (3,000 rows, two search iterations, about a minute) to keep them running for real rather than green-by-skip. Those CI numbers are throwaway; the published metrics come from the full training run above.
-
-### Simulator
-
-With the backend running, kick off continuous synthetic traffic against the live API:
-
-```bash
-cd backend
 uv run python -m app.simulator.main --rate 1 --fraud-rate 0.10
-
-# multi-currency traffic, to exercise the FX path:
-uv run python -m app.simulator.main --rate 1 --fraud-rate 0.10 --currency-mix "USD:0.72,EUR:0.11,GBP:0.07,CAD:0.04,CHF:0.03,AUD:0.03"
+uv run python -m app.simulator.main --rate 1 --fraud-rate 0.10 \
+  --currency-mix "USD:0.72,EUR:0.11,GBP:0.07,CAD:0.04,CHF:0.03,AUD:0.03"
 ```
 
-Defaults to 1 transaction per second with 10% of transactions shaped to trip a fraud pattern (geo-velocity, high-amount, off-hours, high-risk-country, dormant-account, or stealth foreign). The simulator is a normal HTTP client — every transaction goes through the rules engine, ML scorer, SHAP attribution, audit log, and idempotency cache exactly as any other client would. Ctrl+C stops it cleanly.
+Tests and checks — the same gate CI runs:
 
-`--currency-mix` changes only the currency; each pattern's amount, country and card-present flag are untouched, so non-USD traffic carries exactly the fraud behaviour USD traffic does. The emittable set is restricted to currencies within roughly a factor of two of USD — the rules engine's thresholds are denominated in the raw amount, so a currency two orders of magnitude away would silently change which rules fire. That is a simulator-realism constraint, not an exchange rate; the real conversion happens in the backend, from real reference rates.
+```bash
+cd backend && uv run pytest              # 1,407 tests
+cd backend && uv run ruff check app tests && uv run mypy app
+cd frontend && npx tsc -b && npm run build
+```
 
-### Deploying the Demo
+Reproducing the benchmarks (corpora are acquired locally and verified against pinned SHA-256 digests; neither is committed) is documented in the [benchmark card](backend/ml/BENCHMARK_CARD.md) and the [ULB card](backend/ml/ULB_BENCHMARK_CARD.md), with the full command set in [`docs/PHASE_5_PLAN.md`](docs/PHASE_5_PLAN.md).
 
-The public demo is the static-snapshot build locked in [`docs/adr/PHASE_4A_DEMO_SCOPE.md`](docs/adr/PHASE_4A_DEMO_SCOPE.md): no hosted backend, no cold starts, no running costs. [`frontend/vercel.json`](frontend/vercel.json) carries everything the deploy needs, so no dashboard environment variables are required:
-
-1. Import the repository on Vercel and set **Root Directory** to `frontend`. Everything else is auto-detected.
-2. The pinned build command turns demo mode on (`VITE_DEMO_MODE=true`) and stamps the banner with the snapshot date read from [`frontend/public/demo-data/manifest.json`](frontend/public/demo-data/manifest.json), so the date in the UI can never drift from the data that ships with it.
-3. The SPA rewrite sends every path to `index.html`, so deep links such as `/transactions/{id}` survive a refresh.
-
-To refresh the snapshot, run the backend locally and re-export — the next deploy picks up the new date automatically:
+**Refreshing the public demo** — run the backend locally, then:
 
 ```bash
 uv run --project backend python scripts/export_demo_snapshot.py   # writes frontend/public/demo-data/
 ```
 
-Verify the exact deploy build locally before pushing:
+## Roadmap
 
-```bash
-cd frontend
-npm ci
-VITE_DEMO_MODE=true VITE_DEMO_SNAPSHOT_DATE=$(node -p "require('./public/demo-data/manifest.json').exported_at.slice(0, 10)") npm run build
-npm run preview
-```
+**Phases 1–5 are complete.** The stack runs end to end, the demo is deployed, the benchmarks have been executed under frozen methodology and written up in generated cards, FX enrichment is in the live path, and the dashboard states its own model and data provenance.
 
----
+<details>
+<summary>Completed phases</summary>
 
-## 🗺️ Roadmap
+- **Phase 1–2** — Foundations: ORM with Decimal money, Alembic migrations, Pydantic v2 schemas, repository layer, the 50,010-row synthetic generator with six fraud patterns, the 17-feature extractor, XGBoost training, SHAP integration, model card.
+- **Phase 3** — Backend and dashboard: rules engine, idempotent ingestion, end-to-end scoring with audit log, simulator, stats endpoints, transactions list with keyset pagination, transaction detail with the analyst review loop, alerts queue.
+- **Phase 4** — Public demo: static-snapshot architecture, export tool, demo mode, architecture docs, walkthrough, Vercel deploy.
+- **Phase 5** — Evaluation and productization: canonical dataset contract and adapter protocol (5A), manifest-verified Sparkov acquisition (5B), batch features on the production path with golden parity tests (5C), benchmark execution with transfer, drift and rules audit (5D), the isolated ULB real-data track (5E), multi-currency FX with tested failure modes (5F), and currency-aware UI, the model/dataset badge and demo refresh (5G).
 
-### Phase 1 — Foundations
+</details>
 
-- [x] **1A** — Repository scaffolding with Conventional Commits
-- [x] **1B** — FastAPI backend with health endpoint
-- [x] **1C** — React + TypeScript + Tailwind frontend
-- [x] **1D** — Portfolio-grade README with architecture and roadmap
+**Phase 6 — production hardening.** *Directions, not current capabilities — none of the following exists today:*
 
-### Phase 2 — Data Layer + ML Foundation
+- **Observability** — OpenTelemetry traces across the scoring path, Prometheus metrics, latency and decision-mix dashboards.
+- **Model governance** — a model registry, promotion gates with sign-off, and a rollback path; the promotion tooling exists but is run by hand.
+- **Data-quality and drift monitoring** — production feature-distribution monitoring against the training distribution, with alerting rather than an offline experiment.
+- **Auditability** — tamper-evident audit storage and retention policy.
+- **Security** — authentication and role-based access control (analyst / reviewer / admin); today `X-Analyst-Id` is trusted as declared, which is fine for a demo and not for anything else.
 
-- [x] **2A** — SQLAlchemy 2.0 ORM models with Decimal money typing
-- [x] **2B** — Alembic migrations with CHECK constraints and indexes
-- [x] **2C** — Pydantic v2 schemas with ISO 4217/3166 validation
-- [x] **2D** — Repository layer with velocity-query support
-- [x] **2E** — Synthetic dataset generator (50,010 transactions, 6 fraud patterns)
-- [x] **2F** — Feature extractor (17 features: amount, time, geo, velocity, history, merchant)
-- [x] **2G** — XGBoost classifier training (PR-AUC 0.9327, Recall @ 1% FPR 0.9785; chronological split, randomised CV)
-- [x] **2H** — SHAP explainability integration (inference-time `TreeExplainer`; JSON, force, waterfall response formats)
-- [x] **2I** — Model card with metrics (segment analysis, calibration, global SHAP, limitations)
-- [x] **2J** — README polish marking Phase 2 complete
-
-### Phase 3 — API + Frontend Dashboard
-
-- [x] **3A** — Rules engine (six pure rules calibrated to Phase 2E injection patterns: velocity, geo-velocity, amount ceiling, high-risk country, dormant account, off-hours)
-- [x] **3B** — Transaction ingestion endpoint with idempotency (Stripe pattern, 24h TTL, full 201 / 200-replay / 409 / 422 coverage)
-- [x] **3C** — Fraud scoring pipeline integration (TransactionContext loader, decision matrix, audit log, service-layer p50=3.7ms / p95=5.8ms; full latency methodology in [`backend/ml/artifacts/latency_metrics.json`](backend/ml/artifacts/latency_metrics.json))
-- [x] **3D** — Background transaction simulator (CLI HTTP client; 3 fraud patterns at 10% rate; graceful shutdown; populates the dashboard with continuous live traffic)
-- [x] **3E** — Dashboard overview with KPIs (backend: `/stats/overview`, `/stats/timeseries`, `/stats/breakdown` with CORS, 19 new tests; frontend: React 19 + TanStack Query app shell with five live KPI tiles, 24h fraud-rate line chart, volume sparkline, and top-10 country breakdown table; per-tile loading skeletons + error fallbacks so one broken aggregate never blanks the screen; design in [`docs/adr/PHASE_3E_DESIGN.md`](docs/adr/PHASE_3E_DESIGN.md))
-- [x] **3F** — Transactions list with filters (backend keyset-paginated endpoint + live frontend table; design in [`docs/adr/PHASE_3F_DESIGN.md`](docs/adr/PHASE_3F_DESIGN.md))
-  - [x] **3F-1** — Backend `GET /api/v1/transactions` with opaque-cursor keyset pagination, eight query filters (decision, country, amount range, time window, customer, merchant), Pydantic cross-field validation, and 23 new tests covering cursor round-trip, page walks, tie-break ordering, and 422 paths
-  - [x] **3F-2** — Frontend `/transactions` route with URL-synced filter chrome (`useSearchParams`-backed inputs, removable filter chips, "reset by key" pattern for uncontrolled inputs) and `useInfiniteQuery` data hook
-  - [x] **3F-3** — Live transactions table with color-coded decision pills, per-row deep links, skeleton + empty + error states, and a "Load more" footer that drives the cursor walk and surfaces an inline retry on partial failure
-  - [x] **3F-4** — README polish marking Phase 3F complete
-- [x] **3G** — Transaction detail with fraud-score breakdown and analyst review (design in [`docs/adr/PHASE_3G_DESIGN.md`](docs/adr/PHASE_3G_DESIGN.md))
-  - [x] **3G-1** — ADR locking the envelope shape, `effective_decision` semantics, analyst-label storage (reuses the existing `analyst_label` column — no migration), `X-Analyst-Id` trust model, audit-row contract, and the test plan
-  - [x] **3G-2** — Backend: composite `TransactionDetail` envelope on `GET /api/v1/transactions/{id}` (threshold + rules + top SHAP contributors with pre-classified direction + audit trail + computed `effective_decision`); analyst-override `POST /api/v1/transactions/{id}/decision` that preserves `fraud_decision` verbatim, is idempotent on identical resubmit, writes `ANALYST_DECISION_REVISED` on revisions, and maps cleanly to 404/409/422; 40 new tests covering envelope shape, override paths, idempotency, revision audit rows, and validation error coverage
-  - [x] **3G-3** — Frontend `/transactions/:id` read-only detail page: dual-badge header (model verdict + after-review effective decision), hand-rolled CSS SHAP bars scaled to the max absolute contribution, rules-triggered chips with a positive "no rules fired" empty state, identity/channel grid, and a vertical audit timeline with friendly action labels and collapsible JSON payloads
-  - [x] **3G-4** — Analyst decision form: REVIEW-only verdict picker (CONFIRMED_FRAUD / CONFIRMED_LEGIT) with optional notes (2000-char limit), localStorage-backed analyst-id capture modal that auto-fires the pending submit once the id is set, revision mode pre-fills the previous label and re-disables submit until something changes, 404/409/422 errors rendered inline with friendly messages, and cache writes that flip the badge in one round-trip without a refetch
-- [x] **3H** — Alerts / review queue page (design in [`docs/adr/PHASE_3H_DESIGN.md`](docs/adr/PHASE_3H_DESIGN.md))
-  - [x] **3H-1** — ADR locking the `GET /api/v1/alerts` envelope shape, queue predicate (`fraud_decision = 'REVIEW' AND analyst_label IS NULL`), worklist sort (`fraud_score DESC, created_at ASC, id ASC`), `low / mid / high` score-bucket boundaries calibrated against the empirical REVIEW score distribution observed on the live DB, dedicated cursor codec (not a refactor of 3F's `(ts, id)` encoder), and the test plan
-  - [x] **3H-2** — Backend: `app/schemas/alerts.py`, repository additions on `app/repositories/transaction.py` (keyset pagination + single-aggregate summary query with `CASE WHEN` bucket counts), `app/services/alerts.py` (injectable clock, defensive rules-JSON parsing, SQLite tz-naive coercion helper), `app/api/v1/alerts.py` router, and 25 new tests covering envelope shape, queue predicate, sort order, pagination round-trip, malformed cursor 422, filter constraints, age-window cross-validation, and summary math
-  - [x] **3H-3** — Frontend `/alerts` route: `useAlerts` infinite-query hook (10s stale, 15s polling), URL-synced filter bar (min score, country, age band folded over `min_age_seconds` / `max_age_seconds`), summary strip that reads off page 0 so it stays stable through pagination, dense queue table with score chips aligned to the same bucket boundaries the strip uses, sidebar activation, and a one-line cache-invalidation addition to `useSubmitAnalystDecision` so 3G verdicts pop rows off the queue without manual refresh
-  - [x] **3H-4** — Polish: celebratory "Queue clear" empty state branched off `summary.pending_count === 0` (vs the filtered-empty case), score-chip ramp tuning for legibility, sidebar footer bump to `Phase 3H · live`, README sync marking Phase 3 closed and Phase 4 surfaced as next
-
-### Phase 4 — Public Demo & Polish
-
-- [x] **4A** — Demo scope ADR ([`docs/adr/PHASE_4A_DEMO_SCOPE.md`](docs/adr/PHASE_4A_DEMO_SCOPE.md)) locking the snapshot contract, in-scope routes, disabled-write posture, and honesty banner before any client code is written
-- [x] **4B** — Snapshot export script ([`scripts/export_demo_snapshot.py`](scripts/export_demo_snapshot.py)): paginates the live API and writes `stats-overview.json`, `stats-timeseries.json`, `stats-breakdown.json`, `transactions.json` (300 rows), `transactions/{id}.json` (curated coverage: BLOCK / REVIEW / ALLOW / overridden + every alert ID), `alerts.json` (100 rows + summary), and `manifest.json` to `frontend/public/demo-data/`
-- [x] **4C** — Frontend demo mode: axios adapter ([`frontend/src/lib/demoApi.ts`](frontend/src/lib/demoApi.ts)) resolves every GET from `public/demo-data/*.json` with client-side filtering for transactions and alerts; central api client ([`frontend/src/lib/api.ts`](frontend/src/lib/api.ts)) swaps the adapter in when `VITE_DEMO_MODE=true`; dismissible amber banner stamps the snapshot date and links to GitHub + the Loom; sidebar footer and topbar pulse flip to demo styling; analyst decision form renders visibly disabled with a lock note instead of faking writes; polling is collapsed via `demoRefetchInterval()` across all five query hooks; `vercel.json` rewrite keeps `/transactions/:id` and `/alerts` deep links working on refresh; tsc + production build clean
-- [x] **4D** — Architecture diagram ([`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md)) with four Mermaid diagrams (live vs demo topology, end-to-end scoring sequence, analyst-review loop with cache wiring, layered code structure); `docs/screenshots/` ready with capture conventions (full screenshots dropped in separately)
-- [x] **4E** — [Loom walkthrough](https://www.loom.com/share/a4fb7eb81ba7496e80e300a36c41617b) recorded against the live local stack: real-time scoring through the FastAPI backend, the XGBoost model and SHAP contributors behind a decision, rules such as impossible geo-velocity firing, dashboard metrics and the live transaction feed, audit logs, and an analyst working a flagged transaction through to a fraud/legitimate verdict with notes
-- [x] **4F** — Vercel deploy live at [fraud-radar-lilac.vercel.app](https://fraud-radar-lilac.vercel.app) and linked at the top of this README; build configuration in [`frontend/vercel.json`](frontend/vercel.json), CI in [`.github/workflows/ci.yml`](.github/workflows/ci.yml)
-
-### Phase 5 — External Benchmarks
-
-Today's headline metrics come from data produced by this repository's own generator, which measures whether that generator is learnable rather than whether fraud is detectable. Phase 5 breaks that loop with externally generated and real-world benchmarks, and reports the drop honestly rather than quietly keeping the friendlier number.
-
-- [x] **5A** — Data and benchmark architecture ([`docs/adr/PHASE_5A_DESIGN.md`](docs/adr/PHASE_5A_DESIGN.md)): canonical dataset contract over the production ORM types with labels held outside the objects, load-time invariant validation, name-resolved adapter protocol, provenance record carrying licence and per-file hashes, four-stage offline layout (raw / cache / run outputs / promoted artifacts), per-run reproducibility record, and a versioned featureset registry with v1 frozen and pinned by test. Licensing policy in [`docs/DATA_LICENSES.md`](docs/DATA_LICENSES.md). No scoring, threshold, feature, schema, simulator or demo behaviour changed
-- [x] **5B** — Acquisition and adapter for the [Sparkov benchmark](https://www.kaggle.com/datasets/kartik2112/fraud-detection) (CC0, **simulated** data generated with Brandon Harris's Sparkov tool — not real card transactions): manifest-verified download with SHA-256 pinning, `uuid5` id derivation so no card-like value is stored, 14→12 category mapping, entity-level subsampling that keeps whole card histories, labels held outside the transaction objects, and a quality report that counts every excluded row and names the canonical fields that are constant on this corpus. The corpus itself is never committed; it was retrieved and verified on 2026-09-17, and the SHA-256 digests of both files are pinned in the manifest — see [`docs/DATA_LICENSES.md`](docs/DATA_LICENSES.md)
-- [x] **5C** — Batch feature builder on the production extractor ([`docs/adr/PHASE_5C_FEATURE_PARITY.md`](docs/adr/PHASE_5C_FEATURE_PARITY.md)): benchmark features are computed by the same `FeatureExtractor.extract()` the API calls, given the same 180-day history window the scoring service assembles, with a sentinel Session that raises if anything tries to reach a database. The golden parity test compares batch against the serving path element by element with exact float equality — on a fixture where no feature is constant, because parity on a column that never varies proves nothing — and pins the one known divergence (the synthetic training path's unbounded history changes `days_since_last_tx` only, and only past the window). Matrices are cached as fingerprinted `.npz` with their provenance, refusing any mismatch on load
-- [x] **5D** — Benchmark execution on the external data, with the method frozen in [`docs/adr/PHASE_5D_BENCHMARK_METHODOLOGY.md`](docs/adr/PHASE_5D_BENCHMARK_METHODOLOGY.md) before any test fold was scored: a synthetic baseline, a 200-card development run and a full-corpus run, each verified to reproduce its own metrics from its saved model; a cross-generator transfer measured on the full run's test fold with nothing selected on Sparkov data; a temporal drift experiment whose model is tuned only on 2019 and scores each month of 2020 at one fixed threshold; and a rules audit over every row of the corpus, with the dormant-account rule reported as not evaluable rather than run. Each run's records are committed and laid out side by side in [`backend/ml/BENCHMARK_CARD.md`](backend/ml/BENCHMARK_CARD.md), regenerated from those records rather than written by hand. Promotion is built and tested but deliberately not run: replacing the served model is a decision to take with the numbers in hand
-- [x] **5E** — Real-world benchmark track (ULB), never promoted to the serving API, with the method frozen in [`docs/adr/PHASE_5E_ULB_BENCHMARK_METHODOLOGY.md`](docs/adr/PHASE_5E_ULB_BENCHMARK_METHODOLOGY.md) before the data was acquired; steps M5A–M5G of its implementation sequence
-  - [x] **M5A** — Methodology ADR: ULB kept out of the canonical schema, its own `ulb_pca_v1` featureset outside the production registry, the Sparkov procedure applied unchanged under three pre-registered random states, and results never merged with v1 results
-  - [x] **M5B** — Manifest entry, acquisition verified and pinned by SHA-256, and licence terms settled from the licence texts: ODbL for the database, DbCL for its contents ([`docs/DATA_LICENSES.md`](docs/DATA_LICENSES.md))
-  - [x] **M5C** — Loader that reads the published layout exactly and counts exclusions by reason, and an aggregate-only quality report carrying the licence notice
-  - [x] **M5D** — The `ulb_pca_v1` matrix: the published components and amount, unchanged, in load order
-  - [x] **M5E** — Trainer and read-only verifier; `ulb_pca_v1_seed42` (primary), `_seed43` and `_seed44` trained under the frozen chronological 70/15/15 protocol, each verified before its records were committed
-  - [x] **M5F** — [`backend/ml/ULB_BENCHMARK_CARD.md`](backend/ml/ULB_BENCHMARK_CARD.md), generated from the committed run records alone, with the licence notice and method offer pinned by tests
-  - [x] **M5G** — What execution observed and what the results do and do not say, recorded in the ADR; README, architecture and licence-record updates
-- [x] **5F** — Multi-currency FX enrichment with tested failure modes: a transaction keeps the amount and currency it was submitted with, and a derived reporting figure is attached beside it — never over it. The contract is in [`docs/FX_CONTRACT.md`](docs/FX_CONTRACT.md); rates come from [Frankfurter](https://frankfurter.dev) over ECB reference data, and none of it is ever committed. A rate is resolved in one direction (1 unit of the transaction's currency = `fx_rate` units of the reporting currency, so conversion is always a multiplication), priced on the transaction's own UTC date with weekends normalised back to the preceding Friday, and quantised through a widened `Decimal` context so the single rounding is the final one. Every cache read is constrained to `rate_date <= on`, which makes pricing a historical transaction at today's rate structurally unreachable rather than merely discouraged. A provider outage costs a row its converted amount and nothing else: it is still scored, decided, persisted and audited, with `fx_source` recording which of `identity / live / cache / stale / unsupported / unavailable` answered — in the audit payload as well as on the row. Reporting aggregates move to `COALESCE(amount_base, amount)` because summing raw amounts across currencies adds euros to yen; amount *filters* deliberately do not, because "over 250" is a question about what the cardholder was charged. The model, the 17-feature registry and every benchmark track are untouched — FX is a reporting concern, not a feature. Backend only by design; the currency-aware UI landed in 5G
-- [x] **5G** — Model/dataset badge, currency-aware amounts, docs and demo snapshot refresh: the productization pass that makes 5F visible without overclaiming it. One [`Amount`](frontend/src/components/ui/Amount.tsx) component owns every per-transaction money display, so a EUR payment can no longer render as `$125.00` — it shows the charged amount first with the derived reporting figure subordinate and marked `≈`, says which day's rate priced it, and stays quiet when there is no rate rather than inventing one. `format.ts` now separates the two kinds of money it was conflating: a transaction's own amount, and an aggregate the backend already summed in the reporting currency. [`GET /api/v1/model`](backend/app/api/v1/model.py) reports what is actually being served, reading the artifacts rather than asserting anything about them, and lists all three data layers with a `served` flag so the dashboard can state the production/benchmark boundary — the synthetic track is in production; Sparkov and ULB are marked benchmark-only, and the metrics ship with the caveat that they measure how learnable the generator is, not how detectable real fraud is. The simulator gained `--currency-mix`, and the demo snapshot was regenerated against the live stack across 11 currencies, so every FX state in it — `identity`, `live`, `cache`, `unavailable` — was produced by the system rather than authored. No ML, benchmark or threshold change.
+Beyond hardening, the open research question is whether correcting the generator's structural associations — starting with the country coupling — narrows the transfer gap. That means regenerating the dataset and retraining, which would move every published number, so it belongs in a new phase with its own frozen method.
 
 ---
 
-## 📑 Documentation
+## Documentation
 
-- [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) — one-page system mental model: live vs demo runtime topology, end-to-end scoring sequence, analyst-review loop with cache wiring, layered code structure (all Mermaid, renders natively on GitHub).
-- [`docs/PHASE_5_PLAN.md`](docs/PHASE_5_PLAN.md) — the Phase 5 implementation specification the benchmark work is built against: goals, explicit non-goals, the target architecture, leakage prevention, the ULB and FX tracks, and the milestone sequence.
-- [`docs/adr/PHASE_3_DESIGN.md`](docs/adr/PHASE_3_DESIGN.md) — backend design for Phases 3A–3D (rules engine, ingestion endpoint, idempotency, scoring pipeline, simulator).
-- [`docs/adr/PHASE_3C_INTEGRATION.md`](docs/adr/PHASE_3C_INTEGRATION.md) — implementation decisions for the integration phase.
-- [`docs/adr/PHASE_3E_DESIGN.md`](docs/adr/PHASE_3E_DESIGN.md) — design for the dashboard slice (aggregate endpoints, CORS posture, frontend foundation).
-- [`docs/adr/PHASE_3F_DESIGN.md`](docs/adr/PHASE_3F_DESIGN.md) — design for the transactions list slice (keyset pagination, filter contract, frontend URL-state plan).
-- [`docs/adr/PHASE_3G_DESIGN.md`](docs/adr/PHASE_3G_DESIGN.md) — design for the transaction detail slice (composite envelope, analyst-override endpoint, `effective_decision` semantics, audit-row contract, SHAP rendering strategy).
-- [`docs/adr/PHASE_3H_DESIGN.md`](docs/adr/PHASE_3H_DESIGN.md) — design for the alerts queue slice (dedicated worklist endpoint, queue predicate, score-bucket boundaries calibrated to the empirical REVIEW distribution, summary-block semantics, dedicated keyset cursor codec).
-- [`docs/adr/PHASE_4A_DEMO_SCOPE.md`](docs/adr/PHASE_4A_DEMO_SCOPE.md) — design for the public demo (zero-cost Vercel-only architecture, snapshot contract, in-scope vs Loom-only behaviour, honesty posture, routing/hosting notes).
-- [`docs/adr/PHASE_5A_DESIGN.md`](docs/adr/PHASE_5A_DESIGN.md) — data and benchmark architecture (canonical schema invariant, adapter protocol, labels held outside the objects, provenance record, four-stage offline layout, run reproducibility record, featureset versioning).
-- [`docs/adr/PHASE_5C_FEATURE_PARITY.md`](docs/adr/PHASE_5C_FEATURE_PARITY.md) — how benchmark features stay identical to production features (one extractor, sentinel session, pinned history window), the golden parity test design, the one known divergence, and the feature-cache format and refusal rules.
-- [`docs/adr/PHASE_5D_BENCHMARK_METHODOLOGY.md`](docs/adr/PHASE_5D_BENCHMARK_METHODOLOGY.md) — the benchmark method fixed before any test fold is scored: three results that are never merged, a drift model tuned only on its own period, the dormant-account rule reported as not evaluable on Sparkov, the hard freeze before the dev test fold, and what only the real corpus can answer.
-- [`docs/adr/PHASE_5E_ULB_BENCHMARK_METHODOLOGY.md`](docs/adr/PHASE_5E_ULB_BENCHMARK_METHODOLOGY.md) — the real-world ULB benchmark method, fixed before the data is acquired: why ULB is not adapted into the canonical schema and featureset v1 is not evaluated on it, its own `ulb_pca_v1` featureset kept outside the production registry so no ULB run can be promoted, the Sparkov procedure applied unchanged with three pre-registered seeds, results never merged with v1 results, and what only the retrieved file can answer; amended with what acquisition and execution observed, the settled licence terms, and what the results do and do not say.
-- [`docs/FX_CONTRACT.md`](docs/FX_CONTRACT.md) — what a converted amount on a transaction means, and what it means when there isn't one: the reporting currency, the direction of a rate, transaction-date semantics and the weekend rule, the Decimal precision and rounding policy, the four-step resolution order, why no cache read can return a rate newer than the transaction, the six `fx_source` values, and what was deliberately not built.
-- [`docs/DATA_LICENSES.md`](docs/DATA_LICENSES.md) — per-source licence, citation and provenance policy: what is derived and committed, what never enters the repository.
-- [`backend/ml/BENCHMARK_CARD.md`](backend/ml/BENCHMARK_CARD.md) — the Phase 5D results side by side, generated from the committed run records: the three results kept apart with each PR-AUC against its test prevalence, every result at its operating threshold, live features, calibration, SHAP rankings, the monthly drift series, the rules audit, data quality and provenance.
-- [`backend/ml/ULB_BENCHMARK_CARD.md`](backend/ml/ULB_BENCHMARK_CARD.md) — the Phase 5E real-world ULB results, generated from the three ULB run records and kept apart from every synthetic and Sparkov result: featureset `ulb_pca_v1`, the three pre-registered random states side by side with 42 as the primary, never averaged, each with its test prevalence and fraud counts; the chronological protocol and its fold boundaries, the operating thresholds, calibration, data quality, provenance and accepted limitations, with the ODbL licence notice and method offer.
-- [`backend/ml/MODEL_CARD.md`](backend/ml/MODEL_CARD.md) — auto-regenerated model card with segment, calibration, and global SHAP analyses.
-
----
-
-## 🎨 Engineering Decisions
-
-> **Why a monolith?**
-> Splitting Fraud Radar into microservices would consume the entire four-day budget on Kubernetes, message buses, and service contracts rather than on features a reviewer can actually click. A layered monolith demonstrates the same separation-of-concerns discipline without the operational overhead, and the seams are placed so that pulling a service out later would be a refactor, not a rewrite.
-
-> **Why SQLite?**
-> It is a deliberate dev-environment choice. Schemas are written using SQLAlchemy 2.0 ORM with column types that map cleanly to PostgreSQL. Swapping the engine is a single `DATABASE_URL` change plus an Alembic run — there is no SQLite-specific SQL anywhere in the codebase.
-
-> **Why a hybrid rules + ML approach?**
-> Real fraud systems never rely solely on a model. Rules catch the obvious, hard, and legally-required cases instantly with explainable logic that a compliance officer can audit. ML catches the subtle, drifting, and previously-unseen patterns the rules would miss. Together they form the **defense-in-depth** posture that every production fraud platform I have studied actually uses.
-
-> **Why XGBoost?**
-> It is the industry standard for tabular fraud detection. It trains fast on modest hardware, handles the extreme class imbalance that fraud data always carries, and pairs naturally with SHAP for per-decision explanations. A deep network would be a worse fit and harder to explain.
-
-> **Why does the trainer call the production feature extractor?**
-> Labels live in the synthetic CSV companion to the database; features come straight from [`backend/app/fraud/`](backend/app/fraud/) — the same `FeatureExtractor` the scoring endpoint will call at inference time. Running `python -m ml.train` is several minutes slower than a vectorised pandas implementation would be, but it guarantees zero train/inference skew: the bytes that enter XGBoost during training are byte-identical to the bytes that will enter it when a live transaction is scored. Train/inference skew is the bug that quietly destroys fraud-model precision in production, and the only durable fix is to share one code path.
-
----
-
-## 📊 Test-Set Metrics
-
-Measured on the held-out chronological test fold — last 15% of 50,010 transactions by `created_at`, no shuffling. Hyperparameters were selected by a 25-iteration `RandomizedSearchCV` scored on PR-AUC; the final fit used `early_stopping_rounds=50` against the validation fold. Numbers come straight from [`backend/ml/artifacts/metrics.json`](backend/ml/artifacts/metrics.json).
-
-These are the **in-house generator** numbers — the development baseline described above, not an external benchmark. The Sparkov results, the cross-generator transfer, the monthly drift series and the rules audit are reported separately in [`backend/ml/BENCHMARK_CARD.md`](backend/ml/BENCHMARK_CARD.md). The real-world ULB results, on their own `ulb_pca_v1` featureset, are reported apart from both in [`backend/ml/ULB_BENCHMARK_CARD.md`](backend/ml/ULB_BENCHMARK_CARD.md).
-
-| Metric                            | Target  | Measured   |
-| --------------------------------- | ------- | ---------- |
-| PR-AUC                            | > 0.75  | **0.9327** |
-| ROC-AUC                           | —       | **0.9989** |
-| Recall @ 1% FPR                   | > 0.60  | **0.9785** |
-| Recall @ 5% FPR                   | —       | **1.0000** |
-| Precision @ threshold 0.7431      | —       | **0.6138** |
-| Recall @ threshold 0.7431         | —       | **0.9570** |
-| F1 @ threshold 0.7431             | —       | **0.7479** |
-| Inference latency                 | < 100ms | service p50/p95 = 3.7ms / 5.8ms · endpoint p50/p95 = 16ms / 20ms (n=500, developer laptop) |
-
-> ⏱️ **Latency methodology.** Service-layer numbers measure `score_transaction()` called directly — the rules engine, feature extraction, XGBoost inference, SHAP attribution, and audit log write. Endpoint numbers measure the full HTTP round-trip including FastAPI routing, Pydantic validation, DB transaction commit, and JSON serialization. p99 is omitted from the headline because the developer-laptop SQLite setup shows intermittent ~100ms variance from file-lock and OS-scheduling effects unrelated to scoring; production deployment with Postgres behind a connection pool would tighten the tail. Full distribution including p99 in [`backend/ml/artifacts/latency_metrics.json`](backend/ml/artifacts/latency_metrics.json).
-
-> 📝 **Note.** The full [model card](backend/ml/MODEL_CARD.md) — segment performance, calibration analysis (aggregate and positives-only), global SHAP, limitations, and ethical considerations — is rebuilt on every `ml/analyze.py` run.
-
----
-
-## 🧪 What I'd Build Next
-
-Clear extension paths beyond the four-day scope, ordered by how much I'd learn building them:
-
-- **Event-driven architecture** — Kafka or Redpanda for true async ingestion and scoring, with a replayable transaction log.
-- **Online learning pipeline** — incorporate analyst feedback from the review queue back into a retraining loop.
-- **Multi-region** — regional rule overrides and locale-aware risk tiers. Currency conversion itself landed in 5F; what is left is the regional half, plus deciding by evaluation — not by assumption — whether the model should ever see a base-currency amount.
-- **Production-grade observability** — OpenTelemetry traces across the pipeline, Prometheus metrics, Grafana dashboards.
-- **Authentication and role-based access control** — analyst, reviewer, and admin tiers with proper auth on every endpoint.
-- **3-D Secure step-up authentication** — simulated 3DS challenge flow for transactions scored as `REVIEW`.
-- **Real-time transaction stream** — WebSocket push so the dashboard updates without polling.
-
----
-
-## 📚 Lessons Being Learned
-
-> The hardest engineering skill on a project like this is not the technical work — it is the judgment of where to stop. Every section of this codebase has an unbuilt version of itself that would be more rigorous, and shipping requires deciding which of those unbuilt versions is fine to leave on the cutting-room floor for now.
-
-> Idempotency looks trivial on paper and gets genuinely subtle the moment you have to design for retries under partial-failure semantics. Writing it once with a real test for double-submission has taught me more than reading the Stripe docs ever did.
-
-> Synthetic data quality determines model credibility more than the choice of algorithm. A perfectly tuned XGBoost on a naive dataset will score perfectly and tell you nothing useful. The hours spent on the dataset generator are the hours that decide whether the model is interesting.
-
----
-
-## 📝 License & Contact
-
-This project is released under the [MIT License](LICENSE).
-
-**Built by [apoorvrajdev](https://github.com/apoorvrajdev)** — reach me at [apoorvrajmgr@gmail.com](mailto:apoorvrajmgr@gmail.com).
+| Document | What it covers |
+|---|---|
+| [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) | Runtime topology, scoring sequence, analyst loop, layered code structure (Mermaid) |
+| [`backend/ml/BENCHMARK_CARD.md`](backend/ml/BENCHMARK_CARD.md) | Phase 5D results generated from the committed run records |
+| [`backend/ml/ULB_BENCHMARK_CARD.md`](backend/ml/ULB_BENCHMARK_CARD.md) | Phase 5E real-data results, kept apart from every other result |
+| [`backend/ml/MODEL_CARD.md`](backend/ml/MODEL_CARD.md) | Segment performance, calibration, global SHAP, limitations |
+| [`docs/FX_CONTRACT.md`](docs/FX_CONTRACT.md) | What a converted amount means, and what it means when there isn't one |
+| [`docs/DATA_LICENSES.md`](docs/DATA_LICENSES.md) | Per-source licence, citation and provenance policy |
+| [`docs/PHASE_5_PLAN.md`](docs/PHASE_5_PLAN.md) | The Phase 5 specification, its non-goals, and the as-built deviations |
+| [`docs/adr/`](docs/adr/) | 11 decision records — Phase 3 slices, demo scope (4A), data architecture (5A), feature parity (5C), and the two frozen benchmark methodologies (5D, 5E) |
 
 ---
 
 <p align="center">
-  <em>Built as a flagship portfolio project for fintech engineering roles.</em>
+  <strong>Built by <a href="https://github.com/apoorvrajdev">apoorvrajdev</a></strong> · <a href="mailto:apoorvrajmgr@gmail.com">apoorvrajmgr@gmail.com</a> · <a href="LICENSE">MIT</a>
 </p>
