@@ -19,6 +19,16 @@ which is SQLite-native. The equivalent Postgres form is
 No row sees `Decimal` coerced to ``float`` here; money values stay in
 the SQLAlchemy result rows as ``Decimal`` and are returned untouched to
 the service layer for quantisation.
+
+Phase 5F — every money aggregate sums ``COALESCE(amount_base, amount)``,
+the reporting-currency figure where one was resolved and the original
+amount where none was. Summing a raw ``amount`` column across mixed
+currencies adds euros to yen and produces a number that means nothing,
+which is the failure these aggregates exist to avoid. The fallback is
+deliberate and stated in ``app/schemas/stats.py``: a transaction whose
+FX lookup failed still belongs in the volume it contributed to, and on
+USD-only traffic — every row this system has ever seen — the two
+branches are identical. See ``docs/FX_CONTRACT.md``.
 """
 from __future__ import annotations
 
@@ -41,6 +51,15 @@ _HOUR_BUCKET_FORMAT = "%Y-%m-%d %H:00:00"
 
 def _hour_bucket_expr() -> Any:
     return func.strftime(_HOUR_BUCKET_FORMAT, Transaction.created_at)
+
+
+def _reporting_amount() -> Any:
+    """The amount to aggregate: the converted figure, else the original.
+
+    One definition, used by every money aggregate in this module, so a
+    KPI and a breakdown can never disagree about what they are summing.
+    """
+    return func.coalesce(Transaction.amount_base, Transaction.amount)
 
 
 # TODO(performance): a covering index on (created_at, fraud_decision)
@@ -94,7 +113,7 @@ def overview_counts(
     since = now - window
 
     decision_col = Transaction.fraud_decision
-    amount_col = Transaction.amount
+    amount_col = _reporting_amount()
     score_col = Transaction.fraud_score
 
     fraud_amount_expr = func.coalesce(
@@ -253,7 +272,7 @@ def country_breakdown(
             Transaction.country.label("country"),
             func.count().label("tx_count"),
             declined_expr.label("declined"),
-            func.coalesce(func.sum(Transaction.amount), Decimal("0")).label(
+            func.coalesce(func.sum(_reporting_amount()), Decimal("0")).label(
                 "total_amount"
             ),
         )

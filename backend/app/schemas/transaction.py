@@ -1,5 +1,5 @@
 """Pydantic schemas for transaction ingestion and retrieval."""
-from datetime import datetime
+from datetime import date, datetime
 from decimal import Decimal
 from typing import Any, Literal, Self
 from uuid import UUID
@@ -62,6 +62,20 @@ class TransactionResponse(BaseModel):
     fraud_score: Decimal | None = None
     fraud_decision: str | None = None
     created_at: datetime
+
+    # FX enrichment (Phase 5F) — DERIVED reporting fields.
+    #
+    # `amount` and `currency` above remain the authoritative record of
+    # what the cardholder was charged. These four describe a figure
+    # computed from them for reporting, and are all null together when no
+    # rate could be resolved: a client must never present `amount_base`
+    # as the transaction amount, and must be able to render a row that
+    # has none. `fx_source` says which of the six sources priced it.
+    # See docs/FX_CONTRACT.md.
+    amount_base: Decimal | None = None
+    fx_rate: Decimal | None = None
+    fx_rate_date: date | None = None
+    fx_source: str | None = None
 
 
 class TransactionDetail(TransactionResponse):

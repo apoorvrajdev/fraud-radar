@@ -1,4 +1,16 @@
-"""Pydantic schemas for dashboard aggregate endpoints."""
+"""Pydantic schemas for dashboard aggregate endpoints.
+
+Every money field below is denominated in the **reporting currency**
+(``FX_BASE_CURRENCY``, USD), not in the currencies the underlying
+transactions were charged in. A row that could not be converted
+contributes its original amount rather than being dropped, so a total is
+"as close to the reporting currency as the FX data allowed" rather than
+either a silent currency mix or an under-count. Per-transaction
+currencies stay on the transaction endpoints, where they belong.
+
+The shapes are unchanged by Phase 5F — only what the numbers mean is
+stated more precisely. See ``docs/FX_CONTRACT.md``.
+"""
 from datetime import datetime
 from decimal import Decimal
 
@@ -16,7 +28,10 @@ class StatsOverview(BaseModel):
     pending_review_count: int = Field(ge=0)
     approved_rate: float = Field(ge=0.0, le=1.0)
     fraud_caught_amount: Decimal = Field(
-        description="Total amount of declined/reviewed transactions",
+        description=(
+            "Total amount of declined/reviewed transactions, in the "
+            "reporting currency"
+        ),
     )
     avg_fraud_score: float | None = Field(default=None, ge=0.0, le=1.0)
 
@@ -48,7 +63,9 @@ class CategoryBreakdown(BaseModel):
     category: str
     transaction_count: int = Field(ge=0)
     declined_count: int = Field(ge=0)
-    total_amount: Decimal
+    total_amount: Decimal = Field(
+        description="Total transacted amount, in the reporting currency",
+    )
 
 
 class StatsBreakdown(BaseModel):

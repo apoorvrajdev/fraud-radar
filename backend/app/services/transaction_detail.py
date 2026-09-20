@@ -161,6 +161,15 @@ def build_detail(db: Session, tx: Transaction) -> TransactionDetail:
         merchant_id=tx.merchant_id,
         amount=tx.amount,
         currency=tx.currency,
+        # Phase 5F — the derived reporting figure, read straight off the
+        # row. Like everything else on this envelope it is what was
+        # recorded at ingestion, not a recomputation: re-pricing here
+        # would show today's answer on a page that has to show the one
+        # the decision was actually taken with.
+        amount_base=tx.amount_base,
+        fx_rate=tx.fx_rate,
+        fx_rate_date=tx.fx_rate_date,
+        fx_source=tx.fx_source,
         status=cast(TransactionStatus, tx.status),
         payment_method=cast(PaymentMethod, tx.payment_method),
         country=tx.country,
