@@ -2,6 +2,7 @@
 from app.repositories.audit import AuditRepository, audit_repository
 from app.repositories.base import BaseRepository
 from app.repositories.customer import CustomerRepository, customer_repository
+from app.repositories.fx_rate import FxRateRepository, fx_rate_repository
 from app.repositories.merchant import MerchantRepository, merchant_repository
 from app.repositories.transaction import (
     TransactionRepository,
@@ -12,10 +13,12 @@ __all__ = [
     "AuditRepository",
     "BaseRepository",
     "CustomerRepository",
+    "FxRateRepository",
     "MerchantRepository",
     "TransactionRepository",
     "audit_repository",
     "customer_repository",
+    "fx_rate_repository",
     "merchant_repository",
     "transaction_repository",
 ]

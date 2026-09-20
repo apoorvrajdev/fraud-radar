@@ -46,6 +46,24 @@ class Settings(BaseSettings):
     simulator_enabled: bool = True
     simulator_tx_per_second: int = 2
 
+    # FX enrichment (Phase 5F) — see docs/FX_CONTRACT.md.
+    #
+    # `fx_base_currency` is the reporting currency every `amount_base` is
+    # denominated in. It is a setting so the code does not hard-code a
+    # business choice, but changing it does NOT re-price the rows already
+    # stored — moving it is a backfill migration, not a config flip.
+    #
+    # `fx_enabled` gates the network call only: with it off the rate cache
+    # still resolves and a miss reads "unavailable".
+    fx_base_currency: str = "USD"
+    fx_api_base_url: str = "https://api.frankfurter.dev"
+    fx_timeout_seconds: float = 2.0
+    fx_enabled: bool = True
+    # How far back a cached rate may be re-used before the provider is asked
+    # for a fresher one. Covers a normal ECB non-publication gap (weekend
+    # plus a holiday) without reaching for a rate from another week.
+    fx_cache_max_age_days: int = 7
+
     @field_validator("cors_origins", mode="before")
     @classmethod
     def _split_cors_origins(cls, value: Any) -> Any:
