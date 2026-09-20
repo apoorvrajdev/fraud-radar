@@ -1,6 +1,6 @@
 # Fraud Radar — Final Phase 5 Implementation Plan
 
-**Status:** Blueprint for approval. No code has been changed.
+**Status:** Implemented. Phases 5A–5G complete; as-built deviations are recorded in §18.1 and §20.1.
 **Basis:** Full inspection of the repository at commit `128ffc9` (2026-05-28, "docs: add architecture diagrams and screenshot conventions (4D)"), the README, and the previous Phase 5 report. Every claim about the codebase below was verified by reading the source, not inferred from the README.
 **Timebox:** MUST-HAVE scope sized for ~3 focused weeks; NICE-TO-HAVE fills week 4 only if MUST is done.
 **Phase 5D / M4 methodology:** locked in [`adr/PHASE_5D_BENCHMARK_METHODOLOGY.md`](adr/PHASE_5D_BENCHMARK_METHODOLOGY.md), which governs wherever it differs from §4.3, §12, §14–§16, M4, §29 and the run names in M2's definition of done — the benchmark runs are `sparkov_v1_200cards` and `sparkov_v1_full`, each with its own quality report, per decision 14; the `sparkov_v1` of M2 is not used.
