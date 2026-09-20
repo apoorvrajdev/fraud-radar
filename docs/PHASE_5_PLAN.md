@@ -378,6 +378,22 @@ Why ULB gets its own track (stated in the doc): the V-features are PCA component
 - Historical consistency: offline datasets in Phase 5 are USD-only (`amount_base = amount`, rate 1). The batch builder exposes the same `FxService.get_rate(quote, on=created_at.date())` hook using the *same cache table* so a future non-USD dataset joins historical daily rates with identical semantics to the live path.
 - Failure modes are tested (§21). No retries, no circuit breaker, no background refresh — the cache plus stale fallback is the whole resilience story, and it is enough.
 
+### 18.1 As built (5F)
+
+Implemented as specified above, with the contract written up in [`FX_CONTRACT.md`](FX_CONTRACT.md) rather than a further ADR: a methodology record exists to freeze a measurement before the data is seen, and nothing in FX has that property. Four deviations, each forced by something the plan could not know when it was written:
+
+1. **Frankfurter v2, not v1.** The live API is `GET /v2/rates?base=…&quotes=…&date=…`, confirmed against it on 2026-09-20; `symbols` is now `quotes`, and the response is an array of `{date, base, quote, rate}` rather than a rates map. The transaction's currency is sent as the API's `base` and the reporting currency as its `quotes`, because Frankfurter reports quote-per-base and this contract stores reporting-per-transaction; the provider validates that the response names the pair it asked for, so an API that flipped direction would fail loudly rather than invert every converted amount.
+
+2. **Weekends are normalised locally, before the call.** The plan assumed the provider would report the true business day. It does not: asked for a Saturday it returns the carried-forward rate stamped *with the Saturday*, which is indistinguishable from a Saturday observation. Saturdays and Sundays therefore resolve back to the preceding Friday before the lookup, which also lets a weekend's transactions share one cache entry. Holidays are still left to the provider's carry-forward — there is no local TARGET calendar and adding one would be a dependency to answer a question the provider already answers.
+
+3. **Amount filters keep filtering on `amount`.** §18 said filters as well as volume KPIs would use `COALESCE(amount_base, amount)`. They do not. Aggregates are corrected because summing mixed currencies adds euros to yen; a filter is a different question — "show me transactions over 250" asks what the cardholder was charged. Changing it would also alter existing query semantics and touch `repositories/transaction.py`, which §25 protects.
+
+4. **No FX hook in the batch feature builder.** §18 proposed exposing `get_rate` there for a future non-USD dataset. Every offline dataset is single-currency, so the hook would be dead code inside the benchmark tooling — which is exactly the contamination Phase 5 is careful about elsewhere. When a non-USD dataset arrives, the hook can be added against the same cache table with the same semantics, which is what that paragraph was really protecting.
+
+One addition the plan did not call for: `fx_source` and `fx_rate_date` are written into the scoring audit payload whenever the source is not `identity`. §18 asked for `fx_source` in the audit; the rate date is there too, because "priced with a stale rate" is only actionable if you can see *how* stale.
+
+The UI work — currency-aware amount rendering and the `fx_source` chip (§20) — stays in 5G with the rest of the dashboard pass. 5F ends at the API boundary. The fields are served; nothing renders them yet.
+
 ## 19. Simulator Calibration (NICE-TO-HAVE; first NICE item after v2)
 
 `ml/analysis/simulator_profile.py --dataset sparkov` fits from the canonical dataset: category weights (12-taxonomy), per-category log-normal `(mu, sigma)` for amounts, card-present share per category. Writes `app/simulator/profiles/sparkov.json` (small derived statistics, committed; source CC0). Simulator gains `--profile sparkov` (merchant chosen by category weight, amount from category log-normal, card-present from category share) and `--currency-mix "USD:0.85,EUR:0.08,GBP:0.05,INR:0.02"` (amounts emitted in that currency; FX path exercised). Existing three fraud patterns and `--fraud-rate` unchanged. Time-of-day is not calibrated (wall-clock stamped — F10).
@@ -545,12 +561,13 @@ backend/tests/unit/test_simulator_profile.py
 - **Tests:** loader shape/label test; promote refusal test.
 - **DoD:** `runs/ulb_baseline/` metrics + card; README row.
 
-### M6 — 5F: FX enrichment (2.5 days)
+### M6 — 5F: FX enrichment (2.5 days) — **DONE**
 - **Objective:** multi-currency analytics with tested failure modes.
 - **Files:** migration, `models/fx_rate.py`, `repositories/fx_rate.py`, `enrichment/fx.py`, `services/transactions.py`, `scoring.py` (audit payload), `stats.py`, schemas, config; tests.
-- **Details:** §18.
+- **Details:** §18, as built in §18.1.
 - **Tests:** FX suite (§21) incl. integration "API down, still scored."
 - **DoD:** a `EUR` POST is scored, stored with `amount_base`, appears in volume KPIs in USD, and its audit row shows `fx_source`; with network disabled the same POST still returns 201 with `fx_source="unavailable"`.
+- **As built:** all of the above, plus `enrichment/provider.py` splitting the HTTP boundary from the conversion logic, and `docs/FX_CONTRACT.md`. Ingestion is enriched in `api/v1/transactions.py` rather than `services/transactions.py`, which is the list service — the router calls one `fx.enrich(db, tx)` beside the `score_transaction` call it already orchestrates. 149 tests added across five files; the four deviations from §18 are recorded in §18.1. The UI half of the DoD ("currency-aware amounts") belongs to M7.
 
 ### M7 — 5H: badge, currency UI, docs, demo snapshot (2 days)
 - **Objective:** the demo tells the Phase 5 story.

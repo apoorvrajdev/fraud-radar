@@ -2,7 +2,7 @@
 
 Fraud Radar trains and evaluates on datasets it does not own. This file records what each source is, under what terms it is used, and what of it ever enters this repository.
 
-**Status:** Sparkov retrieved and verified on 2026-09-17; the SHA-256 digests of both files are pinned in `backend/ml/data/manifest.json`, so a load of any other bytes is refused. ULB retrieved and verified on 2026-09-18; the SHA-256 digest of its one file is pinned in the same manifest. Nothing else external has been downloaded. Licence rows below are what the source advertises publicly; each is confirmed at retrieval time (Phase 5B) and the confirmed wording, with its retrieval date, is written into the dataset's `DatasetProvenance.license` field and into every run that uses it.
+**Status:** Sparkov retrieved and verified on 2026-09-17; the SHA-256 digests of both files are pinned in `backend/ml/data/manifest.json`, so a load of any other bytes is refused. ULB retrieved and verified on 2026-09-18; the SHA-256 digest of its one file is pinned in the same manifest. Nothing else external has been downloaded — the FX source added in Phase 5F is queried at runtime and never downloaded into the repository at all. Licence rows below are what the source advertises publicly; each is confirmed at retrieval time (Phase 5B) and the confirmed wording, with its retrieval date, is written into the dataset's `DatasetProvenance.license` field and into every run that uses it.
 
 ---
 
@@ -130,15 +130,21 @@ The attribution, citation and descriptions below come from the source's own meta
 9. Yann-Aël Le Borgne and Gianluca Bontempi. Reproducible Machine Learning for Credit Card Fraud Detection — Practical Handbook.
 10. Bertrand Lebichot, Gianmarco Paldino, Wissam Siblini, Liyun He, Frederic Oblé and Gianluca Bontempi. Incremental learning strategies for credit cards fraud detection. International Journal of Data Science and Analytics.
 
-### Frankfurter — FX reference rates (planned, 5F)
+### Frankfurter — FX reference rates (integrated, 5F)
+
+Unlike every other source on this page, no Frankfurter data is ever downloaded into the repository, committed, or used to train or evaluate anything. It is queried at runtime for one rate at a time and cached in a table of the local, gitignored database.
 
 | | |
 |---|---|
 | **Origin** | Public reference data |
-| **Source** | `https://frankfurter.dev` — open API over European Central Bank daily reference rates |
-| **Licence** | Open API over public ECB data; no key required, self-hostable |
-| **Used for** | Converting a transaction amount to a base currency for display and analytics at ingestion time. Cached locally. Not a model input. |
-| **Failure policy** | Never blocks scoring: on timeout or outage the transaction is scored and stored with the FX source marked stale or unavailable. |
+| **Source** | `https://frankfurter.dev` — open API over European Central Bank daily reference rates, with the endpoint configurable via `FX_API_BASE_URL` |
+| **Endpoint** | `GET /v2/rates?base=…&quotes=…&date=YYYY-MM-DD`, confirmed against the live v2 API on 2026-09-20 |
+| **Licence** | Open API over public ECB reference data; the project states no key is required, no quotas apply, and use including commercial use is free. It is also self-hostable, so a deployment that would rather not depend on the public instance points `FX_API_BASE_URL` at its own. |
+| **Used for** | Converting a transaction's amount into the reporting currency at ingestion, for display and analytics only. **Not a model input**, not a benchmark input, and never merged into any dataset track. |
+| **Committed** | Nothing. No rate file, no snapshot, no fixture derived from live rates — the test fixtures are hand-written bodies in the shape the API returns, not captured responses. |
+| **Cached** | In the `fx_rates` table of the local SQLite database, which is gitignored along with the rest of it. The cache is disposable: emptying it costs a refetch and nothing else. |
+| **Failure policy** | Never blocks scoring. On timeout or outage the transaction is scored, decided, persisted and audited as normal, and the row records `fx_source` as `stale` or `unavailable` with no converted amount. |
+| **Contract** | [`FX_CONTRACT.md`](FX_CONTRACT.md) |
 
 ---
 

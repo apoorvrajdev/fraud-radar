@@ -73,6 +73,7 @@ sequenceDiagram
     participant SIM as Simulator
     participant API as FastAPI router<br/>(api/v1/transactions.py)
     participant IDEM as Idempotency service
+    participant FX as FX enrichment<br/>(enrichment/fx.py)
     participant SCORE as Scoring service
     participant CTX as TransactionContext loader
     participant FEAT as FeatureExtractor<br/>(17 features)
@@ -87,6 +88,13 @@ sequenceDiagram
         IDEM-->>API: stored response
         API-->>SIM: 200 (replay)
     else fresh
+        API->>FX: enrich(tx)
+        alt currency == reporting currency
+            FX-->>API: identity, rate 1, no lookup
+        else
+            FX->>FX: rate cache, then provider<br/>(2s timeout), then stale, then none
+            FX-->>API: amount_base + fx_source,<br/>or four nulls — never raises
+        end
         API->>SCORE: score_transaction(tx)
         SCORE->>CTX: load(customer, merchant,<br/>recent velocity window)
         CTX-->>SCORE: TransactionContext
@@ -98,7 +106,7 @@ sequenceDiagram
         ML-->>SCORE: fraud_score, top SHAP contributors
         SCORE->>DEC: decide(score, rules, threshold)
         DEC-->>SCORE: APPROVE | REVIEW | DECLINE
-        SCORE->>AUD: append("SCORED", payload)
+        SCORE->>AUD: append("SCORED", payload<br/>+ fx_source when not identity)
         SCORE-->>API: TransactionScored
         API->>IDEM: store(key, response)
         API-->>SIM: 201 Created
@@ -108,6 +116,17 @@ sequenceDiagram
 Service-layer latency (Phase 3C measurement): **p50 = 3.7 ms · p95 =
 5.8 ms** end-to-end. Full methodology in
 [`backend/ml/artifacts/latency_metrics.json`](../backend/ml/artifacts/latency_metrics.json).
+The FX step is outside that measurement and outside the common case: a
+transaction in the reporting currency takes the identity branch, which
+costs no lookup at all, and every other one is answered from the local
+rate cache after the first of its currency and day.
+
+FX is the only step in this diagram that depends on something outside
+the process, so it is the only one built on the assumption that its
+dependency will be unavailable. It cannot raise; a provider outage
+leaves a transaction fully scored, decided, persisted and audited with
+no converted amount and an `fx_source` recording why. The rules in
+[`FX_CONTRACT.md`](FX_CONTRACT.md).
 
 ---
 
@@ -159,6 +178,7 @@ flowchart TD
         ROUTERS["api/v1/<br/>thin routers — orchestration only"]
         SCHEMAS["schemas/<br/>Pydantic v2 wire contracts"]
         SERVICES["services/<br/>business logic<br/>(scoring, alerts, idempotency, review)"]
+        ENRICH["enrichment/<br/>derived fields at ingestion<br/>(FX conversion + rate provider)"]
         FRAUD["fraud/<br/>rules + features + explainer<br/>(pure, no I/O)"]
         REPOS["repositories/<br/>data access<br/>(velocity queries, keyset pagination)"]
         MODELS["models/<br/>SQLAlchemy 2.0 ORM<br/>(Decimal money, CHECK constraints)"]
@@ -180,9 +200,13 @@ flowchart TD
 
     ROUTERS --> SERVICES
     ROUTERS --> SCHEMAS
+    ROUTERS --> ENRICH
     SERVICES --> FRAUD
     SERVICES --> REPOS
+    ENRICH --> REPOS
     REPOS --> MODELS
+
+    FX(["Frankfurter<br/>ECB reference rates"]) -.->|"2s timeout, cached,<br/>never blocks scoring"| ENRICH
     DATA --> TRAIN
     TRAIN --> FRAUD
     TRAIN --> ART
@@ -199,6 +223,15 @@ runtime: the FastAPI app boots, loads `model.json` and the SHAP
 explainer once, and reuses them across every request. Training runs
 out-of-band and writes new artifacts that the app picks up on its
 next restart.
+
+`enrichment/` is drawn beside `services/` rather than inside it because
+it answers a different question. A service decides something about a
+transaction; an enricher attaches a derived field to it and must be
+removable without changing any decision. It is also the only part of
+the backend that reaches outside the process, which is why the dashed
+arrow is the only one on this diagram pointing in from the outside
+world — and why nothing downstream of it is allowed to depend on it
+succeeding.
 
 The real-world ULB benchmark trains out-of-band in `backend/ml/` as
 well, in its own track, `backend/ml/tracks/ulb/`, and it never
