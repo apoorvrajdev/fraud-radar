@@ -1,0 +1,48 @@
+{
+  "id": "de4b1918-cc27-4ae5-8a30-a6e04cdf52b1",
+  "customer_id": "74b367d5-a685-4b1b-95b6-81381532ab58",
+  "merchant_id": "32e73617-d22e-4fa4-9e89-2b0e33c96c1f",
+  "amount": "306.2400",
+  "currency": "USD",
+  "status": "DECLINED",
+  "payment_method": "CARD",
+  "country": "US",
+  "fraud_score": null,
+  "fraud_decision": "DECLINE",
+  "created_at": "2026-09-20T08:34:17.015497",
+  "amount_base": "306.2400",
+  "fx_rate": "1.00000000",
+  "fx_rate_date": "2026-09-18",
+  "fx_source": "identity",
+  "card_last4": null,
+  "ip_address": null,
+  "device_id": null,
+  "is_card_present": true,
+  "threshold": 0.7431091070175171,
+  "rules_triggered": [
+    "geo_velocity_impossible"
+  ],
+  "top_contributors": [],
+  "effective_decision": "DECLINE",
+  "analyst_label": null,
+  "analyst_notes": null,
+  "reviewed_at": null,
+  "audit": [
+    {
+      "id": 22016,
+      "actor": "scorer:2026-05-21T12:47:25+00:00",
+      "action": "scored.hard_block",
+      "payload": {
+        "decision": "DECLINE",
+        "threshold": 0.7431091070175171,
+        "rules_triggered": [
+          "geo_velocity_impossible"
+        ],
+        "rule_reasons": [
+          "country mismatch: US now, CA 0min ago"
+        ]
+      },
+      "created_at": "2026-09-20T08:34:17"
+    }
+  ]
+}

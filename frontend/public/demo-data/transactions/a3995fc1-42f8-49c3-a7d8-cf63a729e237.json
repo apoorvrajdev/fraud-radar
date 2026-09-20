@@ -1,0 +1,107 @@
+{
+  "id": "a3995fc1-42f8-49c3-a7d8-cf63a729e237",
+  "customer_id": "987f552c-a41c-49fd-96ae-9d3f23ef9218",
+  "merchant_id": "01e26392-f549-40af-b723-d39d07ac9a25",
+  "amount": "372.4600",
+  "currency": "EUR",
+  "status": "APPROVED",
+  "payment_method": "CARD",
+  "country": "US",
+  "fraud_score": "0.0008",
+  "fraud_decision": "APPROVE",
+  "created_at": "2026-09-20T08:35:01.272270",
+  "amount_base": "428.2173",
+  "fx_rate": "1.14970000",
+  "fx_rate_date": "2026-09-18",
+  "fx_source": "cache",
+  "card_last4": null,
+  "ip_address": null,
+  "device_id": null,
+  "is_card_present": true,
+  "threshold": 0.7431091070175171,
+  "rules_triggered": [],
+  "top_contributors": [
+    {
+      "feature": "is_card_present",
+      "shap_value": -5.069487571716309,
+      "feature_value": 1.0,
+      "direction": "legit"
+    },
+    {
+      "feature": "log_amount",
+      "shap_value": -0.8977525234222412,
+      "feature_value": 5.922810903790934,
+      "direction": "legit"
+    },
+    {
+      "feature": "merchant_risk_encoded",
+      "shap_value": -0.7591605186462402,
+      "feature_value": 1.0,
+      "direction": "legit"
+    },
+    {
+      "feature": "country_mismatch_customer",
+      "shap_value": -0.6171877384185791,
+      "feature_value": 0.0,
+      "direction": "legit"
+    },
+    {
+      "feature": "customer_risk_tier_encoded",
+      "shap_value": 0.2657015323638916,
+      "feature_value": 1.0,
+      "direction": "fraud"
+    }
+  ],
+  "effective_decision": "APPROVE",
+  "analyst_label": null,
+  "analyst_notes": null,
+  "reviewed_at": null,
+  "audit": [
+    {
+      "id": 22046,
+      "actor": "scorer:2026-05-21T12:47:25+00:00",
+      "action": "scored.approve",
+      "payload": {
+        "fraud_score": 0.0007581348763778806,
+        "decision": "APPROVE",
+        "threshold": 0.7431091070175171,
+        "rules_triggered": [],
+        "top_contributors": [
+          {
+            "feature": "is_card_present",
+            "shap_value": -5.069487571716309,
+            "feature_value": 1.0,
+            "direction": "legit"
+          },
+          {
+            "feature": "log_amount",
+            "shap_value": -0.8977525234222412,
+            "feature_value": 5.922810903790934,
+            "direction": "legit"
+          },
+          {
+            "feature": "merchant_risk_encoded",
+            "shap_value": -0.7591605186462402,
+            "feature_value": 1.0,
+            "direction": "legit"
+          },
+          {
+            "feature": "country_mismatch_customer",
+            "shap_value": -0.6171877384185791,
+            "feature_value": 0.0,
+            "direction": "legit"
+          },
+          {
+            "feature": "customer_risk_tier_encoded",
+            "shap_value": 0.2657015323638916,
+            "feature_value": 1.0,
+            "direction": "fraud"
+          }
+        ],
+        "fx_source": "cache",
+        "fx_rate_date": "2026-09-18"
+      },
+      "created_at": "2026-09-20T08:35:01"
+    }
+  ]
+}

@@ -42,6 +42,23 @@ async function loadJson<T>(path: string): Promise<T> {
     if (response.status === 404) throw new DemoNotFoundError(path);
     throw new Error(`Failed to load demo snapshot ${path}: ${response.status}`);
   }
+
+  // A missing snapshot file does NOT arrive as a 404 in production.
+  // `vercel.json` rewrites `/(.*)` to `/` so deep links survive a
+  // refresh, and that rewrite catches `/demo-data/...` too: a file that
+  // is not there comes back as index.html with a 200. Without this
+  // check the HTML reaches `response.json()` and the user sees
+  // "Unexpected token '<'" instead of the friendly not-found notice the
+  // demo was designed to show.
+  //
+  // Content type is the discriminator rather than sniffing the body: a
+  // file that really is JSON but is malformed is a corrupt snapshot,
+  // which deserves a real error, not a "not found".
+  const contentType = response.headers.get("content-type") ?? "";
+  if (!contentType.includes("json")) {
+    throw new DemoNotFoundError(path);
+  }
+
   return (await response.json()) as T;
 }
 

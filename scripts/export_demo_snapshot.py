@@ -44,12 +44,6 @@ ALERTS_LIMIT = 100
 # the 300-row contract from the ADR we walk the cursor.
 PAGE_SIZE = 200
 
-# Curated detail-page coverage targets (see ADR).
-DETAIL_TARGETS_BLOCK = 10
-DETAIL_TARGETS_REVIEW = 10
-DETAIL_TARGETS_ALLOW = 8
-DETAIL_TARGETS_OVERRIDDEN = 2
-
 REPO_ROOT = Path(__file__).resolve().parent.parent
 DEFAULT_OUTPUT_DIR = REPO_ROOT / "frontend" / "public" / "demo-data"
 DEFAULT_BASE_URL = "http://localhost:8000/api/v1"
@@ -69,70 +63,6 @@ def _get(client: httpx.Client, url: str, **params: Any) -> Any:
     response = client.get(url, params=params)
     response.raise_for_status()
     return response.json()
-
-
-def _select_detail_ids(transactions: list[dict[str, Any]]) -> list[str]:
-    """Pick ~30 transaction IDs covering each decision class.
-
-    See PHASE_4A_DEMO_SCOPE.md for the selection contract. Picks rows
-    in list order, so the first N matching rows per bucket win — the
-    list endpoint already returns newest-first, which is what we want.
-    """
-    by_decision: dict[str, list[dict[str, Any]]] = {
-        "BLOCK": [],
-        "REVIEW": [],
-        "ALLOW": [],
-    }
-    overridden: list[dict[str, Any]] = []
-
-    for tx in transactions:
-        decision = tx.get("fraud_decision")
-        if tx.get("analyst_label") is not None:
-            overridden.append(tx)
-        if decision in by_decision:
-            by_decision[decision].append(tx)
-
-    picked: list[str] = []
-    picked.extend(tx["id"] for tx in by_decision["BLOCK"][:DETAIL_TARGETS_BLOCK])
-    picked.extend(tx["id"] for tx in by_decision["REVIEW"][:DETAIL_TARGETS_REVIEW])
-    picked.extend(tx["id"] for tx in by_decision["ALLOW"][:DETAIL_TARGETS_ALLOW])
-    picked.extend(tx["id"] for tx in overridden[:DETAIL_TARGETS_OVERRIDDEN])
-
-    # Phase 5G: currency coverage. Decision-class buckets alone can
-    # easily select 30 USD rows, leaving the demo unable to show the
-    # thing 5F built — an original amount beside a derived one. Pick a
-    # couple of rows per distinct currency, and per distinct FX source,
-    # so the detail pages include a converted row and an unconverted
-    # one whatever the traffic mix happened to be.
-    picked.extend(_pick_per_key(transactions, "currency", per_key=2))
-    picked.extend(_pick_per_key(transactions, "fx_source", per_key=2))
-
-    # De-dupe while preserving order (an overridden row may also be in
-    # one of the decision buckets).
-    seen: set[str] = set()
-    unique: list[str] = []
-    for tx_id in picked:
-        if tx_id not in seen:
-            seen.add(tx_id)
-            unique.append(tx_id)
-    return unique
-
-
-def _pick_per_key(
-    transactions: list[dict[str, Any]], field: str, *, per_key: int
-) -> list[str]:
-    """Pick up to ``per_key`` transaction ids for each distinct value of ``field``.
-
-    Rows whose value is null are grouped under their own key, so "no FX
-    source recorded" is itself represented rather than dropped.
-    """
-    by_value: dict[Any, list[str]] = {}
-    for tx in transactions:
-        by_value.setdefault(tx.get(field), []).append(tx["id"])
-    picked: list[str] = []
-    for value in sorted(by_value, key=lambda v: (v is None, str(v))):
-        picked.extend(by_value[value][:per_key])
-    return picked
 
 
 def export(base_url: str, output_dir: Path) -> dict[str, int]:
@@ -204,16 +134,27 @@ def export(base_url: str, output_dir: Path) -> dict[str, int]:
         _write_json(output_dir / "alerts.json", alerts)
         counts["alerts"] = len(alerts.get("items", []))
 
-        # Curated detail pages.
-        detail_ids = _select_detail_ids(transactions.get("items", []))
-        # Pull every alert row into the detail set too, so clicking any
-        # row on /alerts lands on a working detail page.
+        # One detail page per row the demo can show.
+        #
+        # This used to be a curated ~30, with every other row falling
+        # back to a "not in snapshot" notice. But clicking a row is the
+        # primary interaction in the transactions view, and with 300
+        # rows listed against 30 pages roughly nine of every ten clicks
+        # landed on that notice — which reads as a broken demo rather
+        # than a bounded one. At ~4 KB a page the whole set is about
+        # 1.3 MB of static JSON on a CDN, which is not a real cost.
+        detail_ids = [tx["id"] for tx in transactions.get("items", [])]
+        # Every alert row too: the queue is sorted by score, so an
+        # alert can be older than the newest 300 transactions and
+        # therefore absent from the list above.
+        seen_ids = set(detail_ids)
         for alert in alerts.get("items", []):
             tx_id = alert.get("id")
-            if tx_id and tx_id not in detail_ids:
+            if tx_id and tx_id not in seen_ids:
+                seen_ids.add(tx_id)
                 detail_ids.append(tx_id)
 
-        print(f"→ fetching {len(detail_ids)} curated /transactions/{{id}} pages")
+        print(f"→ fetching {len(detail_ids)} /transactions/{{id}} detail pages")
         detail_dir = output_dir / "transactions"
         for tx_id in detail_ids:
             detail = _get(client, f"/transactions/{tx_id}")

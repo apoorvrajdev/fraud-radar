@@ -2,11 +2,6 @@
   "window": "24h",
   "points": [
     {
-      "timestamp": "2026-09-19T09:00:00Z",
-      "transaction_count": 0,
-      "fraud_rate": 0.0
-    },
-    {
       "timestamp": "2026-09-19T10:00:00Z",
       "transaction_count": 0,
       "fraud_rate": 0.0
@@ -120,6 +115,11 @@
       "timestamp": "2026-09-20T08:00:00Z",
       "transaction_count": 446,
       "fraud_rate": 0.226457399103139
+    },
+    {
+      "timestamp": "2026-09-20T09:00:00Z",
+      "transaction_count": 0,
+      "fraud_rate": 0.0
     }
   ]
 }

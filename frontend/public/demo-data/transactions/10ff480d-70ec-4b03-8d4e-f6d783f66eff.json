@@ -1,0 +1,50 @@
+{
+  "id": "10ff480d-70ec-4b03-8d4e-f6d783f66eff",
+  "customer_id": "6b477f9a-09d3-41d8-a697-41a86d821e9a",
+  "merchant_id": "37b716ac-398f-473a-bdf1-ca31e0cf4d6b",
+  "amount": "73.7000",
+  "currency": "EUR",
+  "status": "DECLINED",
+  "payment_method": "CARD",
+  "country": "US",
+  "fraud_score": null,
+  "fraud_decision": "DECLINE",
+  "created_at": "2026-09-20T08:34:17.609243",
+  "amount_base": "84.7329",
+  "fx_rate": "1.14970000",
+  "fx_rate_date": "2026-09-18",
+  "fx_source": "cache",
+  "card_last4": null,
+  "ip_address": null,
+  "device_id": null,
+  "is_card_present": true,
+  "threshold": 0.7431091070175171,
+  "rules_triggered": [
+    "velocity_burst"
+  ],
+  "top_contributors": [],
+  "effective_decision": "DECLINE",
+  "analyst_label": null,
+  "analyst_notes": null,
+  "reviewed_at": null,
+  "audit": [
+    {
+      "id": 22026,
+      "actor": "scorer:2026-05-21T12:47:25+00:00",
+      "action": "scored.hard_block",
+      "payload": {
+        "decision": "DECLINE",
+        "threshold": 0.7431091070175171,
+        "rules_triggered": [
+          "velocity_burst"
+        ],
+        "rule_reasons": [
+          "3 transactions in 120s (threshold: 3 in 120s)"
+        ],
+        "fx_source": "cache",
+        "fx_rate_date": "2026-09-18"
+      },
+      "created_at": "2026-09-20T08:34:17"
+    }
+  ]
+}
