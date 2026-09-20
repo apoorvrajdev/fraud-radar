@@ -10,8 +10,9 @@
 import { Link } from "react-router-dom";
 import { ChevronRight, AlertCircle } from "lucide-react";
 import { Card } from "../ui/Card";
+import { Amount } from "../ui/Amount";
 import { ScoreChip } from "./ScoreChip";
-import { formatAge, formatMoneyPrecise } from "../../lib/format";
+import { formatAge } from "../../lib/format";
 import { cn } from "../../lib/cn";
 import type { AlertItem } from "../../types/api";
 
@@ -177,8 +178,12 @@ function AlertRow({ row }: { row: AlertItem }) {
       <td className="px-4 py-2.5">
         <ScoreChip score={row.fraud_score} />
       </td>
-      <td className="px-4 py-2.5 text-right tabular-nums text-neutral-100">
-        {formatMoneyPrecise(row.amount)}
+      <td className="px-4 py-2.5 text-right">
+        {/* The queue envelope carries no FX fields — triage is about
+            the charge itself, and the converted figure is one click
+            away on the detail page. Rendering the original in its own
+            currency is still mandatory: a EUR row must not read "$". */}
+        <Amount amount={row.amount} currency={row.currency} />
       </td>
       <td className="px-4 py-2.5 text-neutral-300">{row.country}</td>
       <td className="px-4 py-2.5 text-neutral-400">

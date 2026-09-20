@@ -8,11 +8,8 @@
  */
 import { DecisionBadge } from "../DecisionBadge";
 import { Card } from "../../ui/Card";
-import {
-  formatDateTime,
-  formatFraudScore,
-  formatMoneyPrecise,
-} from "../../../lib/format";
+import { Amount } from "../../ui/Amount";
+import { formatDateTime, formatFraudScore } from "../../../lib/format";
 import type { TransactionDetail } from "../../../types/api";
 
 interface Props {
@@ -41,10 +38,22 @@ export function DetailHeader({ detail }: Props) {
         </div>
 
         <div className="flex items-center gap-6">
-          <Field
-            label="Amount"
-            value={`${formatMoneyPrecise(detail.amount)} ${detail.currency}`}
-          />
+          <div>
+            <div className="text-[10px] uppercase tracking-wider text-neutral-500">
+              Amount
+            </div>
+            <div className="mt-0.5 text-sm">
+              <Amount
+                layout="stacked"
+                amount={detail.amount}
+                currency={detail.currency}
+                amount_base={detail.amount_base}
+                fx_rate={detail.fx_rate}
+                fx_rate_date={detail.fx_rate_date}
+                fx_source={detail.fx_source}
+              />
+            </div>
+          </div>
           <Field
             label="Fraud score"
             value={formatFraudScore(detail.fraud_score)}

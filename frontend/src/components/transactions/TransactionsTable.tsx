@@ -9,12 +9,9 @@
 import { Link } from "react-router-dom";
 import { ChevronRight, AlertCircle } from "lucide-react";
 import { Card } from "../ui/Card";
+import { Amount } from "../ui/Amount";
 import { DecisionBadge } from "./DecisionBadge";
-import {
-  formatDateTime,
-  formatFraudScore,
-  formatMoneyPrecise,
-} from "../../lib/format";
+import { formatDateTime, formatFraudScore } from "../../lib/format";
 import { cn } from "../../lib/cn";
 import type { TransactionListItem } from "../../types/api";
 
@@ -160,8 +157,15 @@ function TransactionRow({ row }: { row: TransactionListItem }) {
       <td className="px-4 py-2.5 font-mono text-xs text-neutral-400">
         {row.customer_id.slice(0, 8)}
       </td>
-      <td className="px-4 py-2.5 text-right tabular-nums text-neutral-100">
-        {formatMoneyPrecise(row.amount)}
+      <td className="px-4 py-2.5 text-right">
+        <Amount
+          amount={row.amount}
+          currency={row.currency}
+          amount_base={row.amount_base}
+          fx_rate={row.fx_rate}
+          fx_rate_date={row.fx_rate_date}
+          fx_source={row.fx_source}
+        />
       </td>
       <td className="px-4 py-2.5 text-neutral-300">{row.country}</td>
       <td className="px-4 py-2.5 text-right tabular-nums text-neutral-300">

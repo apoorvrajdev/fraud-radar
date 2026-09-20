@@ -1,6 +1,11 @@
 import { Card } from "../ui/Card";
 import { useStatsBreakdown } from "../../hooks/useStatsBreakdown";
-import { formatInt, formatMoney, formatPercent } from "../../lib/format";
+import {
+  REPORTING_CURRENCY,
+  formatInt,
+  formatMoney,
+  formatPercent,
+} from "../../lib/format";
 
 /**
  * Severity bands for the per-country decline rate. The thresholds are
@@ -52,7 +57,12 @@ export function CountryBreakdownTable() {
                 <th className="font-medium pb-2 pr-3 text-right">Transactions</th>
                 <th className="font-medium pb-2 pr-3 text-right">Declined</th>
                 <th className="font-medium pb-2 pr-3 text-right">Decline rate</th>
-                <th className="font-medium pb-2 text-right">Total amount</th>
+                <th
+                  className="font-medium pb-2 text-right"
+                  title={`Summed in ${REPORTING_CURRENCY}; non-${REPORTING_CURRENCY} transactions are converted at their own date's reference rate.`}
+                >
+                  Total ({REPORTING_CURRENCY})
+                </th>
               </tr>
             </thead>
             <tbody className="divide-y divide-neutral-800/80">

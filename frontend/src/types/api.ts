@@ -50,11 +50,44 @@ export interface StatsBreakdown {
 export type Decision = "APPROVE" | "REVIEW" | "DECLINE" | "PENDING";
 
 /**
+ * Which source priced a transaction's derived reporting amount
+ * (Phase 5F). Mirrors `ck_transactions_fx_source`; see
+ * `docs/FX_CONTRACT.md` for what each one means.
+ *
+ * `identity` — already in the reporting currency, 1:1, no lookup.
+ * `live` / `cache` — a rate for the transaction's own date.
+ * `stale` — an older rate, never a newer one; the figure is dated.
+ * `unsupported` / `unavailable` — no rate, so no converted amount.
+ */
+export type FxSource =
+  | "identity"
+  | "live"
+  | "cache"
+  | "stale"
+  | "unsupported"
+  | "unavailable";
+
+/**
+ * The FX enrichment fields carried by the transaction schemas.
+ *
+ * All four are null together when no rate could be resolved, and are
+ * null on rows written before Phase 5F. `amount` / `currency` on the
+ * owning row stay authoritative — these are *derived* reporting
+ * values and must never be rendered as the transaction amount.
+ */
+export interface FxFields {
+  amount_base: string | null;
+  fx_rate: string | null;
+  fx_rate_date: string | null;
+  fx_source: FxSource | null;
+}
+
+/**
  * Single row in the paginated transactions list. Mirrors the backend's
  * `TransactionResponse` Pydantic schema. `amount` and `fraud_score`
  * cross the wire as strings (Decimal) — keep them as strings here.
  */
-export interface TransactionListItem {
+export interface TransactionListItem extends FxFields {
   id: string;
   customer_id: string;
   merchant_id: string;
@@ -127,7 +160,7 @@ export interface AuditEntry {
  * `fraud_decision` (model verdict) is preserved verbatim;
  * `effective_decision` reflects any analyst override.
  */
-export interface TransactionDetail {
+export interface TransactionDetail extends FxFields {
   id: string;
   customer_id: string;
   merchant_id: string;

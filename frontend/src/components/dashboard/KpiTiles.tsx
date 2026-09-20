@@ -1,6 +1,7 @@
 import { Stat } from "../ui/Stat";
 import { useStatsOverview } from "../../hooks/useStatsOverview";
 import {
+  REPORTING_CURRENCY,
   formatCompactInt,
   formatInt,
   formatMoney,
@@ -65,7 +66,7 @@ export function KpiTiles() {
       <Stat
         label="Fraud caught · 24h"
         value={value((d) => formatMoney(d.fraud_caught_amount))}
-        hint="declined + review amounts"
+        hint={`declined + review amounts, in ${REPORTING_CURRENCY}`}
       />
     </div>
   );
