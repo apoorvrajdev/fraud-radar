@@ -392,7 +392,7 @@ Implemented as specified above, with the contract written up in [`FX_CONTRACT.md
 
 One addition the plan did not call for: `fx_source` and `fx_rate_date` are written into the scoring audit payload whenever the source is not `identity`. §18 asked for `fx_source` in the audit; the rate date is there too, because "priced with a stale rate" is only actionable if you can see *how* stale.
 
-The UI work — currency-aware amount rendering and the `fx_source` chip (§20) — stays in 5G with the rest of the dashboard pass. 5F ends at the API boundary. The fields are served; nothing renders them yet.
+The UI work — currency-aware amount rendering and the `fx_source` chip (§20) — stayed in 5G with the rest of the dashboard pass. 5F ended at the API boundary; 5G rendered it.
 
 ## 19. Simulator Calibration (NICE-TO-HAVE; first NICE item after v2)
 
@@ -408,6 +408,22 @@ The UI work — currency-aware amount rendering and the `fx_source` chip (§20) 
 - README: Phase 5 section, honest framing block (§1), corrected test count, updated headline table with three columns (synthetic v1 / Sparkov v1 / ULB baseline).
 
 No new pages. No market-data pane.
+
+### 20.1 As built (5G)
+
+Delivered as specified, with four deviations and one addition.
+
+1. **The badge reports `synthetic_v1`, not `sparkov_v1`.** §20 assumed a promoted Sparkov model. Promotion has still not been run — deliberately — so the served model is the in-house synthetic one, and the badge says so. Writing the planned string would have been a false claim about what is answering requests.
+
+2. **The `/model` envelope is larger than the field list in §20.** It carries the serving block *and* a `benchmarks` list naming all three tracks with a `served` flag on each. The field list alone would let a reader assume the numbers describe production performance on real data. `metrics_caveat` ships with the metrics for the same reason: a bare figure on a dashboard is the most common way an honest number becomes a dishonest claim.
+
+3. **`dataset_name` is a documented constant, not an artifact read.** The current artifacts predate recording their own lineage, and §24's plan to add provenance fields to `ml/artifacts.py` would only populate them on a retrain — which 5G is not permitted to do. The constant's provenance is argued in `app/services/model_info.py`; a future run that records the field will be preferred automatically.
+
+4. **No `fx_source` chip and no `featureset_version` line in the score panel.** The FX state is carried by the `Amount` component instead, where the converted figure actually appears — a separate chip elsewhere on the page would put the caveat further from the number it qualifies. The featureset version is on the dashboard's Model & data panel rather than repeated on every detail page.
+
+The addition: `--currency-mix` on the simulator (the currency half of §19, without the profile calibration). Without it the simulator emits USD only, so the demo snapshot could not show the FX path the previous milestone built. Its currency set is restricted to currencies within roughly a factor of two of USD, because the rules engine's thresholds are denominated in the raw amount — see the note on `_MIXABLE_CURRENCIES`.
+
+`export_demo_snapshot.py` gained `model.json`, currency and `fx_source` coverage in its detail-page selection, and pruning of detail pages left behind by a previous export.
 
 ## 21. Testing Strategy
 
@@ -569,11 +585,12 @@ backend/tests/unit/test_simulator_profile.py
 - **DoD:** a `EUR` POST is scored, stored with `amount_base`, appears in volume KPIs in USD, and its audit row shows `fx_source`; with network disabled the same POST still returns 201 with `fx_source="unavailable"`.
 - **As built:** all of the above, plus `enrichment/provider.py` splitting the HTTP boundary from the conversion logic, and `docs/FX_CONTRACT.md`. Ingestion is enriched in `api/v1/transactions.py` rather than `services/transactions.py`, which is the list service — the router calls one `fx.enrich(db, tx)` beside the `score_transaction` call it already orchestrates. 149 tests added across five files; the four deviations from §18 are recorded in §18.1. The UI half of the DoD ("currency-aware amounts") belongs to M7.
 
-### M7 — 5H: badge, currency UI, docs, demo snapshot (2 days)
+### M7 — 5G: badge, currency UI, docs, demo snapshot (2 days) — **DONE**
 - **Objective:** the demo tells the Phase 5 story.
 - **Files:** `/api/v1/model`, `ModelBadge.tsx`, currency formatting, `export_demo_snapshot.py`, README, `ARCHITECTURE.md`.
 - **Tests:** endpoint integration; `tsc`.
 - **DoD:** Vercel demo shows the badge and currency-aware amounts; README has the framing block, Phase 5 section, and the comparison table.
+- **As built:** §20.1. The badge is a sidebar line plus a dashboard Model & data panel rather than a single `ModelBadge.tsx`; currency formatting is one `Amount` component over an extended `format.ts`; the snapshot was regenerated against the live stack with a `--currency-mix` simulator run, so every FX state in it was produced by the system rather than authored. The README carries the framing and the Phase 5 section; the three-column comparison table was **not** added, because the results are laid out in their own cards and the user's standing decision is not to duplicate benchmark numbers into the README.
 
 ### M8 — NICE (only if M0–M7 are done): v2 features → simulator profile + currency mix → Loom (week 4)
 - v2 (§11, 1.5 days incl. evaluation and decision); simulator profile (§19, 1.5 days); Loom 4E recorded last against the live stack with `--profile sparkov --currency-mix ...` (0.5 day).

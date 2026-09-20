@@ -60,6 +60,11 @@ is set, and every hook stays unchanged. See
 [`docs/adr/PHASE_4A_DEMO_SCOPE.md`](adr/PHASE_4A_DEMO_SCOPE.md) for
 the locked snapshot contract.
 
+The snapshot includes `model.json` from `GET /api/v1/model`, so the
+demo's provenance panel names the same served model and the same
+benchmark-only tracks the live app does, rather than hard-coding a
+claim in the frontend that could drift from the backend.
+
 ---
 
 ## 2. Request path: one transaction, end-to-end
@@ -194,7 +199,7 @@ flowchart TD
     subgraph Frontend["frontend/src/"]
         PAGES["pages/<br/>route components"]
         HOOKS["hooks/<br/>TanStack Query wrappers"]
-        LIB["lib/api.ts<br/>(swaps to demoAdapter in demo mode)"]
+        LIB["lib/api.ts + format.ts<br/>(demoAdapter in demo mode;<br/>currency-aware money display)"]
         COMP["components/<br/>layout + dashboard + transactions + alerts + ui"]
     end
 

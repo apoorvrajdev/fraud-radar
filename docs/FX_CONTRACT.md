@@ -198,6 +198,33 @@ No FX data is committed to this repository. Rates are cached at runtime in the
 `fx_rates` table of the local (gitignored) SQLite database. Licence and citation
 details are in [`DATA_LICENSES.md`](DATA_LICENSES.md).
 
+## How it is displayed
+
+Phase 5G renders this contract. One `Amount` component
+(`frontend/src/components/ui/Amount.tsx`) owns every per-transaction
+money display, so the rule that the original value is authoritative holds
+by construction rather than by each call site agreeing:
+
+- A transaction already in the reporting currency renders as one line.
+- A converted one shows the original first, with the derived figure
+  below it marked `≈` and visually subordinate, carrying the rate and
+  its date on hover. It can never be mistaken for the charged amount.
+- A `stale`-priced row says so and shows which day's rate was used.
+- An unconverted row shows the original alone, with the reason on hover.
+  This state is rendered quietly: a row with no rate is normal, not an
+  error.
+
+`frontend/src/lib/format.ts` keeps the two kinds of money apart —
+`formatMoneyIn(value, currency)` for a transaction, `formatMoney` for an
+aggregate the backend already summed in the reporting currency — and
+says which is which at the top of the file. A currency code `Intl` does
+not recognise degrades to `125.00 XYZ` rather than rendering a dollar
+sign, because the backend accepts any three-letter code.
+
+`GET /api/v1/model` reports the reporting currency alongside the model
+identity, so the dashboard labels its aggregates from the backend's
+setting instead of a second hard-coded copy.
+
 ## Deliberately not done
 
 - **The model does not see `amount_base`.** The 17-feature production registry is
