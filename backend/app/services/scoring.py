@@ -175,6 +175,25 @@ def _compose_decision(
     return model_decision, rule_names
 
 
+def _fx_provenance(tx: Transaction) -> dict[str, Any]:
+    """The FX fields worth recording alongside a decision, if any.
+
+    Empty for the `identity` path and for rows predating FX enrichment —
+    a same-currency transaction has nothing interesting to say. When the
+    rate was stale, or there was no rate at all, the audit trail should
+    show that the decision was taken on a row priced that way rather than
+    leaving it visible only on the transaction row, which a later
+    re-enrichment could overwrite.
+    """
+    source = tx.fx_source
+    if source is None or source == "identity":
+        return {}
+    entry: dict[str, Any] = {"fx_source": source}
+    if tx.fx_rate_date is not None:
+        entry["fx_rate_date"] = tx.fx_rate_date.isoformat()
+    return entry
+
+
 def _write_audit(
     db: Session,
     *,
@@ -239,6 +258,7 @@ def score_transaction(
                     "threshold": threshold,
                     "rules_triggered": rule_names,
                     "rule_reasons": [r.reason for r in triggered_rules],
+                    **_fx_provenance(tx),
                 },
                 is_hard_block=True,
             )
@@ -287,6 +307,7 @@ def score_transaction(
                 "threshold": threshold,
                 "rules_triggered": rules_triggered_names,
                 "top_contributors": top_contribs,
+                **_fx_provenance(tx),
             },
             is_hard_block=False,
         )

@@ -7,8 +7,9 @@ fraud scores to exercise every branch of the decision matrix.
 """
 from __future__ import annotations
 
+import json
 from collections.abc import Iterator
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal
 
 import numpy as np
@@ -275,6 +276,107 @@ def test_audit_log_written_on_normal_path(
     entry = list(db_session.execute(select(AuditLog)).scalars().all())[-1]
     assert entry.action == "scored.approve"
     assert entry.actor.startswith("scorer:")
+
+
+# ---------------------------------------------------------------------------
+# Phase 5F — FX provenance in the audit payload
+# ---------------------------------------------------------------------------
+
+
+def _latest_payload(db: Session) -> dict[str, object]:
+    entry = list(db.execute(select(AuditLog)).scalars().all())[-1]
+    assert entry.payload is not None
+    parsed = json.loads(entry.payload)
+    assert isinstance(parsed, dict)
+    return parsed
+
+
+def _price_as(
+    tx: Transaction, source: str, *, rate_date: date | None = date(2024, 1, 2)
+) -> None:
+    """Put `tx` in the FX state an enrichment would have left it in."""
+    tx.fx_source = source
+    tx.fx_rate_date = rate_date
+    if rate_date is not None and source not in ("unsupported", "unavailable"):
+        tx.amount_base = Decimal("110.2200")
+        tx.fx_rate = Decimal("1.10220000")
+
+
+def test_audit_payload_records_a_stale_fx_rate(
+    db_session: Session,
+    stub_explainer: _StubExplainer,
+) -> None:
+    """A decision taken on a stale rate says so in the audit trail.
+
+    The transaction row carries this too, but a later re-enrichment could
+    overwrite that; the audit row records what was true when the decision
+    was actually made.
+    """
+    tx = _make_tx(db_session)
+    _price_as(tx, "stale")
+
+    score_transaction(db_session, tx)
+
+    payload = _latest_payload(db_session)
+    assert payload["fx_source"] == "stale"
+    assert payload["fx_rate_date"] == "2024-01-02"
+
+
+def test_audit_payload_records_an_unconverted_row(
+    db_session: Session,
+    stub_explainer: _StubExplainer,
+) -> None:
+    tx = _make_tx(db_session)
+    _price_as(tx, "unavailable", rate_date=None)
+
+    score_transaction(db_session, tx)
+
+    payload = _latest_payload(db_session)
+    assert payload["fx_source"] == "unavailable"
+    assert "fx_rate_date" not in payload
+
+
+def test_audit_payload_omits_fx_for_a_reporting_currency_row(
+    db_session: Session,
+    stub_explainer: _StubExplainer,
+) -> None:
+    """A USD transaction has nothing interesting to say about FX."""
+    tx = _make_tx(db_session)
+    _price_as(tx, "identity")
+
+    score_transaction(db_session, tx)
+
+    payload = _latest_payload(db_session)
+    assert "fx_source" not in payload
+
+
+def test_audit_payload_omits_fx_for_a_row_predating_enrichment(
+    db_session: Session,
+    stub_explainer: _StubExplainer,
+) -> None:
+    tx = _make_tx(db_session)  # fx_source left NULL
+
+    score_transaction(db_session, tx)
+
+    payload = _latest_payload(db_session)
+    assert "fx_source" not in payload
+
+
+def test_hard_blocked_row_still_records_its_fx_source(
+    db_session: Session,
+    stub_explainer: _StubExplainer,
+) -> None:
+    """The model is skipped on a hard block; the FX provenance is not."""
+    anchor = datetime.now(UTC)
+    _seed_recent_burst(db_session, anchor=anchor, count=3)
+    tx = _make_tx(db_session, created_at=anchor)
+    _price_as(tx, "stale")
+
+    score_transaction(db_session, tx)
+
+    payload = _latest_payload(db_session)
+    assert payload["decision"] == Decision.DECLINE.value
+    assert payload["fx_source"] == "stale"
 
 
 def test_audit_log_skipped_when_write_audit_false(

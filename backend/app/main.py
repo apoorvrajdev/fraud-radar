@@ -11,6 +11,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.v1 import api_router
 from app.config import get_settings
+from app.enrichment.fx import shutdown_fx_service
 from app.fraud import initialize_explainer
 
 log = logging.getLogger(__name__)
@@ -28,7 +29,9 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     log.info("Initialising fraud explainer from %s", artifacts_dir)
     initialize_explainer(artifacts_dir)
     yield
-    # No teardown hook needed — the booster + explainer live for the process.
+    # The booster + explainer live for the process and need no teardown.
+    # The FX provider holds a pooled HTTP client, which does.
+    shutdown_fx_service()
 
 
 app = FastAPI(

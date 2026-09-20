@@ -19,6 +19,7 @@ from fastapi import APIRouter, Depends, Header, HTTPException, Query, Response, 
 from sqlalchemy.orm import Session
 
 from app.db import get_db
+from app.enrichment.fx import FxService, get_fx_service
 from app.fraud import FEATURE_NAMES, FeatureExtractor, FraudExplainer
 from app.fraud.decision import Decision
 from app.fraud.explainer import get_explainer, top_contributors
@@ -202,6 +203,7 @@ def create_transaction(
         description="Stripe-style request key; required, 1-64 chars.",
     ),
     db: Session = Depends(get_db),
+    fx: FxService = Depends(get_fx_service),
 ) -> TransactionScored:
     """Persist a transaction and cache the response for replay.
 
@@ -251,6 +253,12 @@ def create_transaction(
     )
     db.add(tx)
     db.flush()  # surface FK / CHECK violations before scoring
+
+    # Phase 5F: attach the reporting-currency figure. Writes only the
+    # four derived FX columns — `amount` and `currency` stay as
+    # submitted — and cannot raise, so a provider outage costs the row
+    # its converted amount and nothing else. See docs/FX_CONTRACT.md.
+    fx.enrich(db, tx)
 
     # Phase 3C-2: end-to-end scoring. `score_transaction` reads the just-
     # added Transaction back through the session, runs rules + ML + SHAP,
