@@ -2,6 +2,7 @@ import { KpiTiles } from "../components/dashboard/KpiTiles";
 import { FraudRateChart } from "../components/dashboard/FraudRateChart";
 import { VolumeSparkline } from "../components/dashboard/VolumeSparkline";
 import { CountryBreakdownTable } from "../components/dashboard/CountryBreakdownTable";
+import { ModelDataPanel } from "../components/dashboard/ModelDataPanel";
 
 /**
  * Live dashboard overview.
@@ -29,7 +30,12 @@ export function DashboardPage() {
         <VolumeSparkline />
       </div>
 
-      <CountryBreakdownTable />
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+        <div className="lg:col-span-2">
+          <CountryBreakdownTable />
+        </div>
+        <ModelDataPanel />
+      </div>
     </div>
   );
 }

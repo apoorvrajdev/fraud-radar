@@ -6,6 +6,7 @@ import {
 } from "lucide-react";
 import { cn } from "../../lib/cn";
 import { demoSnapshotDate, isDemoMode } from "../../lib/demoMode";
+import { useModelInfo } from "../../hooks/useModelInfo";
 
 interface NavItem {
   to: string;
@@ -82,11 +83,37 @@ export function Sidebar() {
         })}
       </nav>
 
-      <div className="px-5 py-3 border-t border-neutral-800 text-[10px] text-neutral-600">
-        {isDemoMode()
-          ? `Demo · snapshot from ${demoSnapshotDate()}`
-          : "Phase 3H · live"}
+      <div className="px-5 py-3 border-t border-neutral-800 space-y-1">
+        <ModelBadge />
+        <div className="text-[10px] text-neutral-600">
+          {isDemoMode()
+            ? `Demo · snapshot from ${demoSnapshotDate()}`
+            : "Live backend"}
+        </div>
       </div>
     </aside>
+  );
+}
+
+/**
+ * Compact serving-model line. Names the dataset and featureset the API
+ * is actually running, not the phase of the build — a phase number
+ * goes stale on the next commit and tells a reviewer nothing about
+ * what produced the numbers on screen. The full provenance, including
+ * which tracks are benchmark-only, is on the dashboard panel.
+ */
+function ModelBadge() {
+  const { data } = useModelInfo();
+  if (!data) return null;
+
+  const trained = data.serving.trained_at_utc?.slice(0, 10);
+  return (
+    <div
+      className="truncate font-mono text-[10px] text-neutral-500"
+      title={`Serving ${data.serving.dataset_name} (${data.serving.dataset_kind}) on featureset ${data.serving.featureset_version}. ${data.serving.metrics_caveat}`}
+    >
+      model: {data.serving.dataset_name} · {data.serving.featureset_version}
+      {trained ? ` · ${trained}` : ""}
+    </div>
   );
 }

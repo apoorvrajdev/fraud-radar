@@ -138,6 +138,12 @@ async function handleStatsOverview(
   return asResponse(await loadJson("/stats-overview.json"), config);
 }
 
+async function handleModelInfo(
+  config: InternalAxiosRequestConfig,
+): Promise<AxiosResponse> {
+  return asResponse(await loadJson("/model.json"), config);
+}
+
 async function handleStatsTimeseries(
   config: InternalAxiosRequestConfig,
 ): Promise<AxiosResponse> {
@@ -232,6 +238,7 @@ function resolveHandler(
   if (url === "/transactions" || url === "/transactions/")
     return handleTransactionsList;
   if (url === "/alerts" || url === "/alerts/") return handleAlerts;
+  if (url === "/model" || url === "/model/") return handleModelInfo;
   const detailMatch = TX_DETAIL_RE.exec(url);
   if (detailMatch) {
     const id = detailMatch[1];
