@@ -173,11 +173,15 @@ Every row below states what its model was trained on, what it was evaluated on, 
 
 ### A. In-distribution — trained and evaluated on the same corpus
 
-| Result | Test rows | Test frauds | Prevalence | PR-AUC | ROC-AUC | Recall @ 1% FPR | Recall @ 5% FPR |
-|---|---|---|---|---|---|---|---|
-| Synthetic baseline (`synthetic_v1`) | 7,502 | 93 | 0.0124 | **0.9327** | 0.9989 | 0.9785 | 1.0000 |
-| Sparkov, 200-card development run | 53,922 | 159 | 0.0029 | **0.9196** | 0.9985 | 0.9748 | 0.9937 |
-| Sparkov, full corpus (999 cards) | 277,860 | 924 | 0.0033 | **0.8653** | 0.9963 | 0.9459 | 0.9838 |
+Every run splits its corpus **chronologically 70/15/15** — train, then validation, then test, in time order with no shuffling. Hyperparameters are searched on the train fold, the operating threshold is chosen on the validation fold, and the test fold is scored **once**. The "Corpus" column below is the whole dataset; **every metric is measured on the held-out test fold alone**, which is the 15% beside it.
+
+| Result | Corpus | Held-out test fold | Frauds in test fold | Test prevalence | PR-AUC | ROC-AUC | Recall @ 1% FPR | Recall @ 5% FPR |
+|---|---|---|---|---|---|---|---|---|
+| Synthetic baseline (`synthetic_v1`) | 50,010 | 7,502 | 93 | 0.0124 | **0.9327** | 0.9989 | 0.9785 | 1.0000 |
+| Sparkov, 200-card development run | 359,472 | 53,922 | 159 | 0.0029 | **0.9196** | 0.9985 | 0.9748 | 0.9937 |
+| Sparkov, full corpus (999 cards) | 1,852,394 | 277,860 | 924 | 0.0033 | **0.8653** | 0.9963 | 0.9459 | 0.9838 |
+
+So the synthetic baseline's 0.9327 is measured on 7,502 transactions holding 93 frauds — the last 15% of the 50,010-row corpus by time — not on the corpus as a whole.
 
 At each operating threshold, chosen on that run's own validation fold at FPR ≤ 1%:
 
@@ -192,9 +196,11 @@ At each operating threshold, chosen on that run's own validation fold at FPR ≤
 > **Model trained on the in-house synthetic generator → evaluated on Sparkov's test fold, not retrained.**
 > Nothing was selected on Sparkov data: no threshold, no calibration, no feature selection, no tuning.
 
-| | Test rows | Test frauds | Prevalence | PR-AUC | ROC-AUC | Recall @ 1% FPR | Recall @ 5% FPR |
-|---|---|---|---|---|---|---|---|
-| synthetic_v1 → sparkov_v1_full | 277,860 | 924 | 0.0033 | **0.0087** | 0.7354 | 0.0390 | 0.0530 |
+| | Target corpus | Held-out test fold | Frauds in test fold | Test prevalence | PR-AUC | ROC-AUC | Recall @ 1% FPR | Recall @ 5% FPR |
+|---|---|---|---|---|---|---|---|---|
+| synthetic_v1 → sparkov_v1_full | 1,852,394 | 277,860 | 924 | 0.0033 | **0.0087** | 0.7354 | 0.0390 | 0.0530 |
+
+The evaluation population is the *same* 277,860-row Sparkov test fold as the last row of table A, which is what makes the two directly comparable: only the model changed.
 
 Applying the source model's own threshold (0.7431) unchanged to the target fold:
 
@@ -206,13 +212,13 @@ Applying the source model's own threshold (0.7431) unchanged to the target fold:
 
 ### C. ULB — real anonymised data, isolated track
 
-Three pre-registered random states, shown side by side and **never averaged**. Seed 42 is the primary; 43 and 44 are its pre-registered repeats, so they show how much a result moves with the fit's randomness — not a confidence interval.
+Three pre-registered random states, shown side by side and **never averaged**. Seed 42 is the primary; 43 and 44 are its pre-registered repeats, so they show how much a result moves with the fit's randomness — not a confidence interval. All three split the same 284,807-row corpus chronologically 70/15/15 (train 199,364 / val 42,721 / test 42,722) and differ only in the random state.
 
-| Run | Role | Test rows | Test frauds | Prevalence | PR-AUC | ROC-AUC | Recall @ 1% FPR | Recall @ 5% FPR |
-|---|---|---|---|---|---|---|---|---|
-| `ulb_pca_v1_seed42` | primary | 42,722 | 52 | 0.0012 | **0.7670** | 0.9751 | 0.8269 | 0.8654 |
-| `ulb_pca_v1_seed43` | repeat | 42,722 | 52 | 0.0012 | 0.7569 | 0.9760 | 0.8077 | 0.8462 |
-| `ulb_pca_v1_seed44` | repeat | 42,722 | 52 | 0.0012 | 0.7751 | 0.9803 | 0.8462 | 0.8846 |
+| Run | Role | Corpus | Held-out test fold | Frauds in test fold | Test prevalence | PR-AUC | ROC-AUC | Recall @ 1% FPR | Recall @ 5% FPR |
+|---|---|---|---|---|---|---|---|---|---|
+| `ulb_pca_v1_seed42` | primary | 284,807 | 42,722 | 52 | 0.0012 | **0.7670** | 0.9751 | 0.8269 | 0.8654 |
+| `ulb_pca_v1_seed43` | repeat | 284,807 | 42,722 | 52 | 0.0012 | 0.7569 | 0.9760 | 0.8077 | 0.8462 |
+| `ulb_pca_v1_seed44` | repeat | 284,807 | 42,722 | 52 | 0.0012 | 0.7751 | 0.9803 | 0.8462 | 0.8846 |
 
 ULB runs on its own featureset, `ulb_pca_v1` — the 28 published components plus the amount, as published — which is deliberately **kept out of the production 17-feature registry, so a ULB run can be neither promoted nor served**. The test fold holds 52 frauds among 42,722 rows, so a handful of rows moves every figure on that card.
 
