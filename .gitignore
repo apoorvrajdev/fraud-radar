@@ -73,3 +73,7 @@ backend/ml/artifacts/runs/**/*.png
 
 # Debug PNGs from curl-based endpoint testing
 backend/*.png
+
+# Generated launch-video output (plan, composition, mp4, poster, share copy)
+brag-output/
+brag-output-*/
