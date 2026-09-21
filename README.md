@@ -27,7 +27,9 @@
 
 A short technical demo of Fraud Radar's real-time fraud scoring, explainability and analyst workflow.
 
-[**▶ Watch the Fraud Radar Demo**](docs/media/Fraud-Radar-Demo.mp4)
+[![Fraud Radar Demo](docs/media/Fraud-Radar-Demo.png)](https://github.com/apoorvrajdev/fraud-radar/raw/refs/heads/main/docs/media/Fraud-Radar-Demo.mp4)
+
+**▶ Watch the 25-second demo**
 
 ---
 
