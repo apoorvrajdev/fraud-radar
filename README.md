@@ -23,6 +23,12 @@
   <a href="https://www.loom.com/share/a4fb7eb81ba7496e80e300a36c41617b">Walkthrough</a>
 </p>
 
+## 🎬 Product Demo
+
+A short technical demo of Fraud Radar's real-time fraud scoring, explainability and analyst workflow.
+
+[**▶ Watch the Fraud Radar Demo**](docs/media/Fraud-Radar-Demo.mp4)
+
 ---
 
 Transactions arrive over HTTP, get scored by a rules engine plus an XGBoost model in single-digit milliseconds, carry a SHAP attribution for every decision, and land in an analyst review queue with an append-only audit trail. That is the product.
