@@ -77,3 +77,6 @@ backend/*.png
 # Generated launch-video output (plan, composition, mp4, poster, share copy)
 brag-output/
 brag-output-*/
+
+# Per-user local settings; the shared config beside it is committed
+.claude/settings.local.json
