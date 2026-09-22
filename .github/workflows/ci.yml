@@ -53,7 +53,7 @@ jobs:
         run: uv run pytest
 
   frontend:
-    name: Frontend — tsc, vite build
+    name: Frontend — tsc, eslint, vite build
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -72,6 +72,9 @@ jobs:
 
       - name: Type-check (tsc)
         run: npx tsc -b
+
+      - name: Lint (eslint)
+        run: npx eslint .
 
       # VITE_DEMO_MODE mirrors the Vercel demo build, so CI compiles the same
       # code path the public deployment ships.

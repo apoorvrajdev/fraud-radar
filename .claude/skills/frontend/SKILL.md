@@ -39,7 +39,7 @@ Add to this list whenever a bug escapes.
 There is no frontend test runner. From `frontend/`:
 
 1. `npx tsc -b`
-2. `npx eslint .` — not in CI, currently clean; keep it clean
+2. `npx eslint .`
 3. `VITE_DEMO_MODE=true npm run build` — the build CI and Vercel ship
 4. Behaviour — run it and walk the changed flow with the browser console open. A display-only
    tweak needs the changed view in one mode; anything touching data, routes or state needs both:
