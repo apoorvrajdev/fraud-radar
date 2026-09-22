@@ -426,12 +426,18 @@ uv run python -m app.simulator.main --rate 1 --fraud-rate 0.10 \
   --currency-mix "USD:0.72,EUR:0.11,GBP:0.07,CAD:0.04,CHF:0.03,AUD:0.03"
 ```
 
-Tests and checks — the same gate CI runs:
+Tests and checks — [`.github/workflows/ci.yml`](.github/workflows/ci.yml) is the authoritative gate; locally:
 
 ```bash
-cd backend && uv run pytest              # 1,407 tests
-cd backend && uv run ruff check app tests && uv run mypy app
-cd frontend && npx tsc -b && npm run build
+cd backend
+uv run pytest                      # 1,407 tests; scoring-endpoint tests skip without a trained model (CI trains one first)
+uv run ruff check app tests        # CI also lints alembic/env.py and the ml/ modules listed in the workflow
+uv run mypy app                    # strict; CI also type-checks the listed ml/ modules
+
+cd ../frontend
+npx tsc -b
+npx eslint .
+VITE_DEMO_MODE=true npm run build  # the demo-mode build that CI and the Vercel deploy compile
 ```
 
 Reproducing the benchmarks (corpora are acquired locally and verified against pinned SHA-256 digests; neither is committed) is documented in the [benchmark card](backend/ml/BENCHMARK_CARD.md) and the [ULB card](backend/ml/ULB_BENCHMARK_CARD.md), with the full command set in [`docs/PHASE_5_PLAN.md`](docs/PHASE_5_PLAN.md).

@@ -148,7 +148,6 @@ Level 2+: files changed · checks run (command → result) · deviations and ass
 - **Skips hide coverage.** Scoring integration tests skip without `backend/ml/artifacts/model.json` (gitignored; CI trains a tiny one); `test_demo_snapshot` skips without `frontend/public/demo-data/manifest.json`.
 - **Demo mode breaks quietly.** It branches only in `frontend/src/lib/api.ts` → `demoApi.ts`; every route the UI calls needs a demo handler and snapshot data.
 - **Generated files are regenerated, never edited:** `backend/ml/BENCHMARK_CARD.md`, `ULB_BENCHMARK_CARD.md`, `MODEL_CARD.md`, `frontend/public/demo-data/`.
-- **The README's "Tests and checks" block is a subset of CI.** Use the table above.
 
 ## Phased Work Rules
 
