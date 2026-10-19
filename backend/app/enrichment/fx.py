@@ -24,6 +24,7 @@ from dataclasses import dataclass
 from datetime import UTC, date, datetime, timedelta
 from decimal import ROUND_HALF_UP, Decimal, localcontext
 
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.config import get_settings
@@ -205,20 +206,46 @@ class FxService:
             else:
                 if fetched is not None:
                     rate = quantize_rate(fetched.rate)
-                    fx_rate_repository.upsert(
+                    if rate <= 0:
+                        # The provider's checks run on the raw value; a
+                        # positive rate below half of 1e-8 passes them and
+                        # rounds to zero here. The column forbids it, and
+                        # an older rate would price today's answer at a
+                        # different number — so this is no rate at all.
+                        log.warning(
+                            "FX rate for %s on %s rounds to zero at 8 places",
+                            quote,
+                            on,
+                        )
+                        return FxLookup(
+                            rate=None, rate_date=None, source=SOURCE_UNAVAILABLE
+                        )
+                    if self._cache(
+                        db, quote=quote, rate_date=fetched.rate_date, rate=rate
+                    ):
+                        return FxLookup(
+                            rate=rate,
+                            rate_date=fetched.rate_date,
+                            source=SOURCE_LIVE,
+                        )
+                    # The cache refused a valid rate: another request
+                    # stored this date first, after our fresh read. Read
+                    # it back as the cache hit it now is.
+                    raced = fx_rate_repository.latest_on_or_before(
                         db,
                         base=self.base_currency,
                         quote=quote,
-                        rate_date=fetched.rate_date,
-                        rate=rate,
-                        fetched_at=datetime.now(UTC),
+                        on=on,
+                        max_age_days=self._cache_max_age_days,
                     )
-                    return FxLookup(
-                        rate=rate,
-                        rate_date=fetched.rate_date,
-                        source=SOURCE_LIVE,
-                    )
-                log.warning("FX provider has no rate for %s on %s", quote, on)
+                    if raced is not None:
+                        return FxLookup(
+                            rate=raced.rate,
+                            rate_date=raced.rate_date,
+                            source=SOURCE_CACHE,
+                        )
+                else:
+                    log.warning("FX provider has no rate for %s on %s", quote, on)
 
         # Stale fallback: the most recent rate that could have applied,
         # however old. Still bounded by `rate_date <= on`, so this is
@@ -238,6 +265,40 @@ class FxService:
             )
 
         return FxLookup(rate=None, rate_date=None, source=SOURCE_UNAVAILABLE)
+
+    def _cache(
+        self, db: Session, *, quote: str, rate_date: date, rate: Decimal
+    ) -> bool:
+        """Write a fetched rate into the cache. False if the database refused it.
+
+        The write runs inside a savepoint so a refused flush cannot leave
+        the request session needing a rollback — see `docs/FX_CONTRACT.md`,
+        "Nor does it poison the session". Only `IntegrityError` counts as
+        refused; anything else propagates, on a session that is still
+        usable. The savepoint relies on the ingestion path having flushed
+        the transaction row first: on pysqlite a SAVEPOINT issued before
+        any DML commits on RELEASE.
+        """
+        try:
+            with db.begin_nested():
+                fx_rate_repository.upsert(
+                    db,
+                    base=self.base_currency,
+                    quote=quote,
+                    rate_date=rate_date,
+                    rate=rate,
+                    fetched_at=datetime.now(UTC),
+                )
+        except IntegrityError as exc:
+            log.warning(
+                "FX cache refused %s->%s for %s: %s",
+                quote,
+                self.base_currency,
+                rate_date,
+                exc.orig,
+            )
+            return False
+        return True
 
     # -- conversion ---------------------------------------------------------
 

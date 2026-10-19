@@ -21,7 +21,7 @@ failures are raised rather than produced by an unreachable host.
 from __future__ import annotations
 
 from collections.abc import Iterator
-from datetime import UTC, date, datetime
+from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal
 
 import pytest
@@ -497,3 +497,164 @@ def test_disabling_fx_leaves_the_identity_path_working(
 
     assert result.amount_base == Decimal("42.50")
     assert provider.calls == []
+
+
+# ---------------------------------------------------------------------------
+# Cache writes the database refuses
+# ---------------------------------------------------------------------------
+#
+# The rate write happens on the request session, after the transaction row
+# has been flushed and before scoring reads it back. A refused write must
+# not leave that session needing a rollback: the next statement would raise
+# PendingRollbackError and take the whole transaction with it.
+
+
+def _flushed_transaction(db: Session, **kwargs: str) -> Transaction:
+    """A row staged exactly as the ingestion path stages it before `enrich`."""
+    tx = _transaction(**kwargs)
+    db.add(tx)
+    db.flush()
+    return tx
+
+
+def _refused_by_the_database(
+    db: Session, *, base: str, quote: str, rate_date: date,
+    rate: Decimal, fetched_at: datetime,
+) -> FxRate:
+    """A stand-in `upsert` whose flush the database genuinely rejects.
+
+    Writes a zero rate so `ck_fx_rates_rate_positive` raises inside the
+    real flush — the same session state a lost primary-key race leaves
+    behind, without needing a second connection to produce it.
+    """
+    row = FxRate(
+        base=base, quote=quote, rate_date=rate_date,
+        rate=Decimal("0"), fetched_at=fetched_at,
+    )
+    db.add(row)
+    db.flush()
+    return row
+
+
+def test_a_refused_cache_write_does_not_poison_the_session(
+    db_session: Session, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A flush the database rejects marks the session as needing a
+    rollback; uncontained, the caller's next statement raises
+    PendingRollbackError. With nothing to read back the row is simply
+    unconverted, and the session the caller goes on to commit must work."""
+    monkeypatch.setattr(fx_rate_repository, "upsert", _refused_by_the_database)
+    service = _service(WorkingProvider("1.1022"))
+    tx = _flushed_transaction(db_session, currency="EUR")
+
+    service.enrich(db_session, tx)
+
+    assert tx.fx_source == SOURCE_UNAVAILABLE
+    assert tx.amount_base is None
+    assert tx.fx_rate is None
+    db_session.commit()  # the session must not need a rollback
+    db_session.expire_all()
+    reloaded = db_session.get(Transaction, tx.id)
+    assert reloaded is not None
+    assert reloaded.amount == Decimal("100.00")
+    assert reloaded.fx_source == SOURCE_UNAVAILABLE
+    assert db_session.get(FxRate, ("USD", "EUR", TX_DATE)) is None
+
+
+def test_a_refused_cache_write_leaves_the_flushed_transaction_pending(
+    db_session: Session, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Containing the failed write must not roll back the work staged
+    before it: the transaction row flushed ahead of enrichment survives
+    to the caller's commit."""
+    monkeypatch.setattr(fx_rate_repository, "upsert", _refused_by_the_database)
+    service = _service(WorkingProvider("1.1022"))
+    tx = _flushed_transaction(db_session, currency="EUR")
+
+    service.enrich(db_session, tx)
+    db_session.commit()
+
+    db_session.expire_all()
+    assert db_session.get(Transaction, tx.id) is not None
+
+
+def test_a_lost_cache_write_race_reads_the_winner_back_as_a_cache_hit(
+    db_session: Session, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Two requests fetch the first rate for a date; the other commits
+    first. Our fresh read ran before that commit and missed, `db.get`
+    misses for the same reason, and the insert collides on the primary
+    key. The write is contained, and the winner's row — the right rate
+    for exactly this date — is read back and labelled as the cache hit
+    it now is, not as stale."""
+    _seed_rate(db_session, quote="EUR", rate_date=TX_DATE, rate="1.1022")
+    db_session.commit()
+    real_read = fx_rate_repository.latest_on_or_before
+    reads = {"n": 0}
+
+    def read_before_the_winner_committed(*args: object, **kwargs: object) -> object:
+        reads["n"] += 1
+        return None if reads["n"] == 1 else real_read(*args, **kwargs)
+
+    monkeypatch.setattr(
+        fx_rate_repository, "latest_on_or_before", read_before_the_winner_committed
+    )
+    monkeypatch.setattr(db_session, "get", lambda *args, **kwargs: None)
+    provider = WorkingProvider("1.1022")
+    service = _service(provider)
+    tx = _flushed_transaction(db_session, currency="EUR")
+
+    service.enrich(db_session, tx)
+
+    monkeypatch.undo()
+    assert provider.calls == [("USD", "EUR", TX_DATE)]
+    assert tx.fx_source == SOURCE_CACHE
+    assert tx.fx_rate == Decimal("1.1022")
+    assert tx.fx_rate_date == TX_DATE
+    assert tx.amount_base == Decimal("110.2200")
+    db_session.commit()  # the session must not need a rollback
+    db_session.expire_all()
+    reloaded = db_session.get(Transaction, tx.id)
+    assert reloaded is not None
+    assert reloaded.fx_source == SOURCE_CACHE
+
+
+def test_a_rate_that_rounds_to_zero_is_unavailable_not_stale(
+    db_session: Session,
+) -> None:
+    """A positive provider rate below half of 1e-8 rounds to 0E-8. The
+    column forbids it, and pricing today's amount at an older cached rate
+    instead would be a different number — so nothing is converted, even
+    with a stale rate on hand."""
+    _seed_rate(
+        db_session, quote="XXX", rate_date=TX_DATE - timedelta(days=90),
+        rate="0.00000100",
+    )
+    db_session.commit()
+    service = _service(WorkingProvider("0.000000004"))
+    tx = _flushed_transaction(db_session, currency="XXX")
+
+    service.enrich(db_session, tx)
+
+    assert tx.fx_source == SOURCE_UNAVAILABLE
+    assert tx.amount_base is None
+    assert tx.fx_rate is None
+    assert db_session.get(FxRate, ("USD", "XXX", TX_DATE)) is None
+    db_session.commit()
+
+
+def test_a_cached_rate_is_not_committed_ahead_of_the_transaction(
+    db_session: Session,
+) -> None:
+    """The savepoint around the rate write must nest inside the request's
+    transaction, not commit on its own: rolling the session back after a
+    successful enrichment discards the rate together with the row."""
+    service = _service(WorkingProvider("1.1022"))
+    tx = _flushed_transaction(db_session, currency="EUR")
+
+    service.enrich(db_session, tx)
+    assert tx.fx_source == SOURCE_LIVE
+    db_session.rollback()
+
+    assert db_session.get(FxRate, ("USD", "EUR", TX_DATE)) is None
+    assert db_session.get(Transaction, tx.id) is None

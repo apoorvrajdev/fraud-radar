@@ -21,7 +21,7 @@ from typing import Any
 import numpy as np
 import pytest
 from fastapi.testclient import TestClient
-from sqlalchemy import create_engine, select
+from sqlalchemy import create_engine, func, select
 from sqlalchemy.orm import Session, sessionmaker
 from sqlalchemy.pool import StaticPool
 
@@ -37,6 +37,7 @@ from app.fraud.explainer import LocalExplanation
 from app.main import app
 from app.models import AuditLog, Customer, Merchant, Transaction
 from app.models.base import Base
+from app.models.fx_rate import FxRate
 from app.repositories.fx_rate import fx_rate_repository
 
 KNOWN_CUSTOMER_ID = "11111111-1111-1111-1111-111111111111"
@@ -438,3 +439,44 @@ def test_a_replayed_request_does_not_refetch_the_rate(
     assert second.status_code == 201
     assert second.headers.get("X-Idempotency-Replay") == "true"
     assert len(provider.calls) == 1
+
+
+def test_a_rate_the_cache_refuses_does_not_fail_the_transaction(
+    db_session: Session, make_client: Any, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The cache write runs on the request session between the transaction
+    insert and the scoring read. A flush the database rejects — here a
+    zero rate against `ck_fx_rates_rate_positive`, the same session state
+    a lost primary-key race leaves — poisons the session if uncontained,
+    and the request dies with PendingRollbackError. The row must still be
+    scored, persisted and audited, with no converted amount."""
+    def refused(
+        db: Session, *, base: str, quote: str, rate_date: date,
+        rate: Decimal, fetched_at: datetime,
+    ) -> FxRate:
+        row = FxRate(
+            base=base, quote=quote, rate_date=rate_date,
+            rate=Decimal("0"), fetched_at=fetched_at,
+        )
+        db.add(row)
+        db.flush()
+        return row
+
+    monkeypatch.setattr(fx_rate_repository, "upsert", refused)
+    client = make_client(_Provider(rate="1.1022"))
+
+    response = _post(client, "fx-refused-1", currency="EUR", amount="250.00")
+
+    assert response.status_code == 201, response.text
+    body = response.json()
+    assert body["decision"] == "APPROVE"
+
+    row = _row(db_session, body["transaction_id"])
+    assert row.amount == Decimal("250.0000")
+    assert row.currency == "EUR"
+    assert row.amount_base is None
+    assert row.fx_rate is None
+    assert row.fx_source == "unavailable"
+    assert _scoring_payload(db_session, body["transaction_id"])["fx_source"] == "unavailable"
+    # Nothing was cached: the refused row was rolled back, not committed.
+    assert db_session.execute(select(func.count()).select_from(FxRate)).scalar_one() == 0
