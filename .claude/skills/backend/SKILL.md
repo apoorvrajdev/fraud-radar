@@ -49,6 +49,9 @@ Add to this list whenever a bug escapes.
 - Decimal quantisation at the schema boundary; no float anywhere on the path
 - A transaction in the reporting currency takes the FX identity path with no lookup
 - FX provider timeout, error or stale cache → the transaction is still scored, never failed
+- A cache write the database refuses (the `fx_rates` key already exists) is rolled back to a
+  savepoint; the session stays usable and the row is still scored. A rate that rounds to zero
+  at eight places is `unavailable`, never a stale fallback
 - Idempotent replay returns the stored response and writes no second row
 - A lost race on a fresh key replays the winner (or 409s on a different body); an expired key
   answers 409; neither leaves an orphaned transaction row or surfaces as a 500

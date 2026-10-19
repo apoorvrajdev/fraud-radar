@@ -140,6 +140,8 @@ the four sources produced it.
 | Malformed response (see below) | stale fallback, else `unavailable` |
 | Requested date is in the future | `unavailable`, no network call |
 | Transaction has no timestamp | `unavailable`, no network call |
+| Provider rate rounds to zero at eight places | `unavailable`, nothing written — an older rate would be a different price |
+| Database refuses the cache write (another request stored the same date first) | the write is rolled back to a savepoint; the winner's row is read back as `cache`, else stale fallback, else `unavailable` |
 
 A response is malformed if it is not JSON, is not a single-element array, is missing
 a field, names a different base or quote than was asked for, carries a
@@ -154,6 +156,21 @@ different responses from an operator.
 provider outage cannot stop a transaction being scored, decided, persisted or
 audited. A transaction that could not be converted is a completely normal row with
 four null columns.
+
+**Nor does it poison the session.** The fetched rate is written to `fx_rates` on the
+request session, after the transaction row has been flushed and before scoring reads
+it back. A write the database rejects would otherwise leave that session needing a
+rollback, and the scoring read would then raise `PendingRollbackError`, failing the
+request and persisting nothing. The write therefore runs inside a savepoint: a refused
+row is rolled back to the savepoint, the transaction row flushed before it stays
+pending, and the fresh cache read runs again — on the ingestion path a refusal means a
+concurrent request stored that date first, and its row is the answer, labelled
+`cache`. Only `IntegrityError` is treated as a refusal; anything else is contained by
+`enrich` as before, on a session that is still usable. A rate that rounds to zero at
+the eight places the column stores is caught before any write and answers
+`unavailable`: the provider's positivity check runs on the raw value, so a rate below
+half of 1e-8 passes it, and pricing the amount at an older cached rate instead would be
+a different number.
 
 ## What is stored
 
