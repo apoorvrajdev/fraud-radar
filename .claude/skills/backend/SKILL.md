@@ -50,6 +50,8 @@ Add to this list whenever a bug escapes.
 - A transaction in the reporting currency takes the FX identity path with no lookup
 - FX provider timeout, error or stale cache → the transaction is still scored, never failed
 - Idempotent replay returns the stored response and writes no second row
+- A lost race on a fresh key replays the winner (or 409s on a different body); an expired key
+  answers 409; neither leaves an orphaned transaction row or surfaces as a 500
 - Keyset pagination: stable order, a cursor on the boundary row, an empty last page
 - Unknown ids answer 404 (`HTTPException` in the router), never 500
 

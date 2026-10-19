@@ -287,7 +287,7 @@ ULB is **real** card data, so it answers a question no generator can. But its fe
 
 ## Production engineering
 
-**Ingestion and idempotency.** `POST /api/v1/transactions` requires an `Idempotency-Key`. Same key + same body replays the cached response with `X-Idempotency-Replay: true`; same key + different body returns 409. The cache key is a SHA-256 over `TransactionCreate(**body).model_dump_json()` — not raw HTTP bytes — so it is stable across whitespace and field reordering by intermediaries. 24-hour TTL.
+**Ingestion and idempotency.** `POST /api/v1/transactions` requires an `Idempotency-Key`. Same key + same body replays the cached response with `X-Idempotency-Replay: true`; same key + different body returns 409. The cache key is a SHA-256 over `TransactionCreate(**body).model_dump_json()` — not raw HTTP bytes — so it is stable across whitespace and field reordering by intermediaries. 24-hour TTL; an expired key answers 409 rather than being recycled, and a request that loses a race on a fresh key rolls back and replays the winner's response — neither failure mode can surface as a 500.
 
 **Scoring and audit.** One context load serves both the rules engine and the feature extractor (the 180-day window matches the longest rule lookback). A HARD_BLOCK short-circuits the model entirely. Every decision writes one audit row with the actor, the action, and the payload. Service-layer latency p50 3.7 ms / p95 5.8 ms; endpoint p50 16 ms / p95 20 ms including routing, validation, commit and serialisation (n=500, developer laptop — full distribution in [`latency_metrics.json`](backend/ml/artifacts/latency_metrics.json)).
 

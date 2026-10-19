@@ -109,10 +109,31 @@ Going with **A**. SQLite serializes writes anyway, so this is mostly
 academic for the portfolio demo. Production-Postgres would use 
 advisory locks or an upsert with `RETURNING`.
 
+**As built.** The loser is detected by the unique constraint rather 
+than a rowcount, and it does not sleep. Both requests miss the lookup; 
+the first commit wins; the loser's insert raises `IntegrityError` — 
+on `uq_transactions_idempotency` at flush when the customer matches, 
+on the `idempotency_keys` primary key at commit otherwise. The 
+endpoint rolls back and calls `idempotency.resolve` again, which now 
+finds the winner and answers exactly as a later request would: replay 
+with `X-Idempotency-Replay: true` on a matching hash, 409 otherwise. 
+An `IntegrityError` with no row under that key afterwards is not an 
+idempotency collision and propagates unchanged. The same `resolve` 
+serves the normal pre-insert lookup, so the two paths cannot drift.
+
 ### TTL
 
-24-hour TTL on idempotency keys, enforced by `expires_at`. A cleanup 
-job is out of scope for Phase 3; rows just accumulate. If this were 
+24-hour TTL on idempotency keys, enforced by `expires_at`. After it 
+elapses the key answers 409 ("expired … send a new key"): the cached 
+response is no longer served, and the key cannot be recycled either, 
+because the row keeps its slot in `idempotency_keys` and in 
+`uq_transactions_idempotency` — a fresh insert under it would fail at 
+the constraint. A cleanup 
+job is out of scope for Phase 3; rows just accumulate. The lost-race 
+recovery above re-reads `idempotency_keys` only, so a future cleanup 
+that deletes expired rows must leave the recovery able to recognise 
+the `(customer_id, idempotency_key)` slot in `transactions` too, or a 
+retry under a purged key becomes a constraint error again. If this were 
 real, a daily cron or a `pg_cron` job would delete expired rows. At 
 simulator rate (~1 tx / 2s, full SHAP in response), the table grows 
 roughly 200 MB/day. Acceptable for SQLite portfolio scope; production 
