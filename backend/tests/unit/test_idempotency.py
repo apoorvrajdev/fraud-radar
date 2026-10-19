@@ -21,7 +21,14 @@ from app.models import Customer, Merchant, Transaction
 from app.models.base import Base
 from app.models.idempotency_key import IdempotencyKey
 from app.schemas.transaction import TransactionCreate
-from app.services.idempotency import TTL, hash_request, lookup, store
+from app.services.idempotency import (
+    TTL,
+    IdempotencyConflictError,
+    hash_request,
+    lookup,
+    resolve,
+    store,
+)
 
 _SEED_CUSTOMER_ID = "11111111-1111-1111-1111-111111111111"
 _SEED_MERCHANT_ID = "22222222-2222-2222-2222-222222222222"
@@ -200,3 +207,88 @@ def test_store_persists_and_is_retrievable(db_session: Session) -> None:
     assert fetched is not None
     assert fetched.response_body == '{"r":1}'
     assert fetched.status_code == 201
+
+
+# ---------------------------------------------------------------------------
+# lookup(include_expired=True) / resolve
+# ---------------------------------------------------------------------------
+
+
+def _add_entry(
+    db_session: Session, *, key: str, request_hash: str, expires_in: timedelta,
+) -> None:
+    now = datetime.now(UTC)
+    db_session.add(IdempotencyKey(
+        key=key,
+        request_hash=request_hash,
+        transaction_id=_SEED_TX_ID,
+        response_body='{"cached":true}',
+        status_code=201,
+        created_at=now + expires_in - TTL,
+        expires_at=now + expires_in,
+    ))
+    db_session.commit()
+
+
+def test_lookup_include_expired_returns_expired_row(db_session: Session) -> None:
+    _add_entry(
+        db_session, key="dead-key", request_hash="h", expires_in=-timedelta(hours=1),
+    )
+    assert lookup(db_session, "dead-key") is None
+    found = lookup(db_session, "dead-key", include_expired=True)
+    assert found is not None
+    assert found.key == "dead-key"
+
+
+def test_resolve_returns_none_for_unknown_key(db_session: Session) -> None:
+    assert resolve(db_session, key="never-seen", request_hash="h") is None
+
+
+def test_resolve_returns_live_entry_for_matching_hash(db_session: Session) -> None:
+    _add_entry(
+        db_session, key="live-key", request_hash="h", expires_in=timedelta(hours=1),
+    )
+    entry = resolve(db_session, key="live-key", request_hash="h")
+    assert entry is not None
+    assert entry.response_body == '{"cached":true}'
+
+
+def test_resolve_raises_for_different_payload(db_session: Session) -> None:
+    _add_entry(
+        db_session, key="live-key", request_hash="h", expires_in=timedelta(hours=1),
+    )
+    with pytest.raises(IdempotencyConflictError, match="different payload"):
+        resolve(db_session, key="live-key", request_hash="other")
+
+
+def test_resolve_raises_for_expired_key_even_with_matching_hash(
+    db_session: Session,
+) -> None:
+    """An expired key is never replayed and never recycled.
+
+    The row keeps its unique-constraint slot after `expires_at`, so a
+    reuse could not succeed as a fresh insert either — the only honest
+    answer is a conflict that tells the client to mint a new key.
+    """
+    _add_entry(
+        db_session, key="dead-key", request_hash="h", expires_in=-timedelta(hours=1),
+    )
+    with pytest.raises(IdempotencyConflictError, match="expired"):
+        resolve(db_session, key="dead-key", request_hash="h")
+
+
+def test_resolve_reports_expiry_before_payload_mismatch(db_session: Session) -> None:
+    _add_entry(
+        db_session, key="dead-key", request_hash="h", expires_in=-timedelta(hours=1),
+    )
+    with pytest.raises(IdempotencyConflictError, match="expired"):
+        resolve(db_session, key="dead-key", request_hash="other")
+
+
+def test_resolve_honours_injected_now(db_session: Session) -> None:
+    _add_entry(
+        db_session, key="live-key", request_hash="h", expires_in=timedelta(hours=1),
+    )
+    later = datetime.now(UTC) + timedelta(hours=2)
+    with pytest.raises(IdempotencyConflictError, match="expired"):
+        resolve(db_session, key="live-key", request_hash="h", now=later)

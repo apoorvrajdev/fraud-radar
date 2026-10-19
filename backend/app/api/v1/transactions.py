@@ -16,6 +16,7 @@ from typing import Annotated, Any
 
 import numpy as np
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, Response, status
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.db import get_db
@@ -24,6 +25,7 @@ from app.fraud import FEATURE_NAMES, FeatureExtractor, FraudExplainer
 from app.fraud.decision import Decision
 from app.fraud.explainer import get_explainer, top_contributors
 from app.fraud.plots import render_force_plot, render_waterfall_plot
+from app.models.idempotency_key import IdempotencyKey
 from app.models.transaction import Transaction
 from app.schemas.explanation import (
     ContributorEntry,
@@ -38,7 +40,12 @@ from app.schemas.transaction import (
     TransactionListQuery,
     TransactionScored,
 )
-from app.services.idempotency import hash_request, lookup, store
+from app.services.idempotency import (
+    IdempotencyConflictError,
+    hash_request,
+    resolve,
+    store,
+)
 from app.services.review import ReviewConflictError, apply_analyst_decision
 from app.services.scoring import score_transaction
 from app.services.transaction_detail import build_detail
@@ -186,11 +193,31 @@ def _scored_from_transaction(tx: Transaction) -> TransactionScored:
     )
 
 
+def _replay(response: Response, entry: IdempotencyKey) -> TransactionScored:
+    """Serve the cached response for a key seen before, flagged as a replay."""
+    response.headers["X-Idempotency-Replay"] = "true"
+    response.status_code = entry.status_code
+    return TransactionScored.model_validate_json(entry.response_body)
+
+
+def _resolve_or_409(
+    db: Session, *, key: str, request_hash: str,
+) -> IdempotencyKey | None:
+    """`idempotency.resolve`, with a conflict mapped to HTTP 409."""
+    try:
+        return resolve(db, key=key, request_hash=request_hash)
+    except IdempotencyConflictError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=str(exc),
+        ) from exc
+
+
 @router.post(
     "",
     status_code=status.HTTP_201_CREATED,
     response_model=TransactionScored,
-    summary="Ingest a new transaction (Phase 3B stub — scoring lands in 3C)",
+    summary="Ingest and score a new transaction (idempotent on Idempotency-Key)",
 )
 def create_transaction(
     payload: TransactionCreate,
@@ -205,27 +232,58 @@ def create_transaction(
     db: Session = Depends(get_db),
     fx: FxService = Depends(get_fx_service),
 ) -> TransactionScored:
-    """Persist a transaction and cache the response for replay.
+    """Score and persist a transaction, or replay the cached response.
 
     See `docs/adr/PHASE_3_DESIGN.md` "API surface" and "Idempotency design".
-    Phase 3B does not invoke the rules engine, the ML scorer, or the SHAP
-    explainer — those land in Phase 3C. The response carries
-    `decision=PENDING`, `fraud_score=None`, and empty
-    `rules_triggered` / `top_contributors`.
+
+      * 201 — scored and persisted (`X-Idempotency-Replay: true` when the
+        same key + body was seen before and the cached response is served).
+      * 409 — the key is taken: different body, or the 24-hour TTL elapsed.
+      * 422 — missing/invalid header or body.
+
+    Two requests racing on one key both miss the lookup; the first commit
+    wins and the loser's insert trips a unique constraint. The loser rolls
+    back and resolves the key again, which now finds the winner — so it
+    replays or answers 409 exactly as a later request would. An
+    `IntegrityError` that is not an idempotency collision (no row under
+    that key) propagates unchanged.
     """
     request_hash = hash_request(payload)
-    existing = lookup(db, idempotency_key)
-
+    existing = _resolve_or_409(db, key=idempotency_key, request_hash=request_hash)
     if existing is not None:
-        if existing.request_hash != request_hash:
-            raise HTTPException(
-                status_code=status.HTTP_409_CONFLICT,
-                detail="idempotency key reused with different payload",
-            )
-        response.headers["X-Idempotency-Replay"] = "true"
-        response.status_code = existing.status_code
-        return TransactionScored.model_validate_json(existing.response_body)
+        return _replay(response, existing)
 
+    try:
+        return _score_and_store(
+            db,
+            fx,
+            payload=payload,
+            idempotency_key=idempotency_key,
+            request_hash=request_hash,
+        )
+    except IntegrityError:
+        db.rollback()
+        winner = _resolve_or_409(
+            db, key=idempotency_key, request_hash=request_hash,
+        )
+        if winner is None:
+            raise
+        return _replay(response, winner)
+
+
+def _score_and_store(
+    db: Session,
+    fx: FxService,
+    *,
+    payload: TransactionCreate,
+    idempotency_key: str,
+    request_hash: str,
+) -> TransactionScored:
+    """The miss path: insert, enrich, score, cache and commit atomically.
+
+    Raises `sqlalchemy.exc.IntegrityError` at the flush or the commit when
+    another request committed the same key first; the caller recovers.
+    """
     tx_id = str(uuid.uuid4())
     now = datetime.now(UTC)
     tx = Transaction(

@@ -15,23 +15,29 @@ codes, idempotency, validation).
 from __future__ import annotations
 
 from collections.abc import Iterator
+from datetime import UTC, datetime, timedelta
 from typing import Any
 from uuid import UUID
 
 import numpy as np
 import pytest
 from fastapi.testclient import TestClient
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, func, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, sessionmaker
 from sqlalchemy.pool import StaticPool
 
+import app.api.v1.transactions as transactions_module
+import app.services.idempotency as idempotency_module
 from app.db import get_db
 from app.fraud.explainer import LocalExplanation
 from app.main import app
-from app.models import Customer, Merchant
+from app.models import Customer, Merchant, Transaction
 from app.models.base import Base
+from app.models.idempotency_key import IdempotencyKey
 
 KNOWN_CUSTOMER_ID = "11111111-1111-1111-1111-111111111111"
+OTHER_CUSTOMER_ID = "44444444-4444-4444-4444-444444444444"
 KNOWN_MERCHANT_ID = "22222222-2222-2222-2222-222222222222"
 
 
@@ -72,6 +78,14 @@ def db_session() -> Iterator[Session]:
         id=KNOWN_CUSTOMER_ID,
         email="seed@example.com",
         full_name="Seed Customer",
+        country="US",
+        risk_tier="LOW",
+        account_age_days=365,
+    ))
+    db.add(Customer(
+        id=OTHER_CUSTOMER_ID,
+        email="other@example.com",
+        full_name="Other Customer",
         country="US",
         risk_tier="LOW",
         account_age_days=365,
@@ -330,3 +344,141 @@ def test_get_returns_persisted_transaction(client: TestClient) -> None:
     # No analyst has reviewed yet.
     assert fetched["analyst_label"] is None
     assert fetched["audit"]  # scoring writes at least one audit row
+
+
+# ---------------------------------------------------------------------------
+# Idempotency failure modes — expired keys and lost races must never 500
+# ---------------------------------------------------------------------------
+
+
+def _transaction_count(db_session: Session) -> int:
+    return int(db_session.execute(select(func.count(Transaction.id))).scalar_one())
+
+
+def test_post_returns_409_for_expired_key(
+    client: TestClient, db_session: Session,
+) -> None:
+    """After the 24-hour TTL the key is neither replayed nor recycled.
+
+    Without the expiry-aware resolve the lookup misses, the endpoint
+    tries a fresh insert, and the `(customer_id, idempotency_key)`
+    constraint turns the request into a 500.
+    """
+    key = "k-expired-1"
+    first = client.post(
+        "/api/v1/transactions", json=_payload(),
+        headers={"Idempotency-Key": key},
+    )
+    assert first.status_code == 201, first.text
+
+    entry = db_session.get(IdempotencyKey, key)
+    assert entry is not None
+    # Age the row past its TTL. `created_at` moves too: the table checks
+    # `expires_at > created_at`.
+    expired_at = datetime.now(UTC) - timedelta(seconds=1)
+    entry.created_at = expired_at - timedelta(hours=24)
+    entry.expires_at = expired_at
+    db_session.commit()
+
+    second = client.post(
+        "/api/v1/transactions", json=_payload(),
+        headers={"Idempotency-Key": key},
+    )
+    assert second.status_code == 409, second.text
+    detail = second.json()["detail"].lower()
+    assert "expired" in detail
+    assert "new key" in detail
+    assert first.json()["transaction_id"] in detail
+    assert second.headers.get("X-Idempotency-Replay") is None
+    assert _transaction_count(db_session) == 1
+
+
+def _lose_the_race(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Make the endpoint's first `resolve` miss, as a racing request's would.
+
+    The winner has already committed. The loser read the cache before
+    that commit (stale miss), inserts, and trips the unique constraint;
+    its recovery `resolve` is the real one and must find the winner.
+    """
+    real_resolve = transactions_module.resolve
+    calls = {"n": 0}
+
+    def stale_then_real(db: Session, *, key: str, request_hash: str) -> Any:
+        calls["n"] += 1
+        if calls["n"] == 1:
+            return None
+        return real_resolve(db, key=key, request_hash=request_hash)
+
+    monkeypatch.setattr(transactions_module, "resolve", stale_then_real)
+
+
+def test_post_replays_after_losing_the_race_on_the_same_key(
+    client: TestClient, db_session: Session, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Same key, same body, same customer: the transactions constraint
+    fires at flush; the loser rolls back and serves the winner's response."""
+    key = "k-race-replay"
+    winner = client.post(
+        "/api/v1/transactions", json=_payload(),
+        headers={"Idempotency-Key": key},
+    )
+    assert winner.status_code == 201, winner.text
+
+    _lose_the_race(monkeypatch)
+    loser = client.post(
+        "/api/v1/transactions", json=_payload(),
+        headers={"Idempotency-Key": key},
+    )
+    assert loser.status_code == 201, loser.text
+    assert loser.headers.get("X-Idempotency-Replay") == "true"
+    assert loser.json() == winner.json()
+    assert _transaction_count(db_session) == 1
+
+
+def test_post_returns_409_after_losing_the_race_with_a_different_body(
+    client: TestClient, db_session: Session, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Same key, different customer: the transaction row inserts fine and
+    the `idempotency_keys` primary key fires at commit instead. The loser's
+    scored row must be rolled back, not left orphaned without a cache entry."""
+    key = "k-race-conflict"
+    winner = client.post(
+        "/api/v1/transactions", json=_payload(),
+        headers={"Idempotency-Key": key},
+    )
+    assert winner.status_code == 201, winner.text
+
+    _lose_the_race(monkeypatch)
+    loser = client.post(
+        "/api/v1/transactions",
+        json=_payload(customer_id=OTHER_CUSTOMER_ID),
+        headers={"Idempotency-Key": key},
+    )
+    assert loser.status_code == 409, loser.text
+    assert "different payload" in loser.json()["detail"].lower()
+    assert _transaction_count(db_session) == 1
+    orphan = db_session.execute(
+        select(Transaction).where(Transaction.customer_id == OTHER_CUSTOMER_ID)
+    ).scalar_one_or_none()
+    assert orphan is None
+
+
+def test_post_propagates_integrity_errors_that_are_not_idempotency_collisions(
+    client: TestClient, db_session: Session, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Only a collision on the key is recovered. Any other constraint
+    failure (no row under that key afterwards) is re-raised unchanged
+    rather than masked as a replay or a 409.
+
+    A negative TTL makes the real `store` violate the table's own
+    `expires_at > created_at` check at commit, so the handler runs
+    against a session the database genuinely failed, not a synthetic
+    exception raised before any statement."""
+    monkeypatch.setattr(idempotency_module, "TTL", timedelta(hours=-1))
+    with pytest.raises(IntegrityError, match="expires_after_created"):
+        client.post(
+            "/api/v1/transactions", json=_payload(),
+            headers={"Idempotency-Key": "k-unrelated-integrity"},
+        )
+    assert _transaction_count(db_session) == 0
+    assert db_session.get(IdempotencyKey, "k-unrelated-integrity") is None
