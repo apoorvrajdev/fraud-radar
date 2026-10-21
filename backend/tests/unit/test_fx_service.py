@@ -17,10 +17,10 @@ from datetime import UTC, date, datetime, timedelta, timezone
 from decimal import Decimal
 
 import pytest
-from sqlalchemy import create_engine
 from sqlalchemy.orm import Session, sessionmaker
 from sqlalchemy.pool import StaticPool
 
+from app.db import build_engine
 from app.enrichment.fx import (
     SOURCE_CACHE,
     SOURCE_IDENTITY,
@@ -67,12 +67,9 @@ class FakeProvider:
 
 @pytest.fixture
 def db_session() -> Iterator[Session]:
-    engine = create_engine(
-        "sqlite:///:memory:",
-        connect_args={"check_same_thread": False},
-        poolclass=StaticPool,
-        future=True,
-    )
+    # The application's engine factory: a live rate reaches the savepoint
+    # around the cache write, which must run as production runs it.
+    engine = build_engine("sqlite:///:memory:", poolclass=StaticPool)
     Base.metadata.create_all(engine)
     SessionTesting = sessionmaker(
         bind=engine, autoflush=False, expire_on_commit=False,

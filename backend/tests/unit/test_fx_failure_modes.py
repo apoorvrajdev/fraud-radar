@@ -25,10 +25,10 @@ from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal
 
 import pytest
-from sqlalchemy import create_engine
 from sqlalchemy.orm import Session, sessionmaker
 from sqlalchemy.pool import StaticPool
 
+from app.db import build_engine
 from app.enrichment.fx import (
     SOURCE_CACHE,
     SOURCE_LIVE,
@@ -103,12 +103,9 @@ class EmptyProvider(CountingProvider):
 
 @pytest.fixture
 def db_session() -> Iterator[Session]:
-    engine = create_engine(
-        "sqlite:///:memory:",
-        connect_args={"check_same_thread": False},
-        poolclass=StaticPool,
-        future=True,
-    )
+    # The application's engine factory, so the savepoint around the rate
+    # write runs under the transaction control production uses.
+    engine = build_engine("sqlite:///:memory:", poolclass=StaticPool)
     Base.metadata.create_all(engine)
     SessionTesting = sessionmaker(
         bind=engine, autoflush=False, expire_on_commit=False,
@@ -658,3 +655,19 @@ def test_a_cached_rate_is_not_committed_ahead_of_the_transaction(
 
     assert db_session.get(FxRate, ("USD", "EUR", TX_DATE)) is None
     assert db_session.get(Transaction, tx.id) is None
+
+
+def test_a_rate_fetched_before_any_other_write_is_still_the_callers_to_commit(
+    db_session: Session,
+) -> None:
+    """`get_rate` may be the first write a session makes. The ingestion
+    path happens to flush the transaction row before enrichment, but the
+    savepoint must not depend on that order: with nothing written before
+    it, rolling the session back must still discard the fetched rate."""
+    service = _service(WorkingProvider("1.1022"))
+
+    lookup = service.get_rate(db_session, quote="EUR", on=TX_DATE)
+
+    assert lookup.source == SOURCE_LIVE
+    db_session.rollback()
+    assert db_session.get(FxRate, ("USD", "EUR", TX_DATE)) is None

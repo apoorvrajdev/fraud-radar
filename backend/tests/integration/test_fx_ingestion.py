@@ -21,11 +21,11 @@ from typing import Any
 import numpy as np
 import pytest
 from fastapi.testclient import TestClient
-from sqlalchemy import create_engine, func, select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session, sessionmaker
 from sqlalchemy.pool import StaticPool
 
-from app.db import get_db
+from app.db import build_engine, get_db
 from app.enrichment.fx import FxService, get_fx_service
 from app.enrichment.provider import (
     FxProviderError,
@@ -90,12 +90,10 @@ class _Provider:
 
 @pytest.fixture
 def db_session() -> Iterator[Session]:
-    engine = create_engine(
-        "sqlite:///:memory:",
-        connect_args={"check_same_thread": False},
-        poolclass=StaticPool,
-        future=True,
-    )
+    # The application's engine factory, so the request path runs under the
+    # transaction control production uses: the rate write's savepoint
+    # must nest inside the request's transaction.
+    engine = build_engine("sqlite:///:memory:", poolclass=StaticPool)
     Base.metadata.create_all(engine)
     SessionTesting = sessionmaker(
         bind=engine, autoflush=False, expire_on_commit=False,

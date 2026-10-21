@@ -275,9 +275,11 @@ class FxService:
         the request session needing a rollback — see `docs/FX_CONTRACT.md`,
         "Nor does it poison the session". Only `IntegrityError` counts as
         refused; anything else propagates, on a session that is still
-        usable. The savepoint relies on the ingestion path having flushed
-        the transaction row first: on pysqlite a SAVEPOINT issued before
-        any DML commits on RELEASE.
+        usable. The savepoint nests inside the caller's transaction
+        whatever was written before it: on SQLite the engine issues BEGIN
+        ahead of the savepoint when the driver has not begun yet
+        (`app/db/session.py`), because the driver's default would let a
+        savepoint issued ahead of any DML commit on release.
         """
         try:
             with db.begin_nested():
