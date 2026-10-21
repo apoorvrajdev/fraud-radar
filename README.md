@@ -11,7 +11,7 @@
   <img src="https://img.shields.io/badge/React-19-61DAFB?style=flat-square&logo=react&logoColor=black" alt="React 19" />
   <img src="https://img.shields.io/badge/TypeScript-strict-3178C6?style=flat-square&logo=typescript&logoColor=white" alt="TypeScript" />
   <img src="https://img.shields.io/badge/XGBoost-tabular-EB6F2D?style=flat-square" alt="XGBoost" />
-  <img src="https://img.shields.io/badge/tests-1%2C407-success?style=flat-square" alt="1,407 tests" />
+  <img src="https://img.shields.io/badge/tests-1%2C440-success?style=flat-square" alt="1,440 tests" />
   <img src="https://img.shields.io/badge/license-MIT-blue?style=flat-square" alt="License: MIT" />
 </p>
 
@@ -46,7 +46,7 @@ The part I care more about is the second half: the same model was then evaluated
 | **In-distribution** | PR-AUC **0.9327** on a held-out chronological fold of the generator it was trained on |
 | **Cross-generator transfer** | PR-AUC **0.0087** against a test prevalence of 0.0033 — see [what the evaluation taught us](#what-the-evaluation-taught-us) |
 | **Real anonymised data** | ULB, 284,807 rows / 492 frauds, on its own isolated PCA featureset. PR-AUC **0.7670** (primary seed). Never promoted, never merged with the above |
-| **Verification** | 1,407 tests · `ruff` · `mypy --strict` · every benchmark run reproducible from committed records |
+| **Verification** | 1,440 tests · `ruff` · `mypy --strict` · every benchmark run reproducible from committed records |
 
 ---
 

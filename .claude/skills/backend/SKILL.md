@@ -52,6 +52,12 @@ Add to this list whenever a bug escapes.
 - A cache write the database refuses (the `fx_rates` key already exists) is rolled back to a
   savepoint; the session stays usable and the row is still scored. A rate that rounds to zero
   at eight places is `unavailable`, never a stale fallback
+- A savepoint nests inside the caller's transaction even when nothing was written before it.
+  On SQLite that holds only because `app/db/session.py::build_engine` issues `BEGIN` ahead of
+  a savepoint the driver has not begun for, so a test that reaches a savepoint builds its
+  engine there too. Releasing a savepoint never commits, and the caller's rollback discards
+  it. Reads outside a savepoint hold no lock, and writers queue through the busy handler —
+  the engine does not take over BEGIN wholesale (`tests/unit/test_db_session.py`)
 - Idempotent replay returns the stored response and writes no second row
 - A lost race on a fresh key replays the winner (or 409s on a different body); an expired key
   answers 409; neither leaves an orphaned transaction row or surfaces as a 500

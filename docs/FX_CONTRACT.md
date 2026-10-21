@@ -165,12 +165,19 @@ request and persisting nothing. The write therefore runs inside a savepoint: a r
 row is rolled back to the savepoint, the transaction row flushed before it stays
 pending, and the fresh cache read runs again — on the ingestion path a refusal means a
 concurrent request stored that date first, and its row is the answer, labelled
-`cache`. Only `IntegrityError` is treated as a refusal; anything else is contained by
-`enrich` as before, on a session that is still usable. A rate that rounds to zero at
-the eight places the column stores is caught before any write and answers
-`unavailable`: the provider's positivity check runs on the raw value, so a rate below
-half of 1e-8 passes it, and pricing the amount at an older cached rate instead would be
-a different number.
+`cache`. The savepoint nests inside the request's transaction whatever was written
+before it: on SQLite the engine issues `BEGIN` ahead of the savepoint whenever the
+sqlite3 driver has not begun yet (`app/db/session.py`), because the driver's default
+only begins ahead of a write, and a savepoint issued before one would commit on
+release — ahead of the request's commit and beyond the reach of its rollback. The
+service never commits; the rate row is persisted or discarded with everything else
+when the request is (`tests/unit/test_db_session.py` holds the proof, through an
+independent connection). Only `IntegrityError` is
+treated as a refusal; anything else is contained by `enrich` as before, on a session
+that is still usable. A rate that rounds to zero at the eight places the column stores
+is caught before any write and answers `unavailable`: the provider's positivity check
+runs on the raw value, so a rate below half of 1e-8 passes it, and pricing the amount
+at an older cached rate instead would be a different number.
 
 ## What is stored
 
