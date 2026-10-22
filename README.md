@@ -24,12 +24,14 @@
 </p>
 
 ## 🎬 Product Demo
+<div align="center">
 
 A short technical demo of Fraud Radar's real-time fraud scoring, explainability and analyst workflow.
 
 https://github.com/user-attachments/assets/1366b98f-d3e8-4232-81fd-c44019e47002
 
 **▶ Watch the 24-second demo**
+</div>
 ---
 
 Transactions arrive over HTTP, get scored by a rules engine plus an XGBoost model in single-digit milliseconds, carry a SHAP attribution for every decision, and land in an analyst review queue with an append-only audit trail. That is the product.
