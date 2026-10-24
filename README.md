@@ -432,7 +432,7 @@ Tests and checks — [`.github/workflows/ci.yml`](.github/workflows/ci.yml) is t
 
 ```bash
 cd backend
-uv run pytest                      # 1,407 tests; scoring-endpoint tests skip without a trained model (CI trains one first)
+uv run pytest                      # 1,440 tests; scoring-endpoint tests skip without a trained model (CI trains one first, so all 1,440 run there)
 uv run ruff check app tests        # CI also lints alembic/env.py and the ml/ modules listed in the workflow
 uv run mypy app                    # strict; CI also type-checks the listed ml/ modules
 
