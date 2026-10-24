@@ -38,7 +38,7 @@ Response 201 (new):
 "top_contributors": [...]  // top 5 SHAP, same shape as /explain
 }
 
-Response 200 (idempotent replay):
+Response 201 (idempotent replay):
 - Returns the same body that was returned on the original 201
 - Header `X-Idempotency-Replay: true` to signal this was cached
 - Same response body as the original even if the model has been 

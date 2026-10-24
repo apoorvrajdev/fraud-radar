@@ -91,7 +91,7 @@ sequenceDiagram
     API->>IDEM: lookup(key)
     alt cached
         IDEM-->>API: stored response
-        API-->>SIM: 200 (replay)
+        API-->>SIM: 201 (replay)
     else fresh
         API->>FX: enrich(tx)
         alt currency == reporting currency
