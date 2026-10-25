@@ -30,7 +30,7 @@ A short technical demo of Fraud Radar's real-time fraud scoring, explainability 
 
 https://github.com/user-attachments/assets/1366b98f-d3e8-4232-81fd-c44019e47002
 
-
+**▶ Watch the 24-second demo**
 </div>
 ---
 
